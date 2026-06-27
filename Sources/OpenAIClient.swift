@@ -31,7 +31,6 @@ class OpenAIClient {
         }
 
         let model = SettingsService.shared.getModel()
-        let maxTokens = SettingsService.shared.getMaxTokens()
 
         var request = URLRequest(url: URL(string: "\(baseURL)/chat/completions")!)
         request.httpMethod = "POST"
@@ -40,8 +39,7 @@ class OpenAIClient {
 
         var payload: [String: Any] = [
             "model": model,
-            "messages": messages,
-            "max_tokens": maxTokens
+            "messages": messages
         ]
         if !tools.isEmpty {
             payload["tools"] = tools
