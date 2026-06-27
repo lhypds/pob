@@ -19,15 +19,32 @@ class SettingsService {
         ensureFiles()
     }
 
+    private let defaultSettings: [String: Any] = [
+        "model": "gpt-4o",
+        "max_tokens": 2000,
+        "editor": "system"
+    ]
+
     private func ensureFiles() {
         if !fileManager.fileExists(atPath: settingsFile.path) {
-            let json = """
-            {
-              "model": "gpt-4o",
-              "max_tokens": 2000
+            if let data = try? JSONSerialization.data(withJSONObject: defaultSettings, options: [.prettyPrinted, .sortedKeys]),
+               let string = String(data: data, encoding: .utf8) {
+                try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
             }
-            """
-            try? json.write(to: settingsFile, atomically: true, encoding: .utf8)
+        } else {
+            // Add any missing keys to an existing settings file
+            if var json = (try? Data(contentsOf: settingsFile)).flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) {
+                var changed = false
+                for (key, value) in defaultSettings where json[key] == nil {
+                    json[key] = value
+                    changed = true
+                }
+                if changed,
+                   let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+                   let string = String(data: data, encoding: .utf8) {
+                    try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
+                }
+            }
         }
         if !fileManager.fileExists(atPath: instructionFile.path) {
             let defaultText = "Describe what you see in this screenshot and identify any UI elements."
@@ -55,6 +72,10 @@ class SettingsService {
 
     func getMaxTokens() -> Int {
         loadJSON(key: "max_tokens") as? Int ?? 2000
+    }
+
+    func getEditor() -> String {
+        loadJSON(key: "editor") as? String ?? "system"
     }
 
     func getWindowFrame() -> NSRect? {
@@ -86,11 +107,11 @@ class SettingsService {
     }
 
     func openSettingsFile() {
-        openWithDefaultEditor(settingsFile)
+        openWithEditor(settingsFile)
     }
 
     func openInstructionFile() {
-        openWithDefaultEditor(instructionFile)
+        openWithEditor(instructionFile)
     }
 
     func openLogsFolder() {
@@ -98,10 +119,27 @@ class SettingsService {
         NSWorkspace.shared.open(logsFolder)
     }
 
-    private func openWithDefaultEditor(_ url: URL) {
+    private func openWithEditor(_ url: URL) {
         let process = Process()
         process.launchPath = "/usr/bin/open"
-        process.arguments = ["-t", url.path]
+        switch getEditor() {
+        case "vscode":
+            process.arguments = ["-a", "Visual Studio Code", url.path]
+        case "zed":
+            process.arguments = ["-a", "Zed", url.path]
+        case "sublime_text":
+            process.arguments = ["-a", "Sublime Text", url.path]
+        case "cursor":
+            process.arguments = ["-a", "Cursor", url.path]
+        case "nova":
+            process.arguments = ["-a", "Nova", url.path]
+        case "textmate":
+            process.arguments = ["-a", "TextMate", url.path]
+        case "bbedit":
+            process.arguments = ["-a", "BBEdit", url.path]
+        default: // "system"
+            process.arguments = ["-t", url.path]
+        }
         try? process.run()
     }
 
