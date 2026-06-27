@@ -23,7 +23,7 @@ class OpenAIClient {
     private init() {}
 
     /// Send a multi-turn conversation with optional tool definitions.
-    func chat(messages: [[String: Any]], tools: [[String: Any]] = []) async -> ChatResult {
+    func chat(messages: [[String: Any]], tools: [[String: Any]] = [], jsonMode: Bool = false) async -> ChatResult {
         let apiKey = SettingsService.shared.getAPIKey()
         guard !apiKey.isEmpty else {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
@@ -46,6 +46,9 @@ class OpenAIClient {
         if !tools.isEmpty {
             payload["tools"] = tools
             payload["parallel_tool_calls"] = false
+        }
+        if jsonMode {
+            payload["response_format"] = ["type": "json_object"]
         }
 
         do {

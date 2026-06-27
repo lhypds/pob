@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var currentTask: Task<Void, Never>?
     @State private var isTargeting = false
     @State private var mousePosition: CGPoint? = nil
+    @State private var verificationError: String? = nil
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -56,7 +57,7 @@ struct ContentView: View {
                 }
                 .help(isTargeting ? "Stop Targeting" : "Target")
 
-                Button(action: isExecuting ? stop : execute) {
+                Button(action: isExecuting ? stop : startVerification) {
                     Image(systemName: isExecuting ? "stop.fill" : "play.fill")
                 }
                 .help(isExecuting ? "Stop" : "Execute")
@@ -66,6 +67,14 @@ struct ContentView: View {
         .onTapGesture {
             NSApplication.shared.activate(ignoringOtherApps: true)
             NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
+        }
+        .alert("Cannot Execute", isPresented: Binding(
+            get: { verificationError != nil },
+            set: { if !$0 { verificationError = nil } }
+        )) {
+            Button("OK") { verificationError = nil }
+        } message: {
+            Text(verificationError ?? "")
         }
     }
 
@@ -89,7 +98,60 @@ struct ContentView: View {
         AppLogger.log("Stopped")
     }
 
-    private func execute() {
+    private func startVerification() {
+        isExecuting = true
+
+        currentTask = Task {
+            let instruction = SettingsService.shared.getInstruction()
+
+            let verifyMessages: [[String: Any]] = [
+                [
+                    "role": "user",
+                    "content": """
+                    You are verifying an automation instruction before it is executed.
+
+                    Instruction:
+                    \(instruction)
+
+                    Check: does the instruction include a clear, specific position (coordinates, pixel offsets, \
+                    or an unambiguous on-screen location) for every action that requires one?
+
+                    Respond ONLY with JSON: {"ok": true, "reason": ""} if ready, \
+                    or {"ok": false, "reason": "<explain what position info is missing>"} if not.
+                    """
+                ]
+            ]
+
+            let result = await OpenAIClient.shared.chat(messages: verifyMessages, jsonMode: true)
+
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+
+                guard result.success,
+                      let text = result.contentText,
+                      let data = text.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    isExecuting = false
+                    AppLogger.log("Verification error: \(result.error ?? "no response")")
+                    return
+                }
+
+                let ok = json["ok"] as? Bool ?? false
+                let reason = json["reason"] as? String ?? ""
+
+                if ok {
+                    AppLogger.log("Verification passed — executing")
+                    executeMain()
+                } else {
+                    isExecuting = false
+                    verificationError = reason.isEmpty ? "Position information is missing from the instruction." : reason
+                    AppLogger.log("Verification failed: \(reason)")
+                }
+            }
+        }
+    }
+
+    private func executeMain() {
         isExecuting = true
 
         currentTask = Task {
