@@ -93,7 +93,7 @@ class ScreenshotService {
         let hotSpot = NSCursor.arrow.hotSpot  // in cursor image point coords
 
         // Scale cursor to a fixed target height in screenshot pixels.
-        let targetH: CGFloat = 44
+        let targetH: CGFloat = 88
         let aspect = cursorNSImage.size.height > 0 ? cursorNSImage.size.width / cursorNSImage.size.height : 1
         let cursorW = targetH * aspect
         let cursorH = targetH
@@ -115,10 +115,84 @@ class ScreenshotService {
             ctx.draw(cursorCG, in: CGRect(x: rx, y: ry, width: cursorW, height: cursorH))
         }
 
+        // Red circle centred on the cursor body to highlight the cursor position.
+        let circleCX = rx + cursorW / 2
+        let circleCY = ry + cursorH / 2
+        let circleR = cursorH * 0.7
+        ctx.setStrokeColor(red: 1, green: 0, blue: 0, alpha: 0.9)
+        ctx.setLineWidth(4)
+        ctx.addEllipse(in: CGRect(x: circleCX - circleR, y: circleCY - circleR,
+                                  width: circleR * 2, height: circleR * 2))
+        ctx.strokePath()
+
         if let resultImg = ctx.makeImage() {
             return NSImage(cgImage: resultImg, size: image.size)
         }
         return image
+    }
+
+    /// Returns a 4× magnified crop of the image centered on pixelPos with a red crosshair at the hotspot.
+    /// Pixel coordinates use top-left origin (same as screenshot pixel convention).
+    func zoomedView(_ image: NSImage, around pixelPos: CGPoint, radius: CGFloat = 150, zoomFactor: CGFloat = 4) -> NSImage? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let sourceCG = rep.cgImage else { return nil }
+
+        let imgW = CGFloat(rep.pixelsWide)
+        let imgH = CGFloat(rep.pixelsHigh)
+
+        // Crop bounds in top-left origin space, clamped to image edges.
+        let topEdge    = max(0, pixelPos.y - radius)
+        let bottomEdge = min(imgH, pixelPos.y + radius)
+        let leftEdge   = max(0, pixelPos.x - radius)
+        let rightEdge  = min(imgW, pixelPos.x + radius)
+
+        let cropW = rightEdge - leftEdge
+        let cropH = bottomEdge - topEdge
+
+        guard cropW > 0 && cropH > 0 else { return nil }
+
+        // CGImage.cropping uses Y-from-bottom (CG convention).
+        let cropRect = CGRect(x: leftEdge, y: imgH - bottomEdge, width: cropW, height: cropH)
+        guard let croppedCG = sourceCG.cropping(to: cropRect) else { return nil }
+
+        let outW = Int(cropW * zoomFactor)
+        let outH = Int(cropH * zoomFactor)
+
+        guard let outCtx = CGContext(
+            data: nil, width: outW, height: outH,
+            bitsPerComponent: 8, bytesPerRow: outW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        // Draw cropped image (no flip needed — same convention as imageWithCursor).
+        outCtx.draw(croppedCG, in: CGRect(x: 0, y: 0, width: CGFloat(outW), height: CGFloat(outH)))
+
+        // Hotspot position in the output context (Y from bottom = CG convention).
+        let hotX  = (pixelPos.x - leftEdge)  * zoomFactor
+        let hotY  = (bottomEdge - pixelPos.y) * zoomFactor   // CG: 0 = bottom of crop
+
+        // Red crosshair lines.
+        outCtx.setStrokeColor(red: 1, green: 0, blue: 0, alpha: 0.9)
+        outCtx.setLineWidth(3)
+        let arm: CGFloat = 30
+        outCtx.move(to: CGPoint(x: hotX - arm, y: hotY)); outCtx.addLine(to: CGPoint(x: hotX + arm, y: hotY))
+        outCtx.move(to: CGPoint(x: hotX, y: hotY - arm)); outCtx.addLine(to: CGPoint(x: hotX, y: hotY + arm))
+        outCtx.strokePath()
+
+        // Bright dot at exact click point.
+        let zDot: CGFloat = 8
+        outCtx.setFillColor(red: 1, green: 1, blue: 0, alpha: 0.9)
+        outCtx.setStrokeColor(red: 1, green: 0, blue: 0, alpha: 1)
+        outCtx.setLineWidth(2)
+        outCtx.addEllipse(in: CGRect(x: hotX - zDot, y: hotY - zDot, width: zDot * 2, height: zDot * 2))
+        outCtx.drawPath(using: .fillStroke)
+
+        if let resultCG = outCtx.makeImage() {
+            return NSImage(cgImage: resultCG, size: NSSize(width: outW, height: outH))
+        }
+        return nil
     }
 
     /// Capture screenshot and save to file

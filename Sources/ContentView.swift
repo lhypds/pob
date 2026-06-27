@@ -61,6 +61,7 @@ struct ContentView: View {
             var lastContext: ScreenshotContext? = nil
             var lastScreenshot: NSImage? = nil
             var emptyResponseCount = 0
+            var pendingClick = false
 
             AppLogger.log("[\(sessionId)] Session started")
 
@@ -84,7 +85,7 @@ struct ContentView: View {
 
             let systemMsg: [String: Any] = [
                 "role": "system",
-                "content": "You are a desktop automation assistant controlling a virtual cursor. Use move() to position the cursor on a UI element, then examine the screenshot to verify the red crosshair cursor is exactly on the target. Keep calling move() to adjust until the cursor is precisely on the target, then call click(). Never call click() unless you have confirmed the cursor is on the correct element in the screenshot."
+                "content": "You are a desktop automation assistant controlling a virtual cursor. Use move() to position the cursor on a UI element. Each screenshot shows the cursor arrow surrounded by a RED CIRCLE — the tip of the arrow (inside the circle) is the EXACT pixel where the click will land. Keep calling move() until the cursor tip is precisely on the target element, then call click(). For the click verification you will also receive a 4× zoomed image; verify the cursor tip is on the target in the zoomed view before confirming."
             ]
             messages.append(systemMsg)
 
@@ -122,7 +123,16 @@ struct ContentView: View {
 
                 if result.toolCalls.isEmpty {
                     let text = result.contentText ?? ""
-                    if !text.isEmpty {
+                    if pendingClick && text.uppercased().contains("CONFIRM") {
+                        let curPos = MouseService.shared.virtualCursorPosition
+                        AppLogger.log("[\(sessionId)] click confirmed at virtual(\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if let ctx = lastContext {
+                            let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
+                            AppLogger.log("[\(sessionId)] executing click at screen(\(Int(cgPt.x)), \(Int(cgPt.y)))")
+                            await MouseService.shared.performClick(at: cgPt)
+                        }
+                        break
+                    } else if !text.isEmpty {
                         AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
                         break
                     }
@@ -140,8 +150,6 @@ struct ContentView: View {
                     continue
                 }
                 emptyResponseCount = 0
-
-                var shouldStop = false
 
                 for toolCall in result.toolCalls {
                     guard !Task.isCancelled else { break }
@@ -169,7 +177,7 @@ struct ContentView: View {
                                 messages.append([
                                     "role": "user",
                                     "content": [
-                                        ["type": "text", "text": "Current cursor position: (\(Int(x)), \(Int(y))). Here is the updated screenshot."],
+                                        ["type": "text", "text": "Cursor moved to (\(Int(x)), \(Int(y))). The red circle highlights the cursor; the arrow tip inside it is the click point."],
                                         ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
                                     ] as [[String: Any]]
                                 ])
@@ -178,29 +186,41 @@ struct ContentView: View {
 
                     case "click":
                         let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] click() at (\(Int(curPos.x)), \(Int(curPos.y)))")
-
-                        if let ctx = lastContext {
-                            let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
-                            AppLogger.log("[\(sessionId)] click() virtual(\(Int(curPos.x)), \(Int(curPos.y))) → screen(\(Int(cgPt.x)), \(Int(cgPt.y)))")
-                            await MouseService.shared.performClick(at: cgPt)
-                        } else {
-                            AppLogger.log("[\(sessionId)] Warning: no context for click")
-                        }
+                        AppLogger.log("[\(sessionId)] click() requested at (\(Int(curPos.x)), \(Int(curPos.y)))")
 
                         messages.append([
                             "role": "tool",
                             "tool_call_id": toolCall.id,
-                            "content": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."
+                            "content": "Click requested. Verify cursor position then reply CONFIRM or call move() to adjust."
                         ])
-                        shouldStop = true
+
+                        if let (verifyShot, verifyCtx) = captureWithCursor(window: window),
+                           let b64 = toBase64(verifyShot) {
+                            lastContext = verifyCtx
+                            lastScreenshot = verifyShot
+
+                            var contentParts: [[String: Any]] = [
+                                ["type": "text", "text": "Current cursor position: (\(Int(curPos.x)), \(Int(curPos.y))). The cursor tip (arrow point inside the red circle) is the EXACT click point. First image: full screenshot. Second image: 4× zoom of the cursor area. Is the cursor tip precisely on the target? Reply CONFIRM if yes, or call move() to adjust."],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ]
+
+                            if let zoomed = ScreenshotService.shared.zoomedView(verifyShot, around: curPos),
+                               let zoomB64 = toBase64(zoomed) {
+                                contentParts.append(["type": "image_url", "image_url": ["url": "data:image/png;base64,\(zoomB64)"]])
+                            }
+
+                            messages.append(["role": "user", "content": contentParts])
+                        }
+
+                        // pendingClick = true: the outer loop will execute the click when AI replies CONFIRM.
+                        pendingClick = true
 
                     default:
                         AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
                     }
                 }
 
-                if shouldStop || Task.isCancelled { break }
+                if Task.isCancelled { break }
             }
 
             await MainActor.run {
