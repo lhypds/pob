@@ -57,6 +57,30 @@ class SettingsService {
         loadJSON(key: "max_tokens") as? Int ?? 2000
     }
 
+    func getWindowFrame() -> NSRect? {
+        guard let x = loadJSON(key: "window_x") as? Double,
+              let y = loadJSON(key: "window_y") as? Double,
+              let w = loadJSON(key: "window_width") as? Double,
+              let h = loadJSON(key: "window_height") as? Double else { return nil }
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
+
+    func saveWindowFrame(_ frame: NSRect) {
+        var json: [String: Any] = [:]
+        if let data = try? Data(contentsOf: settingsFile),
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            json = existing
+        }
+        json["window_x"] = Double(frame.origin.x)
+        json["window_y"] = Double(frame.origin.y)
+        json["window_width"] = Double(frame.size.width)
+        json["window_height"] = Double(frame.size.height)
+        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+           let string = String(data: data, encoding: .utf8) {
+            try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
+        }
+    }
+
     func getInstruction() -> String {
         (try? String(contentsOf: instructionFile, encoding: .utf8)) ?? "Describe what you see in this screenshot."
     }

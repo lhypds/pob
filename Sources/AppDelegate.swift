@@ -30,11 +30,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Allow window to accept mouse events
             window.ignoresMouseEvents = false
             
-            // Set initial size
-            window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
-            
-            // Center on screen
-            window.center()
+            // Restore saved position/size, or use default centered position
+            if let savedFrame = SettingsService.shared.getWindowFrame() {
+                window.setFrame(savedFrame, display: true)
+            } else {
+                window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
+                window.center()
+            }
+
+            window.delegate = self
 
             // Make sure the window becomes key/main so traffic-light buttons are active on focus
             window.makeKeyAndOrderFront(nil)
@@ -78,6 +82,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return fallback
     }
     
+    private func saveWindowFrame() {
+        guard let window = window else { return }
+        SettingsService.shared.saveWindowFrame(window.frame)
+    }
+
     private func createMenu() {
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
@@ -91,5 +100,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appMenuItem)
         
         NSApplication.shared.mainMenu = mainMenu
+    }
+}
+
+extension AppDelegate: NSWindowDelegate {
+    func windowDidMove(_ notification: Notification) {
+        saveWindowFrame()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        saveWindowFrame()
     }
 }
