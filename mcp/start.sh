@@ -12,4 +12,4 @@ else
     PYTHON="python3"
 fi
 
-"$PYTHON" "$DIR/pob_mcp_server.py" "$@"
+"$PYTHON" "$DIR/pob_mcp_server.py" --sse "$@"
