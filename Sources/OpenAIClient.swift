@@ -12,6 +12,7 @@ struct ChatResult {
     let toolCalls: [ToolCall]
     // The raw assistant message dict ready to append back into the messages array.
     let rawAssistantMessage: [String: Any]
+    let usage: [String: Any]?
     let error: String?
 }
 
@@ -27,7 +28,7 @@ class OpenAIClient {
         let apiKey = SettingsService.shared.getAPIKey()
         guard !apiKey.isEmpty else {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                              error: "API key not configured. Set OPENAI_API_KEY in .env file.")
+                              usage: nil, error: "API key not configured. Set OPENAI_API_KEY in .env file.")
         }
 
         let model = SettingsService.shared.getModel()
@@ -53,7 +54,7 @@ class OpenAIClient {
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         } catch {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                              error: "Failed to serialize request: \(error)")
+                              usage: nil, error: "Failed to serialize request: \(error)")
         }
 
         do {
@@ -61,21 +62,22 @@ class OpenAIClient {
 
             guard let http = response as? HTTPURLResponse else {
                 return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                                  error: "Invalid response")
+                                  usage: nil, error: "Invalid response")
             }
             guard http.statusCode == 200 else {
                 let body = String(data: data, encoding: .utf8) ?? "Unknown"
                 return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                                  error: "HTTP \(http.statusCode): \(body)")
+                                  usage: nil, error: "HTTP \(http.statusCode): \(body)")
             }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
                   let message = choices.first?["message"] as? [String: Any] else {
                 return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                                  error: "Unexpected response format")
+                                  usage: nil, error: "Unexpected response format")
             }
 
+            let usage = json["usage"] as? [String: Any]
             let contentText = message["content"] as? String
 
             var toolCalls: [ToolCall] = []
@@ -94,10 +96,10 @@ class OpenAIClient {
             }
 
             return ChatResult(success: true, contentText: contentText, toolCalls: toolCalls,
-                              rawAssistantMessage: message, error: nil)
+                              rawAssistantMessage: message, usage: usage, error: nil)
         } catch {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                              error: error.localizedDescription)
+                              usage: nil, error: error.localizedDescription)
         }
     }
 }
