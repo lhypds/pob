@@ -2,9 +2,7 @@ import Foundation
 
 enum AppLogger {
     private static let logFile: URL = {
-        let logsFolder = SettingsService.shared.projectRoot.appendingPathComponent("logs")
-        try? FileManager.default.createDirectory(at: logsFolder, withIntermediateDirectories: true)
-        return logsFolder.appendingPathComponent("app.log")
+        return SettingsService.shared.projectRoot.appendingPathComponent("app.log")
     }()
 
     static func log(_ message: String) {
