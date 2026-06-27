@@ -91,6 +91,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateIgnoresMouseEvents()
 
+        ScreenshotServer.shared.start(port: 8033)
+
         if SettingsService.shared.getStartMcp() {
             startMcpServer()
         }

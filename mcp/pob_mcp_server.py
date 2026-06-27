@@ -37,7 +37,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from typing import Optional
+
+POB_SCREENSHOT_URL = "http://127.0.0.1:8033/screenshot"
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
@@ -78,16 +81,26 @@ def take_screenshot(
         crop_width: Width of the capture region in screen points.
         crop_height: Height of the capture region in screen points.
     """
+    # Try Pob's native screenshot service first.
+    try:
+        url = POB_SCREENSHOT_URL
+        if all(v is not None for v in [crop_x, crop_y, crop_width, crop_height]):
+            url += f"?x={crop_x}&y={crop_y}&w={crop_width}&h={crop_height}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = base64.standard_b64encode(resp.read()).decode()
+        return [types.ImageContent(type="image", data=data, mimeType="image/png")]
+    except Exception:
+        pass
+
+    # Fallback: system screencapture (used when Pob is not running).
     fd, tmpfile = tempfile.mkstemp(suffix=".png")
     os.close(fd)
-
     try:
         cmd = ["screencapture", "-x", "-t", "png"]
         if all(v is not None for v in [crop_x, crop_y, crop_width, crop_height]):
             cmd += ["-R", f"{crop_x},{crop_y},{crop_width},{crop_height}"]
         cmd.append(tmpfile)
         subprocess.run(cmd, check=True)
-
         with open(tmpfile, "rb") as f:
             data = base64.standard_b64encode(f.read()).decode()
     finally:
