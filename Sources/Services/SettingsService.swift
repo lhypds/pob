@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 
 class SettingsService {
     static let shared = SettingsService()
@@ -23,10 +23,21 @@ class SettingsService {
         return dir
     }
 
-    private var settingsFile: URL { projectRoot.appendingPathComponent("settings.json") }
-    private var instructionFile: URL { projectRoot.appendingPathComponent("instruction.txt") }
-    private var macroFile: URL { projectRoot.appendingPathComponent("macro.txt") }
-    private var logsFolder: URL { projectRoot.appendingPathComponent("logs") }
+    private var settingsFile: URL {
+        projectRoot.appendingPathComponent("settings.json")
+    }
+
+    private var instructionFile: URL {
+        projectRoot.appendingPathComponent("instruction.txt")
+    }
+
+    private var macroFile: URL {
+        projectRoot.appendingPathComponent("macro.txt")
+    }
+
+    private var logsFolder: URL {
+        projectRoot.appendingPathComponent("logs")
+    }
 
     private init() {
         ensureFiles()
@@ -101,7 +112,8 @@ class SettingsService {
             return max(1, Int(value))
         }
         if let value = loadJSON(key: "max_steps") as? String,
-           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        {
             return max(1, intValue)
         }
         return 12
@@ -136,7 +148,8 @@ class SettingsService {
     func saveWindowFrame(_ frame: NSRect) {
         var json: [String: Any] = [:]
         if let data = try? Data(contentsOf: settingsFile),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
             json = existing
         }
         json["window_x"] = Double(frame.origin.x)

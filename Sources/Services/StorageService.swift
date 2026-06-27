@@ -1,5 +1,5 @@
-import Foundation
 import Cocoa
+import Foundation
 
 class StorageService {
     static let shared = StorageService()
@@ -44,7 +44,7 @@ class StorageService {
 
     /// Saves one conversation log entry under logs/sessionId/unixtime/.
     /// Image data in messages is stripped to keep files readable.
-    func saveLog(sessionId: String, logId: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
+    func saveLog(sessionId: String, logId _: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
         let logDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("\(Int(Date().timeIntervalSince1970))")
         do {
             try fileManager.createDirectory(at: logDir, withIntermediateDirectories: true)
@@ -53,7 +53,8 @@ class StorageService {
         if let screenshot = screenshot,
            let tiff = screenshot.tiffRepresentation,
            let rep = NSBitmapImageRep(data: tiff),
-           let png = rep.representation(using: .png, properties: [:]) {
+           let png = rep.representation(using: .png, properties: [:])
+        {
             try? png.write(to: logDir.appendingPathComponent("screenshot.png"))
         }
 

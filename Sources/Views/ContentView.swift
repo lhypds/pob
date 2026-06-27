@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ContentView: View {
     @State private var isExecuting = false
@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
     @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
-    @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
+    @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
     @Environment(\.controlActiveState) private var controlActiveState
@@ -402,7 +402,8 @@ struct ContentView: View {
                     let cropRect: CGRect? = args.count >= 4
                         ? { guard let x = Double(args[0]), let y = Double(args[1]),
                                   let w = Double(args[2]), let h = Double(args[3]) else { return nil }
-                              return CGRect(x: x, y: y, width: w, height: h) }()
+                            return CGRect(x: x, y: y, width: w, height: h)
+                        }()
                         : nil
                     if let r = cropRect {
                         AppLogger.log("[\(sessionId)] Macro take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
@@ -432,12 +433,12 @@ struct ContentView: View {
 
     private func parseMacroLine(_ line: String) -> (name: String, args: [String])? {
         guard let openParen = line.firstIndex(of: "("), line.hasSuffix(")") else { return nil }
-        let name = String(line[line.startIndex..<openParen]).trimmingCharacters(in: .whitespaces)
+        let name = String(line[line.startIndex ..< openParen]).trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return nil }
 
         let argsStart = line.index(after: openParen)
         let argsEnd = line.index(before: line.endIndex)
-        let argsStr = String(line[argsStart..<argsEnd]).trimmingCharacters(in: .whitespaces)
+        let argsStr = String(line[argsStart ..< argsEnd]).trimmingCharacters(in: .whitespaces)
         if argsStr.isEmpty { return (name, []) }
 
         if argsStr.hasPrefix("\"") {
@@ -475,24 +476,13 @@ struct ContentView: View {
             MouseService.shared.resetCursor()
 
             let sessionId = StorageService.shared.createSession()
-            var logId = 1
-            var messages: [[String: Any]] = []
-            var lastContext: ScreenshotContext? = nil
-            var lastScreenshot: NSImage? = nil
-            var emptyResponseCount = 0
-            var stepCount = 0
-            let maxSteps = SettingsService.shared.getMaxSteps()
-
             AppLogger.log("[\(sessionId)] Session started")
 
-            // Take initial screenshot (no cursor overlay — no click requested yet).
             guard let (initShot, initCtx) = captureWithCursor(window: window) else {
                 AppLogger.log("Failed to capture screenshot")
                 await MainActor.run { isExecuting = false }
                 return
             }
-            lastContext = initCtx
-            lastScreenshot = initShot
 
             guard let initBase64 = toBase64(initShot) else {
                 AppLogger.log("Failed to encode screenshot")
@@ -511,298 +501,15 @@ struct ContentView: View {
                 return
             }
 
-            let systemMsg: [String: Any] = [
-                "role": "system",
-                "content": """
-                You are a desktop automation assistant. All coordinates are screenshot pixel coordinates \
-                (origin = top-left of the screenshot, x right, y down). The app converts them to real \
-                screen positions — you never deal with screen or OS coordinates.
-
-                Available actions:
-                • move(dx, dy) — nudge the cursor by a relative pixel offset; you receive a new screenshot showing the updated cursor arrow tip.
-                • click() — left-click at the current cursor position (executes immediately).
-                • rightClick() — right-click at the current cursor position (executes immediately).
-                • doubleClick() — double-click at the current cursor position (executes immediately).
-                • drag(dx, dy) — drag from the current cursor position to current+(dx,dy); cursor ends at the new position.
-                • scroll(dx, dy) — scroll at the current cursor position; dy>0 = down, dy<0 = up, dx>0 = right.
-                • typeText(text) — type text at the current keyboard focus.
-                • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
-                home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
-                • sleep(milliseconds) — pause execution for the given number of milliseconds.
-                • take_screenshot(crop_x, crop_y, crop_width, crop_height) — capture a fresh screenshot; all crop parameters are optional. When provided, the image is cropped to that pixel region before being returned.
-
-                Workflow:
-                1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
-                2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
-
-                The cursor starts at (20, 20).
-                """
-            ]
-            messages.append(systemMsg)
-
-            let userMsg: [String: Any] = [
-                "role": "user",
-                "content": [
-                    ["type": "text", "text": instruction],
-                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]]
-                ] as [[String: Any]]
-            ]
-            messages.append(userMsg)
-
-            let tools = AgentService.shared.makeTools()
-
-            while !Task.isCancelled {
-                if stepCount >= maxSteps {
-                    AppLogger.log("[\(sessionId)] Max step exceed.")
-                    let shouldContinue = await withCheckedContinuation { continuation in
-                        Task { @MainActor in
-                            maxStepContinuation = continuation
-                            maxStepWarning = true
-                        }
-                    }
-                    if !shouldContinue { break }
-                    stepCount = 0
-                }
-                stepCount += 1
-
-                AppLogger.log("[\(sessionId)/\(logId)] Analyzing...")
-
-                let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
-
-                var responseToSave: [String: Any] = result.success
-                    ? result.rawAssistantMessage
-                    : ["error": result.error ?? "Unknown error"]
-                if let usage = result.usage { responseToSave["usage"] = usage }
-                StorageService.shared.saveLog(sessionId: sessionId, logId: logId,
-                                               messages: messages,
-                                               response: responseToSave,
-                                               screenshot: lastScreenshot)
-                logId += 1
-
-                if !result.success {
-                    AppLogger.log("Error: \(result.error ?? "Unknown")")
-                    break
-                }
-
-                messages.append(result.rawAssistantMessage)
-
-                if result.toolCalls.isEmpty {
-                    let text = result.contentText ?? ""
-                    if !text.isEmpty {
-                        AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
-                        break
-                    }
-                    emptyResponseCount += 1
-                    if emptyResponseCount >= 3 {
-                        AppLogger.log("[\(sessionId)] Too many empty responses, stopping.")
-                        break
-                    }
-                    AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
-                    messages.append([
-                        "role": "user",
-                        "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action."
-                    ])
-                    continue
-                }
-                emptyResponseCount = 0
-
-                for toolCall in result.toolCalls {
-                    guard !Task.isCancelled else { break }
-
-                    switch toolCall.name {
-
-                    case "move":
-                        let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
-                        let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
-                        MouseService.shared.moveCursorBy(dx: dx, dy: dy)
-                        let newPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
-
-                        messages.append([
-                            "role": "tool",
-                            "tool_call_id": toolCall.id,
-                            "content": "Cursor moved by (\(Int(dx)), \(Int(dy))). New position: (\(Int(newPos.x)), \(Int(newPos.y)))."
-                        ])
-
-                        if let (newShot, newCtx) = captureWithCursor(window: window) {
-                            lastContext = newCtx
-                            lastScreenshot = newShot
-                            if let b64 = toBase64(newShot) {
-                                messages.append([
-                                    "role": "user",
-                                    "content": [
-                                        ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
-                                        ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                                    ] as [[String: Any]]
-                                ])
-                            }
-                        }
-
-                    case "click":
-                        let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("click()") }
-                        if let ctx = lastContext {
-                            let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
-                            await MouseService.shared.performClick(at: cgPt)
-                        }
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "rightClick":
-                        let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("rightClick()") }
-                        if let ctx = lastContext {
-                            await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
-                        }
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Right-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "doubleClick":
-                        let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("doubleClick()") }
-                        if let ctx = lastContext {
-                            await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
-                        }
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Double-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "drag":
-                        let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
-                        let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
-                        let startPos = MouseService.shared.virtualCursorPosition
-                        let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
-                        AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
-                        if let ctx = lastContext {
-                            let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
-                            let to   = ctx.toCGEventPoint(pixelX: endPos.x,   pixelY: endPos.y)
-                            await MouseService.shared.performDrag(from: from, to: to)
-                        }
-                        MouseService.shared.moveCursor(to: endPos)
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Dragged to (\(Int(endPos.x)), \(Int(endPos.y)))."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "scroll":
-                        let dx = (toolCall.arguments["dx"] as? Double).map { Int32($0) } ?? 0
-                        let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
-                        let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
-                        if let ctx = lastContext {
-                            await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
-                        }
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Scrolled dx:\(dx) dy:\(dy) at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "typeText":
-                        let text = toolCall.arguments["text"] as? String ?? ""
-                        AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
-                        if shouldRecord { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
-                        await MouseService.shared.performType(text: text)
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Typed \"\(text)\"."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "keyPress":
-                        let key = toolCall.arguments["key"] as? String ?? ""
-                        AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
-                        if shouldRecord { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
-                        await MouseService.shared.performKeyPress(key: key)
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Pressed \"\(key)\"."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            messages.append(["role": "user", "content": [
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
-                        }
-
-                    case "sleep":
-                        let ms = toolCall.arguments["milliseconds"] as? Double ?? 0
-                        AppLogger.log("[\(sessionId)] sleep(\(Int(ms))ms)")
-                        if shouldRecord { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
-                        try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Slept for \(Int(ms))ms."])
-
-                    case "take_screenshot":
-                        let cropX = (toolCall.arguments["crop_x"] as? Double).map { CGFloat($0) }
-                        let cropY = (toolCall.arguments["crop_y"] as? Double).map { CGFloat($0) }
-                        let cropW = (toolCall.arguments["crop_width"] as? Double).map { CGFloat($0) }
-                        let cropH = (toolCall.arguments["crop_height"] as? Double).map { CGFloat($0) }
-                        let cropRect: CGRect? = (cropX != nil && cropY != nil && cropW != nil && cropH != nil)
-                            ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
-                        if let r = cropRect {
-                            AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
-                            if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
-                        } else {
-                            AppLogger.log("[\(sessionId)] take_screenshot")
-                            if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot()") }
-                        }
-                        await MainActor.run { flashScreenshot() }
-                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                         "content": "Screenshot captured."])
-                        if let (shot, ctx) = captureWithCursor(window: window) {
-                            lastContext = ctx
-                            let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
-                            lastScreenshot = finalShot
-                            StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
-                            if let b64 = toBase64(finalShot) {
-                                messages.append(["role": "user", "content": [
-                                    ["type": "text", "text": "Current screenshot:"],
-                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                                ] as [[String: Any]]])
-                            }
-                        }
-
-                    default:
-                        AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
-                    }
-                }
-
-                if Task.isCancelled { break }
-            }
+            await executeInstruction(
+                sessionId: sessionId,
+                instruction: instruction,
+                initBase64: initBase64,
+                initContext: initCtx,
+                initScreenshot: initShot,
+                window: window,
+                shouldRecord: shouldRecord
+            )
 
             let wasCancelled = Task.isCancelled
             await MainActor.run {
@@ -818,6 +525,316 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func executeInstruction(
+        sessionId: String,
+        instruction: String,
+        initBase64: String,
+        initContext: ScreenshotContext,
+        initScreenshot: NSImage,
+        window: NSWindow?,
+        shouldRecord: Bool
+    ) async {
+        var messages: [[String: Any]] = []
+        var lastContext: ScreenshotContext? = initContext
+        var lastScreenshot: NSImage? = initScreenshot
+        var logId = 1
+        var emptyResponseCount = 0
+        var stepCount = 0
+        let maxSteps = SettingsService.shared.getMaxSteps()
+
+        let systemMsg: [String: Any] = [
+            "role": "system",
+            "content": """
+            You are a desktop automation assistant. All coordinates are screenshot pixel coordinates \
+            (origin = top-left of the screenshot, x right, y down). The app converts them to real \
+            screen positions — you never deal with screen or OS coordinates.
+
+            Available actions:
+            • move(dx, dy) — nudge the cursor by a relative pixel offset; you receive a new screenshot showing the updated cursor arrow tip.
+            • click() — left-click at the current cursor position (executes immediately).
+            • rightClick() — right-click at the current cursor position (executes immediately).
+            • doubleClick() — double-click at the current cursor position (executes immediately).
+            • drag(dx, dy) — drag from the current cursor position to current+(dx,dy); cursor ends at the new position.
+            • scroll(dx, dy) — scroll at the current cursor position; dy>0 = down, dy<0 = up, dx>0 = right.
+            • typeText(text) — type text at the current keyboard focus.
+            • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
+            home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
+            • sleep(milliseconds) — pause execution for the given number of milliseconds.
+            • take_screenshot(crop_x, crop_y, crop_width, crop_height) — capture a fresh screenshot; all crop parameters are optional. When provided, the image is cropped to that pixel region before being returned.
+
+            Workflow:
+            1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
+            2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
+
+            The cursor starts at (20, 20).
+            """,
+        ]
+        messages.append(systemMsg)
+
+        let userMsg: [String: Any] = [
+            "role": "user",
+            "content": [
+                ["type": "text", "text": instruction],
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
+            ] as [[String: Any]],
+        ]
+        messages.append(userMsg)
+
+        let tools = AgentService.shared.makeTools()
+
+        while !Task.isCancelled {
+            if stepCount >= maxSteps {
+                AppLogger.log("[\(sessionId)] Max step exceed.")
+                let shouldContinue = await withCheckedContinuation { continuation in
+                    Task { @MainActor in
+                        maxStepContinuation = continuation
+                        maxStepWarning = true
+                    }
+                }
+                if !shouldContinue { break }
+                stepCount = 0
+            }
+            stepCount += 1
+
+            AppLogger.log("[\(sessionId)/\(logId)] Analyzing...")
+
+            let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
+
+            var responseToSave: [String: Any] = result.success
+                ? result.rawAssistantMessage
+                : ["error": result.error ?? "Unknown error"]
+            if let usage = result.usage { responseToSave["usage"] = usage }
+            StorageService.shared.saveLog(sessionId: sessionId, logId: logId,
+                                          messages: messages,
+                                          response: responseToSave,
+                                          screenshot: lastScreenshot)
+            logId += 1
+
+            if !result.success {
+                AppLogger.log("Error: \(result.error ?? "Unknown")")
+                break
+            }
+
+            messages.append(result.rawAssistantMessage)
+
+            if result.toolCalls.isEmpty {
+                let text = result.contentText ?? ""
+                if !text.isEmpty {
+                    AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
+                    break
+                }
+                emptyResponseCount += 1
+                if emptyResponseCount >= 3 {
+                    AppLogger.log("[\(sessionId)] Too many empty responses, stopping.")
+                    break
+                }
+                AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
+                messages.append([
+                    "role": "user",
+                    "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action.",
+                ])
+                continue
+            }
+            emptyResponseCount = 0
+
+            for toolCall in result.toolCalls {
+                guard !Task.isCancelled else { break }
+
+                switch toolCall.name {
+                case "move":
+                    let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
+                    let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
+                    MouseService.shared.moveCursorBy(dx: dx, dy: dy)
+                    let newPos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
+
+                    messages.append([
+                        "role": "tool",
+                        "tool_call_id": toolCall.id,
+                        "content": "Cursor moved by (\(Int(dx)), \(Int(dy))). New position: (\(Int(newPos.x)), \(Int(newPos.y))).",
+                    ])
+
+                    if let (newShot, newCtx) = captureWithCursor(window: window) {
+                        lastContext = newCtx
+                        lastScreenshot = newShot
+                        if let b64 = toBase64(newShot) {
+                            messages.append([
+                                "role": "user",
+                                "content": [
+                                    ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
+                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                                ] as [[String: Any]],
+                            ])
+                        }
+                    }
+
+                case "click":
+                    let curPos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("click()") }
+                    if let ctx = lastContext {
+                        let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
+                        await MouseService.shared.performClick(at: cgPt)
+                    }
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "rightClick":
+                    let curPos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("rightClick()") }
+                    if let ctx = lastContext {
+                        await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
+                    }
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Right-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "doubleClick":
+                    let curPos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("doubleClick()") }
+                    if let ctx = lastContext {
+                        await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
+                    }
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Double-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "drag":
+                    let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
+                    let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
+                    let startPos = MouseService.shared.virtualCursorPosition
+                    let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
+                    AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
+                    if let ctx = lastContext {
+                        let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
+                        let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
+                        await MouseService.shared.performDrag(from: from, to: to)
+                    }
+                    MouseService.shared.moveCursor(to: endPos)
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Dragged to (\(Int(endPos.x)), \(Int(endPos.y)))."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "scroll":
+                    let dx = (toolCall.arguments["dx"] as? Double).map { Int32($0) } ?? 0
+                    let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
+                    let curPos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    if shouldRecord { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
+                    if let ctx = lastContext {
+                        await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
+                    }
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Scrolled dx:\(dx) dy:\(dy) at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "typeText":
+                    let text = toolCall.arguments["text"] as? String ?? ""
+                    AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
+                    if shouldRecord { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
+                    await MouseService.shared.performType(text: text)
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Typed \"\(text)\"."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "keyPress":
+                    let key = toolCall.arguments["key"] as? String ?? ""
+                    AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
+                    if shouldRecord { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
+                    await MouseService.shared.performKeyPress(key: key)
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Pressed \"\(key)\"."])
+                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                        lastContext = ctx; lastScreenshot = shot
+                        messages.append(["role": "user", "content": [
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                        ] as [[String: Any]]])
+                    }
+
+                case "sleep":
+                    let ms = toolCall.arguments["milliseconds"] as? Double ?? 0
+                    AppLogger.log("[\(sessionId)] sleep(\(Int(ms))ms)")
+                    if shouldRecord { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
+                    try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Slept for \(Int(ms))ms."])
+
+                case "take_screenshot":
+                    let cropX = (toolCall.arguments["crop_x"] as? Double).map { CGFloat($0) }
+                    let cropY = (toolCall.arguments["crop_y"] as? Double).map { CGFloat($0) }
+                    let cropW = (toolCall.arguments["crop_width"] as? Double).map { CGFloat($0) }
+                    let cropH = (toolCall.arguments["crop_height"] as? Double).map { CGFloat($0) }
+                    let cropRect: CGRect? = (cropX != nil && cropY != nil && cropW != nil && cropH != nil)
+                        ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
+                    if let r = cropRect {
+                        AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
+                    } else {
+                        AppLogger.log("[\(sessionId)] take_screenshot")
+                        if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot()") }
+                    }
+                    await MainActor.run { flashScreenshot() }
+                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                     "content": "Screenshot captured."])
+                    if let (shot, ctx) = captureWithCursor(window: window) {
+                        lastContext = ctx
+                        let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
+                        lastScreenshot = finalShot
+                        StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
+                        if let b64 = toBase64(finalShot) {
+                            messages.append(["role": "user", "content": [
+                                ["type": "text", "text": "Current screenshot:"],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ] as [[String: Any]]])
+                        }
+                    }
+
+                default:
+                    AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
+                }
+            }
+
+            if Task.isCancelled { break }
         }
     }
 
@@ -859,21 +876,20 @@ struct ContentView: View {
     private func updateClickThrough() {
         AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting && !isCropping)
     }
-
 }
 
 private struct MouseTrackingOverlay: NSViewRepresentable {
     var onPositionChange: (CGPoint?) -> Void
     var onTap: (CGPoint) -> Void
 
-    func makeNSView(context: Context) -> TrackingNSView {
+    func makeNSView(context _: Context) -> TrackingNSView {
         let view = TrackingNSView()
         view.onPositionChange = onPositionChange
         view.onTap = onTap
         return view
     }
 
-    func updateNSView(_ nsView: TrackingNSView, context: Context) {
+    func updateNSView(_ nsView: TrackingNSView, context _: Context) {
         nsView.onPositionChange = onPositionChange
         nsView.onTap = onTap
     }
@@ -883,14 +899,14 @@ private struct CropTrackingOverlay: NSViewRepresentable {
     var onDragChange: (CGPoint, CGPoint) -> Void
     var onDragEnd: (CGRect) -> Void
 
-    func makeNSView(context: Context) -> CropNSView {
+    func makeNSView(context _: Context) -> CropNSView {
         let view = CropNSView()
         view.onDragChange = onDragChange
         view.onDragEnd = onDragEnd
         return view
     }
 
-    func updateNSView(_ nsView: CropNSView, context: Context) {
+    func updateNSView(_ nsView: CropNSView, context _: Context) {
         nsView.onDragChange = onDragChange
         nsView.onDragEnd = onDragEnd
     }
@@ -901,8 +917,13 @@ private class CropNSView: NSView {
     var onDragEnd: ((CGRect) -> Void)?
     private var startPoint: CGPoint?
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+        true
+    }
+
+    override var isFlipped: Bool {
+        true
+    }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
@@ -928,7 +949,7 @@ private class CropNSView: NSView {
             height: abs(end.y - start.y)
         )
         startPoint = nil
-        if rect.width > 2 && rect.height > 2 {
+        if rect.width > 2, rect.height > 2 {
             onDragEnd?(rect)
         }
     }
@@ -939,7 +960,9 @@ private class TrackingNSView: NSView {
     var onTap: ((CGPoint) -> Void)?
     private var trackingArea: NSTrackingArea?
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+        true
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -954,14 +977,16 @@ private class TrackingNSView: NSView {
         trackingArea = area
     }
 
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
 
     override func mouseMoved(with event: NSEvent) {
         let pt = convert(event.locationInWindow, from: nil)
         onPositionChange?(pt)
     }
 
-    override func mouseExited(with event: NSEvent) {
+    override func mouseExited(with _: NSEvent) {
         onPositionChange?(nil)
     }
 

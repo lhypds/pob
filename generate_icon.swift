@@ -12,7 +12,7 @@ guard let ctx = CGContext(
     space: colorSpace, bitmapInfo: bitmapInfo.rawValue
 ) else { exit(1) }
 
-// Rounded-rect background
+/// Rounded-rect background
 let bgColor = CGColor(red: 0.18, green: 0.25, blue: 0.75, alpha: 1.0)
 ctx.setFillColor(bgColor)
 let radius: CGFloat = 200
@@ -23,7 +23,7 @@ let path = CGPath(
 ctx.addPath(path)
 ctx.fillPath()
 
-// Draw text centered
+/// Draw text centered
 let nsCtx = NSGraphicsContext(cgContext: ctx, flipped: false)
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = nsCtx
@@ -31,7 +31,7 @@ NSGraphicsContext.current = nsCtx
 let font = NSFont.boldSystemFont(ofSize: 440)
 let attrs: [NSAttributedString.Key: Any] = [
     .font: font,
-    .foregroundColor: NSColor.white
+    .foregroundColor: NSColor.white,
 ]
 let str = NSAttributedString(string: text, attributes: attrs)
 let textSize = str.size()

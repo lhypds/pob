@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Pob",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v12),
     ],
     dependencies: [],
     targets: [
@@ -13,8 +13,8 @@ let package = Package(
             dependencies: [],
             path: "Sources",
             swiftSettings: [
-                .unsafeFlags(["-parse-as-library"])
+                .unsafeFlags(["-parse-as-library"]),
             ]
-        )
+        ),
     ]
 )

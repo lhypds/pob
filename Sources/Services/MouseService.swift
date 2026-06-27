@@ -1,15 +1,15 @@
-import CoreGraphics
 import AppKit
 import ApplicationServices
+import CoreGraphics
 
 class MouseService: ObservableObject {
     static let shared = MouseService()
 
-    // Virtual cursor in screenshot pixel coordinates (origin: top-left).
-    // Never touches the real system mouse pointer.
+    /// Virtual cursor in screenshot pixel coordinates (origin: top-left).
+    /// Never touches the real system mouse pointer.
     var virtualCursorPosition: CGPoint = .zero
 
-    // Published so the UI can overlay the cursor and animate its movement.
+    /// Published so the UI can overlay the cursor and animate its movement.
     @Published var displayPosition: CGPoint = .zero
 
     private init() {}
@@ -37,12 +37,14 @@ class MouseService: ObservableObject {
     func performClick(at cgPoint: CGPoint) async {
         await passThrough {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                   mouseCursorPosition: cgPoint, mouseButton: .left) {
+                                  mouseCursorPosition: cgPoint, mouseButton: .left)
+            {
                 down.post(tap: .cghidEventTap)
             }
             try? await Task.sleep(nanoseconds: 50_000_000)
             if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                                 mouseCursorPosition: cgPoint, mouseButton: .left) {
+                                mouseCursorPosition: cgPoint, mouseButton: .left)
+            {
                 up.post(tap: .cghidEventTap)
             }
         }
@@ -51,12 +53,14 @@ class MouseService: ObservableObject {
     func performRightClick(at cgPoint: CGPoint) async {
         await passThrough {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
-                                   mouseCursorPosition: cgPoint, mouseButton: .right) {
+                                  mouseCursorPosition: cgPoint, mouseButton: .right)
+            {
                 down.post(tap: .cghidEventTap)
             }
             try? await Task.sleep(nanoseconds: 50_000_000)
             if let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
-                                 mouseCursorPosition: cgPoint, mouseButton: .right) {
+                                mouseCursorPosition: cgPoint, mouseButton: .right)
+            {
                 up.post(tap: .cghidEventTap)
             }
         }
@@ -66,13 +70,15 @@ class MouseService: ObservableObject {
         await passThrough {
             for clickCount in [1, 2] {
                 if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                       mouseCursorPosition: cgPoint, mouseButton: .left) {
+                                      mouseCursorPosition: cgPoint, mouseButton: .left)
+                {
                     down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
                     down.post(tap: .cghidEventTap)
                 }
                 try? await Task.sleep(nanoseconds: 30_000_000)
                 if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                                     mouseCursorPosition: cgPoint, mouseButton: .left) {
+                                    mouseCursorPosition: cgPoint, mouseButton: .left)
+                {
                     up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
                     up.post(tap: .cghidEventTap)
                 }
@@ -84,22 +90,25 @@ class MouseService: ObservableObject {
     func performDrag(from: CGPoint, to: CGPoint) async {
         await passThrough {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                   mouseCursorPosition: from, mouseButton: .left) {
+                                  mouseCursorPosition: from, mouseButton: .left)
+            {
                 down.post(tap: .cghidEventTap)
             }
             try? await Task.sleep(nanoseconds: 50_000_000)
             let steps = 20
-            for i in 1...steps {
+            for i in 1 ... steps {
                 let t = CGFloat(i) / CGFloat(steps)
                 let pt = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
                 if let drag = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
-                                       mouseCursorPosition: pt, mouseButton: .left) {
+                                      mouseCursorPosition: pt, mouseButton: .left)
+                {
                     drag.post(tap: .cghidEventTap)
                 }
                 try? await Task.sleep(nanoseconds: 16_000_000)
             }
             if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                                 mouseCursorPosition: to, mouseButton: .left) {
+                                mouseCursorPosition: to, mouseButton: .left)
+            {
                 up.post(tap: .cghidEventTap)
             }
         }
@@ -109,7 +118,8 @@ class MouseService: ObservableObject {
         await passThrough {
             // wheel1 = vertical (negative = scroll down), wheel2 = horizontal
             if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
-                                     wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0) {
+                                    wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0)
+            {
                 scroll.location = cgPoint
                 scroll.post(tap: .cghidEventTap)
             }
@@ -123,7 +133,8 @@ class MouseService: ObservableObject {
         let sysWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(sysWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-           let focusedRef {
+           let focusedRef
+        {
             let element = focusedRef as! AXUIElement
             if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success {
                 return
@@ -179,7 +190,7 @@ class MouseService: ObservableObject {
     /// Current system cursor position in CG coordinates (origin: top-left of primary display).
     private static func cgCursorPosition() -> CGPoint {
         guard let primary = NSScreen.screens.first else { return .zero }
-        let ns = NSEvent.mouseLocation  // NSScreen: y from bottom of primary
+        let ns = NSEvent.mouseLocation // NSScreen: y from bottom of primary
         return CGPoint(x: ns.x, y: primary.frame.height - ns.y)
     }
 
@@ -201,7 +212,8 @@ class MouseService: ObservableObject {
         ]
         if let code = plain[key] { return (code, []) }
         if key.hasPrefix("cmd+"), let letter = key.split(separator: "+").last.map(String.init),
-           let code = cmdKeys[letter] {
+           let code = cmdKeys[letter]
+        {
             return (code, .maskCommand)
         }
         return nil

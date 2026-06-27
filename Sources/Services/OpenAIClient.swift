@@ -40,7 +40,7 @@ class OpenAIClient {
 
         var payload: [String: Any] = [
             "model": model,
-            "messages": messages
+            "messages": messages,
         ]
         if !tools.isEmpty {
             payload["tools"] = tools
@@ -72,7 +72,8 @@ class OpenAIClient {
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
-                  let message = choices.first?["message"] as? [String: Any] else {
+                  let message = choices.first?["message"] as? [String: Any]
+            else {
                 return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
                                   usage: nil, error: "Unexpected response format")
             }
@@ -88,7 +89,8 @@ class OpenAIClient {
                           let name = fn["name"] as? String,
                           let argsStr = fn["arguments"] as? String,
                           let argsData = argsStr.data(using: .utf8),
-                          let args = (try? JSONSerialization.jsonObject(with: argsData)) as? [String: Any] else {
+                          let args = (try? JSONSerialization.jsonObject(with: argsData)) as? [String: Any]
+                    else {
                         continue
                     }
                     toolCalls.append(ToolCall(id: id, name: name, arguments: args))

@@ -2,7 +2,7 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    static weak var shared: AppDelegate?
+    weak static var shared: AppDelegate?
 
     var window: NSWindow?
     private var globalMouseMonitor: Any?
@@ -14,15 +14,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.shared = self
     }
 
-    // Called by ContentView whenever isExecuting or isTargeting changes.
+    /// Called by ContentView whenever isExecuting or isTargeting changes.
     func setClickThrough(_ enabled: Bool) {
         clickThroughEnabled = enabled
         updateIgnoresMouseEvents()
     }
 
-    // Central function — always called for every mouseMoved event AND on any state change.
-    // When click-through is disabled (targeting / executing) it ACTIVELY sets ignoresMouseEvents = false
-    // on every call, so no stale monitor callback can re-enable it.
+    /// Central function — always called for every mouseMoved event AND on any state change.
+    /// When click-through is disabled (targeting / executing) it ACTIVELY sets ignoresMouseEvents = false
+    /// on every call, so no stale monitor callback can re-enable it.
     private func updateIgnoresMouseEvents() {
         // Always use the live first window; avoids stale reference after SwiftUI window recreation.
         guard let window = NSApplication.shared.windows.first else { return }
@@ -36,11 +36,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let wf = window.frame
         // Top 50 pt covers the compact unified toolbar + traffic-light buttons.
         let inToolbar = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
-                        mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
+            mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
         window.ignoresMouseEvents = !inToolbar
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
 
         if let window = NSApplication.shared.windows.first {
@@ -93,9 +93,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MCPServer.shared.start(port: SettingsService.shared.getMCPPort())
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationWillTerminate(_: Notification) {
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
-        if let m = localMouseMonitor  { NSEvent.removeMonitor(m) }
+        if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
     }
 
     private func loadVersion() -> String {
@@ -107,7 +107,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let value = try? String(contentsOf: currentDirectoryVersionPath, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty {
+            !value.isEmpty
+        {
             return value
         }
 
@@ -120,7 +121,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let value = try? String(contentsOf: executableRelativeVersionPath, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty {
+            !value.isEmpty
+        {
             return value
         }
 
@@ -194,11 +196,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension AppDelegate: NSWindowDelegate {
-    func windowDidMove(_ notification: Notification) {
+    func windowDidMove(_: Notification) {
         saveWindowFrame()
     }
 
-    func windowDidEndLiveResize(_ notification: Notification) {
+    func windowDidEndLiveResize(_: Notification) {
         saveWindowFrame()
     }
 }

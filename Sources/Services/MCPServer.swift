@@ -1,14 +1,14 @@
 import Cocoa
-import Network
 import Foundation
+import Network
 
-// MCP SSE server on port 8032.
-// Implements the Model Context Protocol (JSON-RPC over HTTP+SSE) in Swift,
-// replacing the Python pob_mcp_server.py + the old ScreenshotServer (port 8033).
-//
-// Endpoints:
-//   GET  /sse              — SSE stream; server emits endpoint event, then JSON-RPC responses
-//   POST /messages?sessionId=<uuid> — client sends JSON-RPC requests here
+/// MCP SSE server on port 8032.
+/// Implements the Model Context Protocol (JSON-RPC over HTTP+SSE) in Swift,
+/// replacing the Python pob_mcp_server.py + the old ScreenshotServer (port 8033).
+///
+/// Endpoints:
+///   GET  /sse              — SSE stream; server emits endpoint event, then JSON-RPC responses
+///   POST /messages?sessionId=<uuid> — client sends JSON-RPC requests here
 class MCPServer {
     static let shared = MCPServer()
     private var listener: NWListener?
@@ -38,7 +38,7 @@ class MCPServer {
         listener?.stateUpdateHandler = { state in
             if case .ready = state {
                 AppLogger.log("MCPServer: listening on port \(port)")
-            } else if case .failed(let err) = state {
+            } else if case let .failed(err) = state {
                 AppLogger.log("MCPServer: listener failed: \(err)")
             }
         }
@@ -65,7 +65,8 @@ class MCPServer {
 
     private func dispatch(connection: NWConnection, data: Data) {
         guard let raw = String(data: data, encoding: .utf8),
-              let firstLine = raw.components(separatedBy: "\r\n").first else {
+              let firstLine = raw.components(separatedBy: "\r\n").first
+        else {
             sendHTTP(connection, status: 400, body: Data())
             return
         }
@@ -85,12 +86,12 @@ class MCPServer {
             return
         }
 
-        if method == "GET" && path == "/sse" {
+        if method == "GET", path == "/sse" {
             handleSSE(connection)
             return
         }
 
-        if method == "POST" && path == "/messages" {
+        if method == "POST", path == "/messages" {
             let sessionId = query["sessionId"] ?? ""
             let body = extractBody(from: raw)
             handlePost(connection, sessionId: sessionId, rawBody: body)
@@ -146,7 +147,7 @@ class MCPServer {
             guard alive else { return }
             self.send(connection, data: ": ping\n\n".data(using: .utf8)!) { ok in
                 if ok { self.scheduleHeartbeat(connection: connection, sessionId: sessionId) }
-                else  { self.removeSession(sessionId) }
+                else { self.removeSession(sessionId) }
             }
         }
     }
@@ -164,14 +165,15 @@ class MCPServer {
         sendHTTP(connection, status: 202, body: Data())
 
         guard let bodyData = rawBody.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+              let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
+        else {
             AppLogger.log("MCPServer: bad JSON in POST body")
             return
         }
 
         let rpcMethod = json["method"] as? String ?? ""
-        let params    = json["params"] as? [String: Any] ?? [:]
-        let requestId = json["id"]  // nil for notifications
+        let params = json["params"] as? [String: Any] ?? [:]
+        let requestId = json["id"] // nil for notifications
 
         // Notifications have no id and need no response.
         guard let reqId = requestId else { return }
@@ -213,9 +215,9 @@ class MCPServer {
                     "inputSchema": [
                         "type": "object",
                         "properties": [
-                            "crop_x":      ["type": "integer", "description": "Left edge in screen points."],
-                            "crop_y":      ["type": "integer", "description": "Top edge in screen points."],
-                            "crop_width":  ["type": "integer", "description": "Width in screen points."],
+                            "crop_x": ["type": "integer", "description": "Left edge in screen points."],
+                            "crop_y": ["type": "integer", "description": "Top edge in screen points."],
+                            "crop_width": ["type": "integer", "description": "Width in screen points."],
                             "crop_height": ["type": "integer", "description": "Height in screen points."],
                         ] as [String: Any],
                     ] as [String: Any],
@@ -223,7 +225,7 @@ class MCPServer {
             ] as [String: Any])
 
         case "tools/call":
-            let name      = params["name"] as? String ?? ""
+            let name = params["name"] as? String ?? ""
             let arguments = params["arguments"] as? [String: Any] ?? [:]
             if name == "take_screenshot" {
                 return takeScreenshot(id: id, arguments: arguments)
@@ -239,9 +241,9 @@ class MCPServer {
 
     private func takeScreenshot(id: Any, arguments: [String: Any]) -> [String: Any] {
         let cropRect: CGRect? = {
-            guard let x = arguments["crop_x"]      as? Int,
-                  let y = arguments["crop_y"]      as? Int,
-                  let w = arguments["crop_width"]  as? Int,
+            guard let x = arguments["crop_x"] as? Int,
+                  let y = arguments["crop_y"] as? Int,
+                  let w = arguments["crop_width"] as? Int,
                   let h = arguments["crop_height"] as? Int else { return nil }
             return CGRect(x: x, y: y, width: w, height: h)
         }()
@@ -262,8 +264,8 @@ class MCPServer {
 
             guard let finalImg = img,
                   let tiff = finalImg.tiffRepresentation,
-                  let rep  = NSBitmapImageRep(data: tiff),
-                  let png  = rep.representation(using: .png, properties: [:])
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:])
             else { return }
 
             pngData = png
@@ -277,8 +279,8 @@ class MCPServer {
 
         return rpcResult(id: id, result: [
             "content": [[
-                "type":     "image",
-                "data":     png.base64EncodedString(),
+                "type": "image",
+                "data": png.base64EncodedString(),
                 "mimeType": "image/png",
             ] as [String: Any]],
         ] as [String: Any])
@@ -295,7 +297,7 @@ class MCPServer {
     }
 
     private func sendSSEMessage(_ connection: NWConnection, object: [String: Any]) {
-        guard let data   = try? JSONSerialization.data(withJSONObject: object),
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
               let jsonStr = String(data: data, encoding: .utf8) else { return }
         let event = "event: message\ndata: \(jsonStr)\n\n"
         send(connection, data: event.data(using: .utf8)!) { _ in }
@@ -308,7 +310,7 @@ class MCPServer {
         case 202: statusText = "Accepted"
         case 400: statusText = "Bad Request"
         case 404: statusText = "Not Found"
-        default:  statusText = "Error"
+        default: statusText = "Error"
         }
         let header = [
             "HTTP/1.1 \(status) \(statusText)",
@@ -324,7 +326,7 @@ class MCPServer {
         connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
     }
 
-    // Non-closing send; calls completion(true) on success, completion(false) on error.
+    /// Non-closing send; calls completion(true) on success, completion(false) on error.
     private func send(_ connection: NWConnection, data: Data, completion: @escaping (Bool) -> Void) {
         connection.send(content: data, completion: .contentProcessed { error in
             completion(error == nil)

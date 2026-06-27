@@ -1,22 +1,22 @@
 import Cocoa
 import Foundation
 
-// Holds coordinate mapping info so screenshot pixels can be converted to CG event positions.
+/// Holds coordinate mapping info so screenshot pixels can be converted to CG event positions.
 struct ScreenshotContext {
     // NSScreen coordinates (origin: bottom-left of screen, Y increases upward)
     let contentRectInScreen: CGRect
     let scale: CGFloat
 
-    // Converts a screenshot pixel position (origin: top-left, Y increases downward)
-    // to a CGEvent mouse position (origin: top-left of primary display, Y increases downward).
+    /// Converts a screenshot pixel position (origin: top-left, Y increases downward)
+    /// to a CGEvent mouse position (origin: top-left of primary display, Y increases downward).
     func toCGEventPoint(pixelX px: CGFloat, pixelY py: CGFloat) -> CGPoint {
         // NSScreen.screens[0] is always the primary display (origin 0,0 in NSScreen coords).
         // NSScreen.main is the screen with the focused window — it changes at runtime and
         // must NOT be used here, or the Y-flip breaks on multi-monitor setups.
         guard let primaryScreen = NSScreen.screens.first else { return .zero }
         let nsX = contentRectInScreen.origin.x + px / scale
-        let nsY = contentRectInScreen.maxY - py / scale  // NSScreen Y from bottom
-        let cgY = primaryScreen.frame.height - nsY        // Flip to CG (Y from top)
+        let nsY = contentRectInScreen.maxY - py / scale // NSScreen Y from bottom
+        let cgY = primaryScreen.frame.height - nsY // Flip to CG (Y from top)
         return CGPoint(x: nsX, y: cgY)
     }
 }
@@ -97,7 +97,7 @@ class ScreenshotService {
         // Draw the macOS system arrow cursor.
         // NSCursor.arrow hotspot is (0,0) = the tip at the top-left of the cursor image.
         let cursorNSImage = NSCursor.arrow.image
-        let hotSpot = NSCursor.arrow.hotSpot  // in cursor image point coords
+        let hotSpot = NSCursor.arrow.hotSpot // in cursor image point coords
 
         // Scale cursor to a fixed target height in screenshot pixels.
         let targetH: CGFloat = 88
@@ -106,7 +106,7 @@ class ScreenshotService {
         let cursorH = targetH
 
         // Scale hotspot from cursor image points to our target pixel size.
-        let hotPxX = cursorNSImage.size.width  > 0 ? hotSpot.x * (cursorW / cursorNSImage.size.width)  : 0
+        let hotPxX = cursorNSImage.size.width > 0 ? hotSpot.x * (cursorW / cursorNSImage.size.width) : 0
         let hotPxY = cursorNSImage.size.height > 0 ? hotSpot.y * (cursorH / cursorNSImage.size.height) : 0
 
         // In CGContext (Y from bottom), place cursor so its hotspot lands on pixelPos.
@@ -118,7 +118,8 @@ class ScreenshotService {
 
         if let cursorTiff = cursorNSImage.tiffRepresentation,
            let cursorRep = NSBitmapImageRep(data: cursorTiff),
-           let cursorCG = cursorRep.cgImage {
+           let cursorCG = cursorRep.cgImage
+        {
             ctx.draw(cursorCG, in: CGRect(x: rx, y: ry, width: cursorW, height: cursorH))
         }
 
@@ -139,15 +140,15 @@ class ScreenshotService {
         let imgH = CGFloat(rep.pixelsHigh)
 
         // Crop bounds in top-left origin space, clamped to image edges.
-        let topEdge    = max(0, pixelPos.y - radius)
+        let topEdge = max(0, pixelPos.y - radius)
         let bottomEdge = min(imgH, pixelPos.y + radius)
-        let leftEdge   = max(0, pixelPos.x - radius)
-        let rightEdge  = min(imgW, pixelPos.x + radius)
+        let leftEdge = max(0, pixelPos.x - radius)
+        let rightEdge = min(imgW, pixelPos.x + radius)
 
         let cropW = rightEdge - leftEdge
         let cropH = bottomEdge - topEdge
 
-        guard cropW > 0 && cropH > 0 else { return nil }
+        guard cropW > 0, cropH > 0 else { return nil }
 
         // CGImage.cropping uses Y-from-bottom (CG convention).
         let cropRect = CGRect(x: leftEdge, y: imgH - bottomEdge, width: cropW, height: cropH)
@@ -167,8 +168,8 @@ class ScreenshotService {
         outCtx.draw(croppedCG, in: CGRect(x: 0, y: 0, width: CGFloat(outW), height: CGFloat(outH)))
 
         // Hotspot position in the output context (Y from bottom = CG convention).
-        let hotX  = (pixelPos.x - leftEdge)  * zoomFactor
-        let hotY  = (bottomEdge - pixelPos.y) * zoomFactor   // CG: 0 = bottom of crop
+        let hotX = (pixelPos.x - leftEdge) * zoomFactor
+        let hotY = (bottomEdge - pixelPos.y) * zoomFactor // CG: 0 = bottom of crop
 
         // Red crosshair lines.
         outCtx.setStrokeColor(red: 1, green: 0, blue: 0, alpha: 0.9)
@@ -225,7 +226,7 @@ class ScreenshotService {
 
 extension NSScreen {
     var displayID: CGDirectDisplayID {
-        guard let n = self.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+        guard let n = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
             return CGDirectDisplayID(0)
         }
         return CGDirectDisplayID(n.uint32Value)

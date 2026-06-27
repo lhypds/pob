@@ -23,8 +23,8 @@ class AgentService {
             """],
             ["role": "user", "content": [
                 ["type": "text", "text": "Task: \(instruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)"]]
-            ] as [[String: Any]]]
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)"]],
+            ] as [[String: Any]]],
         ]
         let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
         if let plan = result.contentText, !plan.isEmpty {
@@ -44,11 +44,11 @@ class AgentService {
                         "type": "object",
                         "properties": [
                             "dx": ["type": "number", "description": "Horizontal offset in screenshot pixels. Positive = right, negative = left."],
-                            "dy": ["type": "number", "description": "Vertical offset in screenshot pixels. Positive = down, negative = up."]
+                            "dy": ["type": "number", "description": "Vertical offset in screenshot pixels. Positive = down, negative = up."],
                         ],
-                        "required": ["dx", "dy"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["dx", "dy"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -58,9 +58,9 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [:] as [String: Any],
-                        "required": [] as [String]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": [] as [String],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -70,9 +70,9 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [:] as [String: Any],
-                        "required": [] as [String]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": [] as [String],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -82,9 +82,9 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [:] as [String: Any],
-                        "required": [] as [String]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": [] as [String],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -95,11 +95,11 @@ class AgentService {
                         "type": "object",
                         "properties": [
                             "dx": ["type": "number", "description": "Horizontal drag offset in screenshot pixels. Positive = right."],
-                            "dy": ["type": "number", "description": "Vertical drag offset in screenshot pixels. Positive = down."]
+                            "dy": ["type": "number", "description": "Vertical drag offset in screenshot pixels. Positive = down."],
                         ] as [String: Any],
-                        "required": ["dx", "dy"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["dx", "dy"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -110,11 +110,11 @@ class AgentService {
                         "type": "object",
                         "properties": [
                             "dx": ["type": "number", "description": "Horizontal scroll amount in pixels."],
-                            "dy": ["type": "number", "description": "Vertical scroll amount in pixels. Positive = down."]
+                            "dy": ["type": "number", "description": "Vertical scroll amount in pixels. Positive = down."],
                         ] as [String: Any],
-                        "required": ["dx", "dy"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["dx", "dy"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -124,11 +124,11 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [
-                            "text": ["type": "string", "description": "The text to type."]
+                            "text": ["type": "string", "description": "The text to type."],
                         ] as [String: Any],
-                        "required": ["text"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["text"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -138,11 +138,11 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [
-                            "key": ["type": "string", "description": "Key name, e.g. \"return\", \"escape\", \"cmd+v\"."]
+                            "key": ["type": "string", "description": "Key name, e.g. \"return\", \"escape\", \"cmd+v\"."],
                         ] as [String: Any],
-                        "required": ["key"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["key"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -152,11 +152,11 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [
-                            "milliseconds": ["type": "number", "description": "Number of milliseconds to sleep."]
+                            "milliseconds": ["type": "number", "description": "Number of milliseconds to sleep."],
                         ] as [String: Any],
-                        "required": ["milliseconds"]
-                    ] as [String: Any]
-                ] as [String: Any]
+                        "required": ["milliseconds"],
+                    ] as [String: Any],
+                ] as [String: Any],
             ],
             [
                 "type": "function",
@@ -166,15 +166,15 @@ class AgentService {
                     "parameters": [
                         "type": "object",
                         "properties": [
-                            "crop_x":      ["type": "number", "description": "Left edge of the crop region in screenshot pixels."],
-                            "crop_y":      ["type": "number", "description": "Top edge of the crop region in screenshot pixels."],
-                            "crop_width":  ["type": "number", "description": "Width of the crop region in screenshot pixels."],
-                            "crop_height": ["type": "number", "description": "Height of the crop region in screenshot pixels."]
+                            "crop_x": ["type": "number", "description": "Left edge of the crop region in screenshot pixels."],
+                            "crop_y": ["type": "number", "description": "Top edge of the crop region in screenshot pixels."],
+                            "crop_width": ["type": "number", "description": "Width of the crop region in screenshot pixels."],
+                            "crop_height": ["type": "number", "description": "Height of the crop region in screenshot pixels."],
                         ] as [String: Any],
-                        "required": [] as [String]
-                    ] as [String: Any]
-                ] as [String: Any]
-            ]
+                        "required": [] as [String],
+                    ] as [String: Any],
+                ] as [String: Any],
+            ],
         ]
     }
 }

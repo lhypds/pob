@@ -1,9 +1,7 @@
 import Foundation
 
 enum AppLogger {
-    private static let logFile: URL = {
-        return SettingsService.shared.projectRoot.appendingPathComponent("app.log")
-    }()
+    private static let logFile: URL = SettingsService.shared.projectRoot.appendingPathComponent("app.log")
 
     static func log(_ message: String) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
