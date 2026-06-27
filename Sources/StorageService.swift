@@ -22,6 +22,26 @@ class StorageService {
         return sessionId
     }
 
+    /// Copies the current instruction.txt content into the session folder root.
+    func saveInstruction(sessionId: String) {
+        let instruction = SettingsService.shared.getInstruction()
+        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("instruction.txt")
+        try? instruction.write(to: dest, atomically: true, encoding: .utf8)
+    }
+
+    /// Copies the current macro.txt content into the session folder root.
+    func saveMacro(sessionId: String) {
+        let macro = SettingsService.shared.getMacro()
+        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("macro.txt")
+        try? macro.write(to: dest, atomically: true, encoding: .utf8)
+    }
+
+    /// Writes a plan string to logs/sessionId/plan.txt.
+    func savePlan(_ plan: String, sessionId: String) {
+        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan.txt")
+        try? plan.write(to: dest, atomically: true, encoding: .utf8)
+    }
+
     /// Saves one conversation log entry under logs/sessionId/unixtime/.
     /// Image data in messages is stripped to keep files readable.
     func saveLog(sessionId: String, logId: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {

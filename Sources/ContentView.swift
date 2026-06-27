@@ -333,6 +333,7 @@ struct ContentView: View {
             }
 
             let sessionId = StorageService.shared.createSession()
+            StorageService.shared.saveMacro(sessionId: sessionId)
             AppLogger.log("[\(sessionId)] Macro session started")
 
             for line in lines {
@@ -500,6 +501,33 @@ struct ContentView: View {
             }
 
             let instruction = SettingsService.shared.getInstruction()
+
+            StorageService.shared.saveInstruction(sessionId: sessionId)
+            AppLogger.log("[\(sessionId)] Generating plan...")
+            let planMessages: [[String: Any]] = [
+                ["role": "system", "content": """
+                You are a desktop automation planner. Given a task instruction and a screenshot of the current screen, \
+                break the task into a numbered list of concrete, executable steps. Each step must describe a single \
+                UI interaction in plain language: what element to target, and what action to perform on it \
+                (e.g. click, type, scroll, drag, key press). Steps must be specific enough that an agent can execute \
+                them one by one without ambiguity. Do not include meta-steps like "verify" or "confirm" unless they \
+                require a specific action. Output only the numbered list, nothing else.
+                """],
+                ["role": "user", "content": [
+                    ["type": "text", "text": "Task: \(instruction)"],
+                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]]
+                ] as [[String: Any]]]
+            ]
+            let planResult = await OpenAIClient.shared.chat(messages: planMessages)
+            if let plan = planResult.contentText, !plan.isEmpty {
+                StorageService.shared.savePlan(plan, sessionId: sessionId)
+                AppLogger.log("[\(sessionId)] Plan saved")
+            }
+
+            guard !Task.isCancelled else {
+                await MainActor.run { isExecuting = false }
+                return
+            }
 
             let systemMsg: [String: Any] = [
                 "role": "system",
