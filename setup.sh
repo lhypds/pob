@@ -29,6 +29,12 @@ fi
 
 echo "✅ Package.swift found"
 
+# Initialize .env from template when available
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    cp .env.example .env
+    echo "✅ Created .env from .env.example"
+fi
+
 # Build the project
 echo "🔨 Building the project..."
 swift build

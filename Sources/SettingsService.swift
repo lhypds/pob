@@ -1,67 +1,89 @@
 import Foundation
-
-struct AppSettings: Codable {
-    var apiKey: String
-}
+import AppKit
 
 class SettingsService {
     static let shared = SettingsService()
 
     private let fileManager = FileManager.default
-    private let settingsFile: URL
-    private let legacySettingsFile: URL
+
+    var projectRoot: URL {
+        URL(fileURLWithPath: fileManager.currentDirectoryPath)
+    }
+
+    private var settingsFile: URL { projectRoot.appendingPathComponent("settings.json") }
+    private var envFile: URL { projectRoot.appendingPathComponent(".env") }
+    private var instructionFile: URL { projectRoot.appendingPathComponent("instruction.txt") }
+    private var logsFolder: URL { projectRoot.appendingPathComponent("logs") }
 
     private init() {
-        let appSupportPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let appDirectory = appSupportPath.appendingPathComponent("Pob")
-        let legacyAppDirectory = appSupportPath.appendingPathComponent("AII")
-        try? fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
-        settingsFile = appDirectory.appendingPathComponent("settings.json")
-        legacySettingsFile = legacyAppDirectory.appendingPathComponent("settings.json")
+        ensureFiles()
     }
 
-    func loadSettings() -> AppSettings {
-        if let data = try? Data(contentsOf: settingsFile),
-           let settings = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            return settings
+    private func ensureFiles() {
+        if !fileManager.fileExists(atPath: settingsFile.path) {
+            let json = """
+            {
+              "model": "gpt-4o",
+              "max_tokens": 2000
+            }
+            """
+            try? json.write(to: settingsFile, atomically: true, encoding: .utf8)
         }
-
-        if let data = try? Data(contentsOf: legacySettingsFile),
-           let settings = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            _ = saveSettings(settings)
-            return settings
+        if !fileManager.fileExists(atPath: instructionFile.path) {
+            let defaultText = "Describe what you see in this screenshot and identify any UI elements."
+            try? defaultText.write(to: instructionFile, atomically: true, encoding: .utf8)
         }
-
-        // Backward compatibility: pull existing key from Keychain once if present.
-        if let keychainKey = KeychainHelper.shared.retrieve(key: "openai_api_key"), !keychainKey.isEmpty {
-            let migrated = AppSettings(apiKey: keychainKey)
-            saveSettings(migrated)
-            return migrated
-        }
-
-        return AppSettings(apiKey: "")
-    }
-
-    @discardableResult
-    func saveSettings(_ settings: AppSettings) -> Bool {
-        do {
-            let data = try JSONEncoder().encode(settings)
-            try data.write(to: settingsFile, options: .atomic)
-            return true
-        } catch {
-            print("Error saving settings: \(error)")
-            return false
-        }
+        try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
     }
 
     func getAPIKey() -> String {
-        loadSettings().apiKey
+        guard let content = try? String(contentsOf: envFile, encoding: .utf8) else { return "" }
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("OPENAI_API_KEY=") {
+                return String(trimmed.dropFirst("OPENAI_API_KEY=".count))
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+        }
+        return ""
     }
 
-    @discardableResult
-    func setAPIKey(_ value: String) -> Bool {
-        var settings = loadSettings()
-        settings.apiKey = value
-        return saveSettings(settings)
+    func getModel() -> String {
+        loadJSON(key: "model") as? String ?? "gpt-4o"
+    }
+
+    func getMaxTokens() -> Int {
+        loadJSON(key: "max_tokens") as? Int ?? 2000
+    }
+
+    func getInstruction() -> String {
+        (try? String(contentsOf: instructionFile, encoding: .utf8)) ?? "Describe what you see in this screenshot."
+    }
+
+    func openSettingsFile() {
+        openWithDefaultEditor(settingsFile)
+    }
+
+    func openInstructionFile() {
+        openWithDefaultEditor(instructionFile)
+    }
+
+    func openLogsFolder() {
+        try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(logsFolder)
+    }
+
+    private func openWithDefaultEditor(_ url: URL) {
+        let process = Process()
+        process.launchPath = "/usr/bin/open"
+        process.arguments = ["-t", url.path]
+        try? process.run()
+    }
+
+    private func loadJSON(key: String) -> Any? {
+        guard let data = try? Data(contentsOf: settingsFile),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json[key]
     }
 }
