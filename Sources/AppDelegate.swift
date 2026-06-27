@@ -90,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateIgnoresMouseEvents()
 
-        MCPServer.shared.start(port: 8032)
+        MCPServer.shared.start(port: SettingsService.shared.getMCPPort())
     }
 
     func applicationWillTerminate(_ notification: Notification) {

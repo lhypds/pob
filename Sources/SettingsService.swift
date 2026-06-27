@@ -64,11 +64,22 @@ class SettingsService {
     }
 
     func getAPIKey() -> String {
+        return envValue(key: "OPENAI_API_KEY")
+    }
+
+    func getMCPPort() -> UInt16 {
+        let raw = envValue(key: "MCP_SERVER_PORT")
+        if let n = UInt16(raw), n > 0 { return n }
+        return 8032
+    }
+
+    private func envValue(key: String) -> String {
         guard let content = try? String(contentsOf: envFile, encoding: .utf8) else { return "" }
+        let prefix = key + "="
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("OPENAI_API_KEY=") {
-                return String(trimmed.dropFirst("OPENAI_API_KEY=".count))
+            if trimmed.hasPrefix(prefix) {
+                return String(trimmed.dropFirst(prefix.count))
                     .trimmingCharacters(in: .whitespaces)
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
             }
