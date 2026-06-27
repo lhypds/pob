@@ -1,19 +1,27 @@
 
 
-<img width="105" height="101" alt="image" src="https://github.com/user-attachments/assets/8c4be5c7-0b4a-4f86-abc1-d5f8a7e92314" />
+![Pob Icon](https://github.com/user-attachments/assets/8c4be5c7-0b4a-4f86-abc1-d5f8a7e92314)
 
 
 Pob
 ===
 
 
-Perception and Operation Bridge.
+Perception and Operation Bridge.  
 
 
 Purpose
 -------
 
-Make the AI see the desktop application with a screenshot, and operate it.
+Pob is designed to connect AI with desktop applications.
+
+It allows AI to:
+
+- View the current desktop or application window
+- Move and click the mouse
+- Type text and press keys
+- Record and replay operation macros
+- Work with MCP-compatible AI clients
 
 
 Roadmap
