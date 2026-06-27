@@ -10,10 +10,13 @@ struct ScreenshotContext {
     // Converts a screenshot pixel position (origin: top-left, Y increases downward)
     // to a CGEvent mouse position (origin: top-left of primary display, Y increases downward).
     func toCGEventPoint(pixelX px: CGFloat, pixelY py: CGFloat) -> CGPoint {
-        guard let mainScreen = NSScreen.main else { return .zero }
+        // NSScreen.screens[0] is always the primary display (origin 0,0 in NSScreen coords).
+        // NSScreen.main is the screen with the focused window — it changes at runtime and
+        // must NOT be used here, or the Y-flip breaks on multi-monitor setups.
+        guard let primaryScreen = NSScreen.screens.first else { return .zero }
         let nsX = contentRectInScreen.origin.x + px / scale
         let nsY = contentRectInScreen.maxY - py / scale  // NSScreen Y from bottom
-        let cgY = mainScreen.frame.height - nsY           // Flip to CG (Y from top)
+        let cgY = primaryScreen.frame.height - nsY        // Flip to CG (Y from top)
         return CGPoint(x: nsX, y: cgY)
     }
 }

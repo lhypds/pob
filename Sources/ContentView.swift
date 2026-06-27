@@ -182,6 +182,7 @@ struct ContentView: View {
 
                         if let ctx = lastContext {
                             let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
+                            AppLogger.log("[\(sessionId)] click() virtual(\(Int(curPos.x)), \(Int(curPos.y))) → screen(\(Int(cgPt.x)), \(Int(cgPt.y)))")
                             await MouseService.shared.performClick(at: cgPt)
                         } else {
                             AppLogger.log("[\(sessionId)] Warning: no context for click")
