@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var cropCurrent: CGPoint? = nil
     @State private var isClickThrough = true
     @State private var isLocked = false
+    @State private var isRecording = false
+    @State private var showMacroChoice = false
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
     @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
@@ -120,6 +122,20 @@ struct ContentView: View {
                 }
                 .help("Instruction")
 
+                Button(action: { SettingsService.shared.openMacroFile() }) {
+                    Image(systemName: "wand.and.rays")
+                }
+                .help("Macro")
+
+                Button(action: {
+                    isRecording.toggle()
+                    if isRecording { SettingsService.shared.clearMacro() }
+                }) {
+                    Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
+                        .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                }
+                .help(isRecording ? "Recording (click to stop)" : "Record Macro")
+
                 Button(action: {
                     isTargeting.toggle()
                     if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
@@ -142,7 +158,19 @@ struct ContentView: View {
                 }
                 .help(isCropping ? "Stop Cropping" : "Crop")
 
-                Button(action: isExecuting ? stop : { isExecuting = true; executeMain() }) {
+                Button(action: {
+                    if isExecuting {
+                        stop()
+                    } else {
+                        let macro = SettingsService.shared.getMacro()
+                        if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            isExecuting = true
+                            executeMain()
+                        } else {
+                            showMacroChoice = true
+                        }
+                    }
+                }) {
                     Image(systemName: isExecuting ? "stop.fill" : "play.fill")
                 }
                 .help(isExecuting ? "Stop" : "Execute")
@@ -180,6 +208,13 @@ struct ContentView: View {
             }
         } message: {
             Text("Max step exceed.")
+        }
+        .alert("What would you like to run?", isPresented: $showMacroChoice) {
+            Button("Run Instruction") { isExecuting = true; executeMain() }
+            Button("Run Macro") { isExecuting = true; executeMacro() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("macro.txt has recorded actions.")
         }
     }
 
@@ -258,9 +293,147 @@ struct ContentView: View {
         AppLogger.log("Stopped")
     }
 
+    private func executeMacro() {
+        animatedCursorPos = CGPoint(x: 20, y: 20)
+        currentTask = Task {
+            let window = await MainActor.run { NSApplication.shared.windows.first }
+            MouseService.shared.resetCursor()
+
+            let lines = SettingsService.shared.getMacro().components(separatedBy: .newlines)
+            AppLogger.log("Executing macro (\(lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count) actions)")
+
+            guard let (_, ctx) = captureWithCursor(window: window) else {
+                AppLogger.log("Macro: failed to get screenshot context")
+                await MainActor.run { isExecuting = false }
+                return
+            }
+
+            let sessionId = StorageService.shared.createSession()
+            AppLogger.log("[\(sessionId)] Macro session started")
+
+            for line in lines {
+                guard !Task.isCancelled else { break }
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { continue }
+                guard let (name, args) = parseMacroLine(trimmed) else {
+                    AppLogger.log("Macro: skipping line: \(trimmed)")
+                    continue
+                }
+
+                switch name {
+                case "move":
+                    guard args.count >= 2, let dx = Double(args[0]).map({ CGFloat($0) }), let dy = Double(args[1]).map({ CGFloat($0) }) else { continue }
+                    MouseService.shared.moveCursorBy(dx: dx, dy: dy)
+                    let pos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] Macro move(\(Int(dx)), \(Int(dy))) -> (\(Int(pos.x)), \(Int(pos.y)))")
+                    await MainActor.run { withAnimation(.easeOut(duration: 0.1)) { animatedCursorPos = pos } }
+
+                case "click":
+                    let pos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] Macro click at (\(Int(pos.x)), \(Int(pos.y)))")
+                    await MouseService.shared.performClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
+
+                case "rightClick":
+                    let pos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] Macro rightClick at (\(Int(pos.x)), \(Int(pos.y)))")
+                    await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
+
+                case "doubleClick":
+                    let pos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] Macro doubleClick at (\(Int(pos.x)), \(Int(pos.y)))")
+                    await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
+
+                case "drag":
+                    guard args.count >= 2, let dx = Double(args[0]).map({ CGFloat($0) }), let dy = Double(args[1]).map({ CGFloat($0) }) else { continue }
+                    let startPos = MouseService.shared.virtualCursorPosition
+                    let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
+                    AppLogger.log("[\(sessionId)] Macro drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
+                    await MouseService.shared.performDrag(from: ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y), to: ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y))
+                    MouseService.shared.moveCursor(to: endPos)
+                    await MainActor.run { withAnimation(.easeOut(duration: 0.1)) { animatedCursorPos = endPos } }
+
+                case "scroll":
+                    guard args.count >= 2, let dx = Double(args[0]).map({ Int32($0) }), let dy = Double(args[1]).map({ Int32($0) }) else { continue }
+                    let pos = MouseService.shared.virtualCursorPosition
+                    AppLogger.log("[\(sessionId)] Macro scroll(\(dx), \(dy)) at (\(Int(pos.x)), \(Int(pos.y)))")
+                    await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
+
+                case "typeText":
+                    guard let text = args.first else { continue }
+                    AppLogger.log("[\(sessionId)] Macro typeText(\"\(text.prefix(80))\")")
+                    await MouseService.shared.performType(text: text)
+
+                case "keyPress":
+                    guard let key = args.first else { continue }
+                    AppLogger.log("[\(sessionId)] Macro keyPress(\"\(key)\")")
+                    await MouseService.shared.performKeyPress(key: key)
+
+                case "take_screenshot":
+                    let cropRect: CGRect? = args.count >= 4
+                        ? { guard let x = Double(args[0]), let y = Double(args[1]),
+                                  let w = Double(args[2]), let h = Double(args[3]) else { return nil }
+                              return CGRect(x: x, y: y, width: w, height: h) }()
+                        : nil
+                    if let r = cropRect {
+                        AppLogger.log("[\(sessionId)] Macro take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
+                    } else {
+                        AppLogger.log("[\(sessionId)] Macro take_screenshot")
+                    }
+                    await MainActor.run { flashScreenshot() }
+                    if let (shot, _) = captureWithCursor(window: window) {
+                        let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
+                        StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
+                    }
+
+                default:
+                    AppLogger.log("[\(sessionId)] Macro: unknown action: \(name)")
+                }
+
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            AppLogger.log("Macro execution complete")
+            await MainActor.run { isExecuting = false; currentTask = nil }
+        }
+    }
+
+    private func parseMacroLine(_ line: String) -> (name: String, args: [String])? {
+        guard let openParen = line.firstIndex(of: "("), line.hasSuffix(")") else { return nil }
+        let name = String(line[line.startIndex..<openParen]).trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+
+        let argsStart = line.index(after: openParen)
+        let argsEnd = line.index(before: line.endIndex)
+        let argsStr = String(line[argsStart..<argsEnd]).trimmingCharacters(in: .whitespaces)
+        if argsStr.isEmpty { return (name, []) }
+
+        if argsStr.hasPrefix("\"") {
+            var result = ""
+            var i = argsStr.index(after: argsStr.startIndex)
+            while i < argsStr.endIndex {
+                let ch = argsStr[i]
+                if ch == "\\" {
+                    let next = argsStr.index(after: i)
+                    if next < argsStr.endIndex { result.append(argsStr[next]); i = argsStr.index(after: next) }
+                    else { i = next }
+                } else if ch == "\"" {
+                    break
+                } else {
+                    result.append(ch)
+                    i = argsStr.index(after: i)
+                }
+            }
+            return (name, [result])
+        }
+
+        let parts = argsStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        return (name, parts)
+    }
+
     private func executeMain() {
         isExecuting = true
         animatedCursorPos = CGPoint(x: 20, y: 20)
+        let shouldRecord = isRecording
 
         currentTask = Task {
             let window = await MainActor.run { NSApplication.shared.windows.first }
@@ -397,6 +570,7 @@ struct ContentView: View {
                         MouseService.shared.moveCursorBy(dx: dx, dy: dy)
                         let newPos = MouseService.shared.virtualCursorPosition
                         AppLogger.log("[\(sessionId)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
 
                         messages.append([
                             "role": "tool",
@@ -421,6 +595,7 @@ struct ContentView: View {
                     case "click":
                         let curPos = MouseService.shared.virtualCursorPosition
                         AppLogger.log("[\(sessionId)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("click()") }
                         if let ctx = lastContext {
                             let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
                             await MouseService.shared.performClick(at: cgPt)
@@ -438,6 +613,7 @@ struct ContentView: View {
                     case "rightClick":
                         let curPos = MouseService.shared.virtualCursorPosition
                         AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("rightClick()") }
                         if let ctx = lastContext {
                             await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
                         }
@@ -453,6 +629,7 @@ struct ContentView: View {
                     case "doubleClick":
                         let curPos = MouseService.shared.virtualCursorPosition
                         AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("doubleClick()") }
                         if let ctx = lastContext {
                             await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
                         }
@@ -471,6 +648,7 @@ struct ContentView: View {
                         let startPos = MouseService.shared.virtualCursorPosition
                         let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
                         AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
                         if let ctx = lastContext {
                             let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
                             let to   = ctx.toCGEventPoint(pixelX: endPos.x,   pixelY: endPos.y)
@@ -492,6 +670,7 @@ struct ContentView: View {
                         let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
                         let curPos = MouseService.shared.virtualCursorPosition
                         AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if shouldRecord { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
                         if let ctx = lastContext {
                             await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
                         }
@@ -507,6 +686,7 @@ struct ContentView: View {
                     case "typeText":
                         let text = toolCall.arguments["text"] as? String ?? ""
                         AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
+                        if shouldRecord { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
                         await MouseService.shared.performType(text: text)
                         messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                          "content": "Typed \"\(text)\"."])
@@ -520,6 +700,7 @@ struct ContentView: View {
                     case "keyPress":
                         let key = toolCall.arguments["key"] as? String ?? ""
                         AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
+                        if shouldRecord { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
                         await MouseService.shared.performKeyPress(key: key)
                         messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                          "content": "Pressed \"\(key)\"."])
@@ -539,8 +720,10 @@ struct ContentView: View {
                             ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
                         if let r = cropRect {
                             AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
+                            if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
                         } else {
                             AppLogger.log("[\(sessionId)] take_screenshot")
+                            if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot()") }
                         }
                         await MainActor.run { flashScreenshot() }
                         messages.append(["role": "tool", "tool_call_id": toolCall.id,

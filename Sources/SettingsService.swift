@@ -13,6 +13,7 @@ class SettingsService {
     private var settingsFile: URL { projectRoot.appendingPathComponent("settings.json") }
     private var envFile: URL { projectRoot.appendingPathComponent(".env") }
     private var instructionFile: URL { projectRoot.appendingPathComponent("instruction.txt") }
+    private var macroFile: URL { projectRoot.appendingPathComponent("macro.txt") }
     private var logsFolder: URL { projectRoot.appendingPathComponent("logs") }
 
     private init() {
@@ -55,6 +56,9 @@ class SettingsService {
         if !fileManager.fileExists(atPath: instructionFile.path) {
             let defaultText = "Describe what you see in this screenshot and identify any UI elements."
             try? defaultText.write(to: instructionFile, atomically: true, encoding: .utf8)
+        }
+        if !fileManager.fileExists(atPath: macroFile.path) {
+            try? "".write(to: macroFile, atomically: true, encoding: .utf8)
         }
         try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
     }
@@ -135,6 +139,27 @@ class SettingsService {
 
     func openInstructionFile() {
         openWithEditor(instructionFile)
+    }
+
+    func openMacroFile() {
+        openWithEditor(macroFile)
+    }
+
+    func getMacro() -> String {
+        (try? String(contentsOf: macroFile, encoding: .utf8)) ?? ""
+    }
+
+    func clearMacro() {
+        try? "".write(to: macroFile, atomically: true, encoding: .utf8)
+    }
+
+    func appendToMacro(_ line: String) {
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: macroFile) {
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(data)
+        }
     }
 
     func openLogsFolder() {

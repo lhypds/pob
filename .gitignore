@@ -7,3 +7,4 @@ logs/
 .env
 settings.json
 instruction.txt
+macro.txt
