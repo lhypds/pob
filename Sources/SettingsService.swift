@@ -121,23 +121,22 @@ class SettingsService {
 
     private func openWithEditor(_ url: URL) {
         let process = Process()
-        process.launchPath = "/usr/bin/open"
         switch getEditor() {
         case "vscode":
+            process.launchPath = "/usr/bin/open"
             process.arguments = ["-a", "Visual Studio Code", url.path]
         case "zed":
+            process.launchPath = "/usr/bin/open"
             process.arguments = ["-a", "Zed", url.path]
         case "sublime_text":
+            process.launchPath = "/usr/bin/open"
             process.arguments = ["-a", "Sublime Text", url.path]
-        case "cursor":
-            process.arguments = ["-a", "Cursor", url.path]
-        case "nova":
-            process.arguments = ["-a", "Nova", url.path]
-        case "textmate":
-            process.arguments = ["-a", "TextMate", url.path]
-        case "bbedit":
-            process.arguments = ["-a", "BBEdit", url.path]
+        case "vim":
+            process.launchPath = "/usr/bin/osascript"
+            let escaped = url.path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            process.arguments = ["-e", "tell application \"Terminal\" to do script \"vim \\\"\(escaped)\\\"\"", "-e", "tell application \"Terminal\" to activate"]
         default: // "system"
+            process.launchPath = "/usr/bin/open"
             process.arguments = ["-t", url.path]
         }
         try? process.run()
