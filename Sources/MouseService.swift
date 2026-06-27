@@ -44,4 +44,130 @@ class MouseService {
             NSApplication.shared.windows.first?.ignoresMouseEvents = false
         }
     }
+
+    func performRightClick(at cgPoint: CGPoint) async {
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
+                               mouseCursorPosition: cgPoint, mouseButton: .right) {
+            down.post(tap: .cghidEventTap)
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        if let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
+                             mouseCursorPosition: cgPoint, mouseButton: .right) {
+            up.post(tap: .cghidEventTap)
+        }
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
+    }
+
+    func performDoubleClick(at cgPoint: CGPoint) async {
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        for clickCount in [1, 2] {
+            if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                   mouseCursorPosition: cgPoint, mouseButton: .left) {
+                down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+                down.post(tap: .cghidEventTap)
+            }
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                                 mouseCursorPosition: cgPoint, mouseButton: .left) {
+                up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+                up.post(tap: .cghidEventTap)
+            }
+            if clickCount == 1 { try? await Task.sleep(nanoseconds: 50_000_000) }
+        }
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
+    }
+
+    func performDrag(from: CGPoint, to: CGPoint) async {
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                               mouseCursorPosition: from, mouseButton: .left) {
+            down.post(tap: .cghidEventTap)
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let steps = 20
+        for i in 1...steps {
+            let t = CGFloat(i) / CGFloat(steps)
+            let pt = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+            if let drag = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
+                                   mouseCursorPosition: pt, mouseButton: .left) {
+                drag.post(tap: .cghidEventTap)
+            }
+            try? await Task.sleep(nanoseconds: 16_000_000)
+        }
+        if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                             mouseCursorPosition: to, mouseButton: .left) {
+            up.post(tap: .cghidEventTap)
+        }
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
+    }
+
+    func performScroll(at cgPoint: CGPoint, dx: Int32, dy: Int32) async {
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        // wheel1 = vertical (negative = down), wheel2 = horizontal (positive = right)
+        if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                 wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0) {
+            scroll.location = cgPoint
+            scroll.post(tap: .cghidEventTap)
+        }
+        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
+    }
+
+    func performType(text: String) async {
+        let source = CGEventSource(stateID: .hidSystemState)
+        for scalar in text.unicodeScalars {
+            var char = UniChar(scalar.value <= 0xFFFF ? scalar.value : 0x3F)
+            if let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
+                down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
+                down.post(tap: .cghidEventTap)
+            }
+            if let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
+                up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
+                up.post(tap: .cghidEventTap)
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    func performKeyPress(key: String) async {
+        let source = CGEventSource(stateID: .hidSystemState)
+        let lower = key.lowercased()
+        guard let (keyCode, flags) = Self.resolveKey(lower) else {
+            AppLogger.log("Unknown key: \(key)")
+            return
+        }
+        if let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true) {
+            down.flags = flags
+            down.post(tap: .cghidEventTap)
+        }
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        if let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) {
+            up.flags = flags
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
+    private static func resolveKey(_ key: String) -> (CGKeyCode, CGEventFlags)? {
+        let plain: [String: CGKeyCode] = [
+            "return": 0x24, "enter": 0x24,
+            "tab": 0x30, "space": 0x31,
+            "delete": 0x33, "backspace": 0x33,
+            "escape": 0x35, "esc": 0x35,
+            "left": 0x7B, "right": 0x7C, "down": 0x7D, "up": 0x7E,
+            "home": 0x73, "end": 0x77, "pageup": 0x74, "pagedown": 0x79,
+            "f1": 0x7A, "f2": 0x78, "f3": 0x63, "f4": 0x76,
+            "f5": 0x60, "f6": 0x61, "f7": 0x62, "f8": 0x64,
+            "f9": 0x65, "f10": 0x6D, "f11": 0x67, "f12": 0x6F,
+        ]
+        let cmdKeys: [String: CGKeyCode] = [
+            "a": 0x00, "s": 0x01, "z": 0x06, "x": 0x07,
+            "c": 0x08, "v": 0x09, "w": 0x0D, "r": 0x0F, "t": 0x11,
+        ]
+        if let code = plain[key] { return (code, []) }
+        if key.hasPrefix("cmd+"), let letter = key.split(separator: "+").last.map(String.init),
+           let code = cmdKeys[letter] {
+            return (code, .maskCommand)
+        }
+        return nil
+    }
 }

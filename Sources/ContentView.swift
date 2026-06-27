@@ -189,7 +189,28 @@ struct ContentView: View {
 
             let systemMsg: [String: Any] = [
                 "role": "system",
-                "content": "You are a desktop automation assistant. All coordinates are screenshot pixel coordinates (origin = top-left of the screenshot, x right, y down). The app converts them to real screen positions — you never deal with screen or OS coordinates.\n\nWorkflow:\n1. Call move(dx, dy) to nudge the cursor by a pixel offset. You will see the cursor arrow — the arrow tip is where a click will land. Adjust until the tip is precisely on the target.\n2. Call click() to click at the current cursor position.\n\nThe cursor starts at the top-left (0, 0). Use move() repeatedly to walk it to the target element."
+                "content": """
+                You are a desktop automation assistant. All coordinates are screenshot pixel coordinates \
+                (origin = top-left of the screenshot, x right, y down). The app converts them to real \
+                screen positions — you never deal with screen or OS coordinates.
+
+                Available actions:
+                • move(dx, dy) — nudge the cursor by a relative pixel offset; you receive a new screenshot showing the updated cursor arrow tip.
+                • click() — left-click at the current cursor position (requires CONFIRM reply).
+                • rightClick() — right-click at the current cursor position (executes immediately).
+                • doubleClick() — double-click at the current cursor position (executes immediately).
+                • drag(dx, dy) — drag from the current cursor position to current+(dx,dy); cursor ends at the new position.
+                • scroll(dx, dy) — scroll at the current cursor position; dy>0 = down, dy<0 = up, dx>0 = right.
+                • type(text) — type text at the current keyboard focus.
+                • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
+                home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
+
+                Workflow:
+                1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
+                2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
+
+                The cursor starts at (0, 0) top-left.
+                """
             ]
             messages.append(systemMsg)
 
@@ -317,6 +338,101 @@ struct ContentView: View {
 
                         pendingClick = true
 
+                    case "rightClick":
+                        let curPos = MouseService.shared.virtualCursorPosition
+                        AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if let ctx = lastContext {
+                            await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
+                        }
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Right-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
+                    case "doubleClick":
+                        let curPos = MouseService.shared.virtualCursorPosition
+                        AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if let ctx = lastContext {
+                            await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
+                        }
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Double-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
+                    case "drag":
+                        let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
+                        let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
+                        let startPos = MouseService.shared.virtualCursorPosition
+                        let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
+                        AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
+                        if let ctx = lastContext {
+                            let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
+                            let to   = ctx.toCGEventPoint(pixelX: endPos.x,   pixelY: endPos.y)
+                            await MouseService.shared.performDrag(from: from, to: to)
+                        }
+                        MouseService.shared.moveCursor(to: endPos)
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Dragged to (\(Int(endPos.x)), \(Int(endPos.y)))."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
+                    case "scroll":
+                        let dx = (toolCall.arguments["dx"] as? Double).map { Int32($0) } ?? 0
+                        let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
+                        let curPos = MouseService.shared.virtualCursorPosition
+                        AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if let ctx = lastContext {
+                            await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
+                        }
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Scrolled dx:\(dx) dy:\(dy) at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
+                    case "type":
+                        let text = toolCall.arguments["text"] as? String ?? ""
+                        AppLogger.log("[\(sessionId)] type(\"\(text.prefix(80))\")")
+                        await MouseService.shared.performType(text: text)
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Typed \"\(text)\"."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
+                    case "keyPress":
+                        let key = toolCall.arguments["key"] as? String ?? ""
+                        AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
+                        await MouseService.shared.performKeyPress(key: key)
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Pressed \"\(key)\"."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
                     default:
                         AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
                     }
@@ -377,6 +493,88 @@ struct ContentView: View {
                         "type": "object",
                         "properties": [:] as [String: Any],
                         "required": [] as [String]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "rightClick",
+                    "description": "Right-click at the current cursor position. Executes immediately.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [:] as [String: Any],
+                        "required": [] as [String]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "doubleClick",
+                    "description": "Double-click at the current cursor position. Executes immediately.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [:] as [String: Any],
+                        "required": [] as [String]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "drag",
+                    "description": "Drag from the current cursor position by (dx, dy) screenshot pixels. The cursor ends at the new position and you receive an updated screenshot.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "dx": ["type": "number", "description": "Horizontal drag offset in screenshot pixels. Positive = right."],
+                            "dy": ["type": "number", "description": "Vertical drag offset in screenshot pixels. Positive = down."]
+                        ] as [String: Any],
+                        "required": ["dx", "dy"]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "scroll",
+                    "description": "Scroll at the current cursor position. dy > 0 = scroll down, dy < 0 = scroll up, dx > 0 = scroll right.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "dx": ["type": "number", "description": "Horizontal scroll amount in pixels."],
+                            "dy": ["type": "number", "description": "Vertical scroll amount in pixels. Positive = down."]
+                        ] as [String: Any],
+                        "required": ["dx", "dy"]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "type",
+                    "description": "Type text at the current keyboard focus.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "text": ["type": "string", "description": "The text to type."]
+                        ] as [String: Any],
+                        "required": ["text"]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "keyPress",
+                    "description": "Press a special key. Supported: return, tab, space, delete, escape, left, right, up, down, home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "key": ["type": "string", "description": "Key name, e.g. \"return\", \"escape\", \"cmd+v\"."]
+                        ] as [String: Any],
+                        "required": ["key"]
                     ] as [String: Any]
                 ] as [String: Any]
             ]
