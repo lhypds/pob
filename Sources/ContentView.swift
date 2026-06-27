@@ -4,10 +4,31 @@ import AppKit
 struct ContentView: View {
     @State private var isExecuting = false
     @State private var currentTask: Task<Void, Never>?
+    @State private var isTargeting = false
+    @State private var mousePosition: CGPoint? = nil
+    @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
         ZStack {
             Color.gray.opacity(0.2)
+
+            if isTargeting {
+                MouseTrackingOverlay(
+                    onPositionChange: { pos in mousePosition = pos },
+                    onTap: { pt in
+                        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                        let text = "(\(Int(pt.x * scale)), \(Int(pt.y * scale)))"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        isTargeting = false
+                        mousePosition = nil
+                    }
+                )
+
+                if let pos = mousePosition {
+                    positionLabel(at: pos)
+                }
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -26,6 +47,15 @@ struct ContentView: View {
                 }
                 .help("Instruction")
 
+                Button(action: {
+                    isTargeting.toggle()
+                    if !isTargeting { mousePosition = nil }
+                }) {
+                    Image(systemName: "scope")
+                        .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                }
+                .help(isTargeting ? "Stop Targeting" : "Target")
+
                 Button(action: isExecuting ? stop : execute) {
                     Image(systemName: isExecuting ? "stop.fill" : "play.fill")
                 }
@@ -37,6 +67,19 @@ struct ContentView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
         }
+    }
+
+    @ViewBuilder
+    private func positionLabel(at pos: CGPoint) -> some View {
+        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        Text("(\(Int(pos.x * scale)), \(Int(pos.y * scale)))")
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.75))
+            .cornerRadius(4)
+            .position(x: pos.x + 55, y: max(14, pos.y - 14))
     }
 
     private func stop() {
@@ -244,6 +287,8 @@ struct ContentView: View {
         return png.base64EncodedString()
     }
 
+    // MARK: - Mouse Tracking
+
     private func makeTools() -> [[String: Any]] {
         [
             [
@@ -274,5 +319,58 @@ struct ContentView: View {
                 ] as [String: Any]
             ]
         ]
+    }
+}
+
+private struct MouseTrackingOverlay: NSViewRepresentable {
+    var onPositionChange: (CGPoint?) -> Void
+    var onTap: (CGPoint) -> Void
+
+    func makeNSView(context: Context) -> TrackingNSView {
+        let view = TrackingNSView()
+        view.onPositionChange = onPositionChange
+        view.onTap = onTap
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingNSView, context: Context) {
+        nsView.onPositionChange = onPositionChange
+        nsView.onTap = onTap
+    }
+}
+
+private class TrackingNSView: NSView {
+    var onPositionChange: ((CGPoint?) -> Void)?
+    var onTap: ((CGPoint) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func mouseMoved(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        onPositionChange?(pt)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onPositionChange?(nil)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        onTap?(pt)
+        super.mouseDown(with: event)
     }
 }
