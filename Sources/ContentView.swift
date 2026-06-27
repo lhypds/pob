@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
     @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
+    @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -75,6 +76,10 @@ struct ContentView: View {
                     )
                     .allowsHitTesting(false)
             }
+
+            Color.white
+                .opacity(screenshotFlashOpacity)
+                .allowsHitTesting(false)
         }
         .onChange(of: mouseService.displayPosition) { newPos in
             withAnimation(.easeOut(duration: 0.1)) {
@@ -308,7 +313,7 @@ struct ContentView: View {
                 • typeText(text) — type text at the current keyboard focus.
                 • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
                 home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
-                • take_screenshot() — capture a fresh screenshot of the current screen state without moving or clicking.
+                • take_screenshot(crop_x, crop_y, crop_width, crop_height) — capture a fresh screenshot; all crop parameters are optional. When provided, the image is cropped to that pixel region before being returned.
 
                 Workflow:
                 1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
@@ -526,16 +531,31 @@ struct ContentView: View {
                         }
 
                     case "take_screenshot":
-                        AppLogger.log("[\(sessionId)] take_screenshot")
+                        let cropX = (toolCall.arguments["crop_x"] as? Double).map { CGFloat($0) }
+                        let cropY = (toolCall.arguments["crop_y"] as? Double).map { CGFloat($0) }
+                        let cropW = (toolCall.arguments["crop_width"] as? Double).map { CGFloat($0) }
+                        let cropH = (toolCall.arguments["crop_height"] as? Double).map { CGFloat($0) }
+                        let cropRect: CGRect? = (cropX != nil && cropY != nil && cropW != nil && cropH != nil)
+                            ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
+                        if let r = cropRect {
+                            AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
+                        } else {
+                            AppLogger.log("[\(sessionId)] take_screenshot")
+                        }
+                        await MainActor.run { flashScreenshot() }
                         messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                          "content": "Screenshot captured."])
-                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                            lastContext = ctx; lastScreenshot = shot
-                            StorageService.shared.saveScreenshot(shot, sessionId: sessionId)
-                            messages.append(["role": "user", "content": [
-                                ["type": "text", "text": "Current screenshot:"],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ] as [[String: Any]]])
+                        if let (shot, ctx) = captureWithCursor(window: window) {
+                            lastContext = ctx
+                            let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
+                            lastScreenshot = finalShot
+                            StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
+                            if let b64 = toBase64(finalShot) {
+                                messages.append(["role": "user", "content": [
+                                    ["type": "text", "text": "Current screenshot:"],
+                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                                ] as [[String: Any]]])
+                            }
                         }
 
                     default:
@@ -588,6 +608,13 @@ struct ContentView: View {
             window.styleMask.remove(.resizable)
         } else {
             window.styleMask.insert(.resizable)
+        }
+    }
+
+    private func flashScreenshot() {
+        screenshotFlashOpacity = 0.5
+        withAnimation(.easeOut(duration: 0.4)) {
+            screenshotFlashOpacity = 0
         }
     }
 
@@ -712,10 +739,15 @@ struct ContentView: View {
                 "type": "function",
                 "function": [
                     "name": "take_screenshot",
-                    "description": "Capture a fresh screenshot of the current screen state without moving or clicking. Use this when you need to observe the screen after waiting for something to load or appear.",
+                    "description": "Capture a fresh screenshot of the current screen state without moving or clicking. Optionally crop to a region using (crop_x, crop_y, crop_width, crop_height) in screenshot pixels.",
                     "parameters": [
                         "type": "object",
-                        "properties": [:] as [String: Any],
+                        "properties": [
+                            "crop_x":      ["type": "number", "description": "Left edge of the crop region in screenshot pixels."],
+                            "crop_y":      ["type": "number", "description": "Top edge of the crop region in screenshot pixels."],
+                            "crop_width":  ["type": "number", "description": "Width of the crop region in screenshot pixels."],
+                            "crop_height": ["type": "number", "description": "Height of the crop region in screenshot pixels."]
+                        ] as [String: Any],
                         "required": [] as [String]
                     ] as [String: Any]
                 ] as [String: Any]

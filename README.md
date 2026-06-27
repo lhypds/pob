@@ -38,7 +38,7 @@ These are the tools the AI can call during a session:
 | `scroll(dx, dy)` | `dx`: number, `dy`: number | Scroll at the current cursor position. `dy > 0` = down, `dy < 0` = up, `dx > 0` = right. |
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
 | `keyPress(key)` | `key`: string | Press a special key. Supported: `return`, `tab`, `space`, `delete`, `escape`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
-| `take_screenshot()` | — | Capture a fresh screenshot of the current screen state without moving or clicking. Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
+| `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
 
 All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).
 

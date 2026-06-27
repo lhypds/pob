@@ -185,6 +185,20 @@ class ScreenshotService {
         return nil
     }
 
+    /// Crop an image to a pixel rect (top-left origin, same convention as screenshot pixels).
+    func crop(_ image: NSImage, to rect: CGRect) -> NSImage? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let sourceCG = rep.cgImage else { return nil }
+
+        let imgH = CGFloat(rep.pixelsHigh)
+        // CGImage.cropping uses Y-from-bottom (CG convention).
+        let cgRect = CGRect(x: rect.origin.x, y: imgH - rect.origin.y - rect.height,
+                            width: rect.width, height: rect.height)
+        guard let cropped = sourceCG.cropping(to: cgRect) else { return nil }
+        return NSImage(cgImage: cropped, size: rect.size)
+    }
+
     /// Capture screenshot and save to file
     func captureAndSave(to path: String) -> Bool {
         guard let image = captureScreenshot() else { return false }
