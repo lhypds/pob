@@ -15,27 +15,52 @@ class StorageService {
         try? fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
     }
 
-    @discardableResult
-    func saveResult(screenshot: NSImage, prompt: String, response: String) -> Bool {
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let logFolder = logsDirectory.appendingPathComponent("\(timestamp)")
+    /// Creates a new session folder. Returns the session ID (Unix timestamp string).
+    func createSession() -> String {
+        let sessionId = "\(Int(Date().timeIntervalSince1970))"
+        let dir = logsDirectory.appendingPathComponent(sessionId)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return sessionId
+    }
 
+    /// Saves one conversation log entry under logs/sessionId/unixtime/.
+    /// Image data in messages is stripped to keep files readable.
+    func saveLog(sessionId: String, logId: Int, messages: [[String: Any]], responseText: String, screenshot: NSImage? = nil) {
+        let logDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("\(Int(Date().timeIntervalSince1970))")
         do {
-            try fileManager.createDirectory(at: logFolder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: logDir, withIntermediateDirectories: true)
+        } catch { return }
 
-            if let tiffData = screenshot.tiffRepresentation,
-               let bitmapImage = NSBitmapImageRep(data: tiffData),
-               let pngData = bitmapImage.representation(using: .png, properties: [:]) {
-                try pngData.write(to: logFolder.appendingPathComponent("screenshot.png"))
+        if let screenshot = screenshot,
+           let tiff = screenshot.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: logDir.appendingPathComponent("screenshot.png"))
+        }
+
+        let stripped = stripImages(from: messages)
+        if let data = try? JSONSerialization.data(withJSONObject: stripped, options: .prettyPrinted) {
+            try? data.write(to: logDir.appendingPathComponent("messages.json"))
+        }
+        let responseObj: [String: Any] = ["response": responseText]
+        if let data = try? JSONSerialization.data(withJSONObject: responseObj, options: .prettyPrinted) {
+            try? data.write(to: logDir.appendingPathComponent("response.json"))
+        }
+    }
+
+    private func stripImages(from messages: [[String: Any]]) -> [[String: Any]] {
+        messages.map { msg in
+            var m = msg
+            if let parts = m["content"] as? [[String: Any]] {
+                m["content"] = parts.map { part -> [String: Any] in
+                    var p = part
+                    if p["type"] as? String == "image_url" {
+                        p["image_url"] = ["url": "<image_stripped>"]
+                    }
+                    return p
+                }
             }
-
-            try prompt.write(to: logFolder.appendingPathComponent("request.txt"), atomically: true, encoding: .utf8)
-            try response.write(to: logFolder.appendingPathComponent("response.txt"), atomically: true, encoding: .utf8)
-
-            return true
-        } catch {
-            print("Error saving result: \(error)")
-            return false
+            return m
         }
     }
 }
