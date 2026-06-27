@@ -68,11 +68,15 @@ struct ContentView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
         }
-        .alert("Cannot Execute", isPresented: Binding(
+        .alert("Verification Warning", isPresented: Binding(
             get: { verificationError != nil },
             set: { if !$0 { verificationError = nil } }
         )) {
-            Button("OK") { verificationError = nil }
+            Button("Execute") {
+                verificationError = nil
+                executeMain()
+            }
+            Button("Cancel", role: .cancel) { verificationError = nil }
         } message: {
             Text(verificationError ?? "")
         }
