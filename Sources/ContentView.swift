@@ -3,22 +3,11 @@ import AppKit
 
 struct ContentView: View {
     @State private var isExecuting = false
-    @State private var statusMessage = ""
     @State private var currentTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
-            Color.gray.opacity(0.08)
-
-            VStack {
-                if !statusMessage.isEmpty {
-                    Text(statusMessage)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding()
-                }
-                Spacer()
-            }
+            Color.gray.opacity(0.2)
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -54,12 +43,12 @@ struct ContentView: View {
         currentTask?.cancel()
         currentTask = nil
         isExecuting = false
-        statusMessage = "Stopped"
+        AppLogger.log("Stopped")
     }
 
     private func execute() {
         isExecuting = true
-        statusMessage = "Capturing screenshot..."
+        AppLogger.log("Capturing screenshot...")
 
         currentTask = Task {
             let window = NSApplication.shared.windows.first
@@ -71,25 +60,21 @@ struct ContentView: View {
             }
 
             guard let screenshot = screenshot else {
-                await MainActor.run {
-                    statusMessage = "Failed to capture screenshot"
-                    isExecuting = false
-                }
+                AppLogger.log("Failed to capture screenshot")
+                await MainActor.run { isExecuting = false }
                 return
             }
 
             guard !Task.isCancelled else { return }
-            await MainActor.run { statusMessage = "Analyzing..." }
+            AppLogger.log("Analyzing...")
 
             let instruction = SettingsService.shared.getInstruction()
 
             guard let tiffData = screenshot.tiffRepresentation,
                   let bitmapImage = NSBitmapImageRep(data: tiffData),
                   let pngData = bitmapImage.representation(using: .png, properties: [:]) else {
-                await MainActor.run {
-                    statusMessage = "Failed to process screenshot"
-                    isExecuting = false
-                }
+                AppLogger.log("Failed to process screenshot")
+                await MainActor.run { isExecuting = false }
                 return
             }
             let imageBase64 = pngData.base64EncodedString()
@@ -100,7 +85,7 @@ struct ContentView: View {
 
             await MainActor.run {
                 StorageService.shared.saveResult(screenshot: screenshot, prompt: instruction, response: result.content)
-                statusMessage = result.success ? "Done" : "Error: \(result.error ?? "Unknown")"
+                AppLogger.log(result.success ? "Done" : "Error: \(result.error ?? "Unknown")")
                 isExecuting = false
                 currentTask = nil
             }
