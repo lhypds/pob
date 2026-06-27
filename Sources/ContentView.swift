@@ -5,6 +5,9 @@ struct ContentView: View {
     @State private var isExecuting = false
     @State private var currentTask: Task<Void, Never>?
     @State private var isTargeting = false
+    @State private var isCropping = false
+    @State private var cropStart: CGPoint? = nil
+    @State private var cropCurrent: CGPoint? = nil
     @State private var isClickThrough = true
     @State private var isLocked = false
     @State private var mousePosition: CGPoint? = nil
@@ -33,6 +36,28 @@ struct ContentView: View {
 
                 if let pos = mousePosition {
                     positionLabel(at: pos)
+                }
+            }
+
+            if isCropping {
+                CropTrackingOverlay(
+                    onDragChange: { start, current in
+                        cropStart = start
+                        cropCurrent = current
+                    },
+                    onDragEnd: { rect in
+                        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                        let text = "(\(Int(rect.minX * scale)), \(Int(rect.minY * scale)), \(Int(rect.width * scale)), \(Int(rect.height * scale)))"
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        isCropping = false
+                        cropStart = nil
+                        cropCurrent = nil
+                    }
+                )
+
+                if let start = cropStart, let current = cropCurrent {
+                    cropSelectionView(start: start, current: current)
                 }
             }
 
@@ -67,6 +92,9 @@ struct ContentView: View {
         .onChange(of: isTargeting) { _ in
             updateClickThrough()
         }
+        .onChange(of: isCropping) { _ in
+            updateClickThrough()
+        }
         .onAppear {
             updateClickThrough()
             updateWindowLock()
@@ -90,6 +118,7 @@ struct ContentView: View {
 
                 Button(action: {
                     isTargeting.toggle()
+                    if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
                     if !isTargeting { mousePosition = nil }
                     updateClickThrough()
                 }) {
@@ -97,6 +126,17 @@ struct ContentView: View {
                         .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
                 }
                 .help(isTargeting ? "Stop Targeting" : "Target")
+
+                Button(action: {
+                    isCropping.toggle()
+                    if isCropping { isTargeting = false; mousePosition = nil }
+                    if !isCropping { cropStart = nil; cropCurrent = nil }
+                    updateClickThrough()
+                }) {
+                    Image(systemName: "crop")
+                        .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                }
+                .help(isCropping ? "Stop Cropping" : "Crop")
 
                 Button(action: isExecuting ? stop : startVerification) {
                     Image(systemName: isExecuting ? "stop.fill" : "play.fill")
@@ -170,6 +210,45 @@ struct ContentView: View {
                 .cornerRadius(4)
                 .position(x: finalX, y: finalY)
         }
+    }
+
+    @ViewBuilder
+    private func cropSelectionView(start: CGPoint, current: CGPoint) -> some View {
+        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let minX = min(start.x, current.x)
+        let minY = min(start.y, current.y)
+        let w = abs(current.x - start.x)
+        let h = abs(current.y - start.y)
+
+        ZStack {
+            Rectangle()
+                .fill(Color.blue.opacity(0.08))
+                .frame(width: w, height: h)
+                .position(x: minX + w / 2, y: minY + h / 2)
+
+            Rectangle()
+                .stroke(Color.blue, lineWidth: 1)
+                .frame(width: w, height: h)
+                .position(x: minX + w / 2, y: minY + h / 2)
+
+            GeometryReader { geo in
+                let labelW: CGFloat = 180
+                let margin: CGFloat = 6
+                let rawX = minX + w / 2
+                let clampedX = min(max(labelW / 2 + margin, rawX), geo.size.width - labelW / 2 - margin)
+                let rawY = minY + h + 14
+                let finalY = rawY > geo.size.height - margin ? minY - 10 : rawY
+                Text("(\(Int(minX * scale)), \(Int(minY * scale))) \(Int(w * scale))×\(Int(h * scale))")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.75))
+                    .cornerRadius(4)
+                    .position(x: clampedX, y: finalY)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func stop() {
@@ -556,7 +635,7 @@ struct ContentView: View {
     }
 
     private func updateClickThrough() {
-        AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting)
+        AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting && !isCropping)
     }
 
     // MARK: - Mouse Tracking
@@ -690,6 +769,61 @@ private struct MouseTrackingOverlay: NSViewRepresentable {
     func updateNSView(_ nsView: TrackingNSView, context: Context) {
         nsView.onPositionChange = onPositionChange
         nsView.onTap = onTap
+    }
+}
+
+private struct CropTrackingOverlay: NSViewRepresentable {
+    var onDragChange: (CGPoint, CGPoint) -> Void
+    var onDragEnd: (CGRect) -> Void
+
+    func makeNSView(context: Context) -> CropNSView {
+        let view = CropNSView()
+        view.onDragChange = onDragChange
+        view.onDragEnd = onDragEnd
+        return view
+    }
+
+    func updateNSView(_ nsView: CropNSView, context: Context) {
+        nsView.onDragChange = onDragChange
+        nsView.onDragEnd = onDragEnd
+    }
+}
+
+private class CropNSView: NSView {
+    var onDragChange: ((CGPoint, CGPoint) -> Void)?
+    var onDragEnd: ((CGRect) -> Void)?
+    private var startPoint: CGPoint?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var isFlipped: Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        startPoint = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = startPoint else { return }
+        let current = convert(event.locationInWindow, from: nil)
+        onDragChange?(start, current)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let start = startPoint else { return }
+        let end = convert(event.locationInWindow, from: nil)
+        let rect = CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(end.x - start.x),
+            height: abs(end.y - start.y)
+        )
+        startPoint = nil
+        if rect.width > 2 && rect.height > 2 {
+            onDragEnd?(rect)
+        }
     }
 }
 
