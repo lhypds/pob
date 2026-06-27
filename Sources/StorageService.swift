@@ -25,7 +25,7 @@ class StorageService {
 
     /// Saves one conversation log entry under logs/sessionId/unixtime/.
     /// Image data in messages is stripped to keep files readable.
-    func saveLog(sessionId: String, logId: Int, messages: [[String: Any]], responseText: String, screenshot: NSImage? = nil) {
+    func saveLog(sessionId: String, logId: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
         let logDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("\(Int(Date().timeIntervalSince1970))")
         do {
             try fileManager.createDirectory(at: logDir, withIntermediateDirectories: true)
@@ -42,8 +42,7 @@ class StorageService {
         if let data = try? JSONSerialization.data(withJSONObject: stripped, options: .prettyPrinted) {
             try? data.write(to: logDir.appendingPathComponent("messages.json"))
         }
-        let responseObj: [String: Any] = ["response": responseText]
-        if let data = try? JSONSerialization.data(withJSONObject: responseObj, options: .prettyPrinted) {
+        if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
             try? data.write(to: logDir.appendingPathComponent("response.json"))
         }
     }

@@ -62,11 +62,12 @@ class ScreenshotService {
         return NSImage(cgImage: cgImage, size: screen.frame.size)
     }
 
-    /// Returns a copy of the image with a red cursor marker drawn at the given
-    /// screenshot pixel position (origin: top-left).
+    /// Returns a copy of the image with the macOS arrow cursor drawn at the given
+    /// screenshot pixel position (origin: top-left). The cursor hotspot (tip) is placed at pixelPos.
     func imageWithCursor(_ image: NSImage, at pixelPos: CGPoint) -> NSImage {
         guard let tiffData = image.tiffRepresentation,
-              let sourceRep = NSBitmapImageRep(data: tiffData) else { return image }
+              let sourceRep = NSBitmapImageRep(data: tiffData),
+              let sourceCGImage = sourceRep.cgImage else { return image }
 
         let pixelW = sourceRep.pixelsWide
         let pixelH = sourceRep.pixelsHigh
@@ -81,36 +82,35 @@ class ScreenshotService {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return image }
 
-        // Draw source image. CGContext Y is from bottom, so flip while drawing.
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: CGFloat(pixelH))
-        ctx.scaleBy(x: 1, y: -1)
-        if let cgImg = sourceRep.cgImage {
-            ctx.draw(cgImg, in: CGRect(x: 0, y: 0, width: CGFloat(pixelW), height: CGFloat(pixelH)))
+        ctx.draw(sourceCGImage, in: CGRect(x: 0, y: 0, width: CGFloat(pixelW), height: CGFloat(pixelH)))
+
+        // Draw the macOS system arrow cursor.
+        // NSCursor.arrow hotspot is (0,0) = the tip at the top-left of the cursor image.
+        let cursorNSImage = NSCursor.arrow.image
+        let hotSpot = NSCursor.arrow.hotSpot  // in cursor image point coords
+
+        // Scale cursor to a fixed target height in screenshot pixels.
+        let targetH: CGFloat = 44
+        let aspect = cursorNSImage.size.height > 0 ? cursorNSImage.size.width / cursorNSImage.size.height : 1
+        let cursorW = targetH * aspect
+        let cursorH = targetH
+
+        // Scale hotspot from cursor image points to our target pixel size.
+        let hotPxX = cursorNSImage.size.width  > 0 ? hotSpot.x * (cursorW / cursorNSImage.size.width)  : 0
+        let hotPxY = cursorNSImage.size.height > 0 ? hotSpot.y * (cursorH / cursorNSImage.size.height) : 0
+
+        // In CGContext (Y from bottom), place cursor so its hotspot lands on pixelPos.
+        // For image pixel (hx, hy) drawn in rect (rx, ry, cW, cH):
+        //   CG position of that pixel = (rx + hx, ry + cH - hy)
+        // We want that = (pixelPos.x, pixelH - pixelPos.y), so:
+        let rx = pixelPos.x - hotPxX
+        let ry = CGFloat(pixelH) - pixelPos.y - cursorH + hotPxY
+
+        if let cursorTiff = cursorNSImage.tiffRepresentation,
+           let cursorRep = NSBitmapImageRep(data: cursorTiff),
+           let cursorCG = cursorRep.cgImage {
+            ctx.draw(cursorCG, in: CGRect(x: rx, y: ry, width: cursorW, height: cursorH))
         }
-        ctx.restoreGState()
-
-        // Cursor position: pixelPos.y is from top; CG context Y is from bottom.
-        let cx = pixelPos.x
-        let cy = CGFloat(pixelH) - pixelPos.y
-
-        let radius: CGFloat = 12
-
-        // Filled circle
-        ctx.setFillColor(red: 1, green: 0.1, blue: 0.1, alpha: 0.35)
-        ctx.setStrokeColor(red: 1, green: 0.1, blue: 0.1, alpha: 1)
-        ctx.setLineWidth(3)
-        ctx.addEllipse(in: CGRect(x: cx - radius, y: cy - radius, width: radius * 2, height: radius * 2))
-        ctx.drawPath(using: .fillStroke)
-
-        // Crosshair
-        ctx.setLineWidth(2)
-        ctx.move(to: CGPoint(x: cx - radius * 1.6, y: cy))
-        ctx.addLine(to: CGPoint(x: cx + radius * 1.6, y: cy))
-        ctx.strokePath()
-        ctx.move(to: CGPoint(x: cx, y: cy - radius * 1.6))
-        ctx.addLine(to: CGPoint(x: cx, y: cy + radius * 1.6))
-        ctx.strokePath()
 
         if let resultImg = ctx.makeImage() {
             return NSImage(cgImage: resultImg, size: image.size)

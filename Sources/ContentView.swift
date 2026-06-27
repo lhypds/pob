@@ -60,6 +60,7 @@ struct ContentView: View {
             var messages: [[String: Any]] = []
             var lastContext: ScreenshotContext? = nil
             var lastScreenshot: NSImage? = nil
+            var emptyResponseCount = 0
 
             AppLogger.log("[\(sessionId)] Session started")
 
@@ -81,6 +82,12 @@ struct ContentView: View {
             let instruction = SettingsService.shared.getInstruction()
             let startPos = MouseService.shared.virtualCursorPosition
 
+            let systemMsg: [String: Any] = [
+                "role": "system",
+                "content": "You are a desktop automation assistant controlling a virtual cursor. Use move() to position the cursor on a UI element, then examine the screenshot to verify the red crosshair cursor is exactly on the target. Keep calling move() to adjust until the cursor is precisely on the target, then call click(). Never call click() unless you have confirmed the cursor is on the correct element in the screenshot."
+            ]
+            messages.append(systemMsg)
+
             let userMsg: [String: Any] = [
                 "role": "user",
                 "content": [
@@ -97,9 +104,12 @@ struct ContentView: View {
 
                 let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
 
+                let responseToSave: [String: Any] = result.success
+                    ? result.rawAssistantMessage
+                    : ["error": result.error ?? "Unknown error"]
                 StorageService.shared.saveLog(sessionId: sessionId, logId: logId,
                                                messages: messages,
-                                               responseText: result.contentText ?? result.error ?? "",
+                                               response: responseToSave,
                                                screenshot: lastScreenshot)
                 logId += 1
 
@@ -111,9 +121,25 @@ struct ContentView: View {
                 messages.append(result.rawAssistantMessage)
 
                 if result.toolCalls.isEmpty {
-                    AppLogger.log("[\(sessionId)] Done: \(result.contentText?.prefix(100) ?? "(no content)")")
-                    break
+                    let text = result.contentText ?? ""
+                    if !text.isEmpty {
+                        AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
+                        break
+                    }
+                    // Empty response — prompt the AI to continue rather than ending the session.
+                    emptyResponseCount += 1
+                    if emptyResponseCount >= 3 {
+                        AppLogger.log("[\(sessionId)] Too many empty responses, stopping.")
+                        break
+                    }
+                    AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
+                    messages.append([
+                        "role": "user",
+                        "content": "Continue the task. Check the cursor position in the screenshot and call move() to adjust if needed, or call click() if the cursor is on the correct target."
+                    ])
+                    continue
                 }
+                emptyResponseCount = 0
 
                 var shouldStop = false
 

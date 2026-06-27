@@ -45,6 +45,7 @@ class OpenAIClient {
         ]
         if !tools.isEmpty {
             payload["tools"] = tools
+            payload["parallel_tool_calls"] = false
         }
 
         do {
