@@ -21,11 +21,3 @@ echo "Stopping Pob process: $PIDS"
 kill $PIDS
 
 echo "Pob stopped."
-
-# Stop MCP server if running on port 8032
-MCP_PIDS="$(lsof -ti tcp:8032 || true)"
-if [ -n "$MCP_PIDS" ]; then
-    echo "Stopping MCP server: $MCP_PIDS"
-    kill $MCP_PIDS
-    echo "MCP server stopped."
-fi

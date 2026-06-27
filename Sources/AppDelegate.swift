@@ -8,7 +8,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var clickThroughEnabled = false
-    private var mcpProcess: Process?
 
     override init() {
         super.init()
@@ -91,56 +90,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateIgnoresMouseEvents()
 
-        ScreenshotServer.shared.start(port: 8033)
-
-        if SettingsService.shared.getStartMcp() {
-            startMcpServer()
-        }
+        MCPServer.shared.start(port: 8032)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor  { NSEvent.removeMonitor(m) }
-        mcpProcess?.terminate()
-        mcpProcess = nil
-    }
-
-    private func startMcpServer() {
-        let mcpDir = SettingsService.shared.projectRoot.appendingPathComponent("mcp")
-        let serverPath = mcpDir.appendingPathComponent("pob_mcp_server.py").path
-        guard FileManager.default.fileExists(atPath: serverPath) else {
-            AppLogger.log("MCP server not found at \(serverPath)")
-            return
-        }
-
-        // Prefer the pyenv Python pinned in mcp/.python-version over the system python3.
-        let python = resolvePython(mcpDir: mcpDir)
-
-        let p = Process()
-        p.launchPath = python
-        p.arguments = [serverPath, "--sse"]
-        p.terminationHandler = { [weak self] _ in self?.mcpProcess = nil }
-        do {
-            try p.run()
-            mcpProcess = p
-            AppLogger.log("MCP server started (SSE on http://127.0.0.1:8032)")
-        } catch {
-            AppLogger.log("MCP server failed to start: \(error)")
-        }
-    }
-
-    private func resolvePython(mcpDir: URL) -> String {
-        let versionFile = mcpDir.appendingPathComponent(".python-version")
-        if let version = try? String(contentsOf: versionFile, encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-           !version.isEmpty {
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            let candidate = "\(home)/.pyenv/versions/\(version)/bin/python3"
-            if FileManager.default.fileExists(atPath: candidate) {
-                return candidate
-            }
-        }
-        return "/usr/bin/env python3"
     }
 
     private func loadVersion() -> String {
