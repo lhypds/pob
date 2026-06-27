@@ -1,7 +1,7 @@
 {
   "editor": "system",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
-  "max_steps": 30,
+  "max_steps": 12,
   "max_tokens": 8000,
   "model": "gpt-4o",
   "terminal": "iterm2",

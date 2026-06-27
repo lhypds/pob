@@ -22,7 +22,7 @@ class SettingsService {
     private let defaultSettings: [String: Any] = [
         "model": "gpt-4o",
         "max_tokens": 2000,
-        "max_steps": 30,
+        "max_steps": 12,
         "editor": "system",
         "terminal": "system",
         "stop_hook": ""
@@ -92,7 +92,7 @@ class SettingsService {
            let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
             return max(1, intValue)
         }
-        return 30
+        return 12
     }
 
     func getEditor() -> String {

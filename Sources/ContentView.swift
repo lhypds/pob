@@ -82,7 +82,13 @@ struct ContentView: View {
             Text(verificationError ?? "")
         }
         .alert("Warning", isPresented: $maxStepWarning) {
-            Button("OK", role: .cancel) {}
+            Button("Continue") {
+                maxStepWarning = false
+                executeMain()
+            }
+            Button("Stop", role: .cancel) {
+                maxStepWarning = false
+            }
         } message: {
             Text("Max step exceed.")
         }
