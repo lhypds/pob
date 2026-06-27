@@ -33,6 +33,12 @@ Phase 2, make the AI can operate the desktop application.
 Phase 3, make AI learn users operation and do it for the user with instructions, or repeat.  
 
 
+Screenshot
+----------
+
+<img width="702" height="610" alt="image" src="https://github.com/user-attachments/assets/347585a4-5850-421b-92ee-f439cbe0a15f" />
+
+
 Functions
 ---------
 
