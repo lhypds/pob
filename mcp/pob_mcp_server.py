@@ -103,6 +103,8 @@ if __name__ == "__main__":
         server = _make_server(host="127.0.0.1", port=port)
         # Re-register tools on the new server instance
         server.add_tool(take_screenshot)
+        print(f"pob MCP server started (SSE on http://127.0.0.1:{port})", flush=True)
         server.run(transport="sse")
     else:
+        print("pob MCP server started (stdio)", flush=True)
         mcp.run(transport="stdio")

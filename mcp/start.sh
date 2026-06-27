@@ -12,4 +12,5 @@ else
     PYTHON="python3"
 fi
 
+echo "Starting pob MCP server..."
 "$PYTHON" "$DIR/pob_mcp_server.py" --sse "$@"
