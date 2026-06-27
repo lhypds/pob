@@ -27,28 +27,35 @@ class ScreenshotService {
     private init() {}
 
     /// Capture the window content area and also return coordinate context.
+    /// Uses CGWindowListCreateImage with .optionOnScreenBelowWindow so the pob overlay
+    /// window itself (including its background) is excluded from the capture.
     func captureWindowContentAreaWithContext(window: NSWindow) -> (NSImage, ScreenshotContext)? {
         guard let screen = window.screen ?? NSScreen.main else { return nil }
+        guard let primaryScreen = NSScreen.screens.first else { return nil }
 
         let contentRect = window.contentLayoutRect
         let screenRect = window.convertToScreen(contentRect)
-
         let scale = screen.backingScaleFactor
-        let sf = screen.frame
 
-        let pixelRect = CGRect(
-            x: (screenRect.origin.x - sf.origin.x) * scale,
-            y: (sf.maxY - screenRect.maxY) * scale,
-            width: screenRect.width * scale,
-            height: screenRect.height * scale
+        // Convert NSScreen rect (Y from bottom-left) to CG screen rect (Y from top-left of primary display).
+        let cgRect = CGRect(
+            x: screenRect.origin.x,
+            y: primaryScreen.frame.height - screenRect.maxY,
+            width: screenRect.width,
+            height: screenRect.height
         )
 
-        guard let displayImage = CGDisplayCreateImage(screen.displayID),
-              let cropped = displayImage.cropping(to: pixelRect) else {
+        let windowID = CGWindowID(window.windowNumber)
+        guard let cgImage = CGWindowListCreateImage(
+            cgRect,
+            .optionOnScreenBelowWindow,
+            windowID,
+            .bestResolution
+        ) else {
             return nil
         }
 
-        let image = NSImage(cgImage: cropped, size: screenRect.size)
+        let image = NSImage(cgImage: cgImage, size: screenRect.size)
         let context = ScreenshotContext(contentRectInScreen: screenRect, scale: scale)
         return (image, context)
     }
