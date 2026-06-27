@@ -3,34 +3,56 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
-    
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
+    private var clickThroughEnabled = true
+
+    // Called by ContentView whenever isExecuting or isTargeting changes.
+    func setClickThrough(_ enabled: Bool) {
+        clickThroughEnabled = enabled
+        updateIgnoresMouseEvents()
+    }
+
+    // Central function — always called for every mouseMoved event AND on any state change.
+    // When click-through is disabled (targeting / executing) it ACTIVELY sets ignoresMouseEvents = false
+    // on every call, so no stale monitor callback can re-enable it.
+    private func updateIgnoresMouseEvents() {
+        // Always use the live first window; avoids stale reference after SwiftUI window recreation.
+        guard let window = NSApplication.shared.windows.first else { return }
+
+        guard clickThroughEnabled else {
+            window.ignoresMouseEvents = false
+            return
+        }
+
+        let mouse = NSEvent.mouseLocation
+        let wf = window.frame
+        // Top 50 pt covers the compact unified toolbar + traffic-light buttons.
+        let inToolbar = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
+                        mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
+        window.ignoresMouseEvents = !inToolbar
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
 
-        // Configure the main window
         if let window = NSApplication.shared.windows.first {
             self.window = window
-            
-            // Keep the capture area transparent while retaining normal title bar chrome
+
             window.isOpaque = false
             window.backgroundColor = NSColor.clear
             window.titlebarAppearsTransparent = false
             window.titleVisibility = .hidden
             window.title = "Pob \(loadVersion())"
             window.toolbarStyle = .unifiedCompact
-            
-            // Make window resizable
+
             window.styleMask.insert(.resizable)
             window.styleMask.insert(.miniaturizable)
             window.styleMask.insert(.closable)
-            
-            // Use standard window level so focus/traffic-light behavior matches normal macOS windows
+
             window.level = .normal
-            
-            // Allow window to accept mouse events
             window.ignoresMouseEvents = false
-            
-            // Restore saved position/size, or use default centered position
+
             if let savedFrame = SettingsService.shared.getWindowFrame() {
                 window.setFrame(savedFrame, display: true)
             } else {
@@ -39,8 +61,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             window.delegate = self
-
-            // Make sure the window becomes key/main so traffic-light buttons are active on focus
             window.makeKeyAndOrderFront(nil)
             NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -48,9 +68,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
             window.standardWindowButton(.zoomButton)?.isEnabled = true
         }
-        
-        // Create application menu
+
         createMenu()
+
+        // Monitors run for the full app lifetime — no start/stop needed.
+        // updateIgnoresMouseEvents handles both click-through and non-click-through cases.
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            self?.updateIgnoresMouseEvents()
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            self?.updateIgnoresMouseEvents()
+            return event
+        }
+
+        updateIgnoresMouseEvents()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
+        if let m = localMouseMonitor  { NSEvent.removeMonitor(m) }
     }
 
     private func loadVersion() -> String {
@@ -81,7 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         return fallback
     }
-    
+
     private func saveWindowFrame() {
         guard let window = window else { return }
         SettingsService.shared.saveWindowFrame(window.frame)
@@ -90,15 +126,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func createMenu() {
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
-        
-        // App menu items
+
         let quitMenuItem = NSMenuItem(title: "Quit Pob", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenu.addItem(quitMenuItem)
-        
+
         let appMenuItem = NSMenuItem(title: "Pob", action: nil, keyEquivalent: "")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
-        
+
         NSApplication.shared.mainMenu = mainMenu
     }
 }

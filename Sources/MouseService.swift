@@ -2,26 +2,34 @@ import CoreGraphics
 import AppKit
 import ApplicationServices
 
-class MouseService {
+class MouseService: ObservableObject {
     static let shared = MouseService()
 
     // Virtual cursor in screenshot pixel coordinates (origin: top-left).
     // Never touches the real system mouse pointer.
     var virtualCursorPosition: CGPoint = .zero
 
+    // Published so the UI can overlay the cursor and animate its movement.
+    @Published var displayPosition: CGPoint = .zero
+
     private init() {}
 
     func moveCursor(to point: CGPoint) {
         virtualCursorPosition = point
+        let p = point
+        DispatchQueue.main.async { self.displayPosition = p }
     }
 
     func moveCursorBy(dx: CGFloat, dy: CGFloat) {
         virtualCursorPosition.x += dx
         virtualCursorPosition.y += dy
+        let p = virtualCursorPosition
+        DispatchQueue.main.async { self.displayPosition = p }
     }
 
     func resetCursor() {
-        virtualCursorPosition = .zero
+        virtualCursorPosition = CGPoint(x: 20, y: 20)
+        DispatchQueue.main.async { self.displayPosition = CGPoint(x: 20, y: 20) }
     }
 
     // MARK: - Mouse actions

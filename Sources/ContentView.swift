@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var mousePosition: CGPoint? = nil
     @State private var verificationError: String? = nil
     @State private var maxStepWarning = false
+    @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
+    @ObservedObject private var mouseService = MouseService.shared
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -31,6 +33,37 @@ struct ContentView: View {
                     positionLabel(at: pos)
                 }
             }
+
+            if isExecuting {
+                let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+                let cursorImg = NSCursor.arrow.image
+                let hot = NSCursor.arrow.hotSpot
+                let viewX = animatedCursorPos.x / scale
+                let viewY = animatedCursorPos.y / scale
+                Image(nsImage: cursorImg)
+                    .resizable()
+                    .frame(width: cursorImg.size.width, height: cursorImg.size.height)
+                    .position(
+                        x: viewX + cursorImg.size.width / 2 - hot.x,
+                        y: viewY + cursorImg.size.height / 2 - hot.y
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
+        .onChange(of: mouseService.displayPosition) { newPos in
+            withAnimation(.easeOut(duration: 0.1)) {
+                animatedCursorPos = newPos
+            }
+        }
+        .onChange(of: isExecuting) { executing in
+            NSApplication.shared.windows.first?.isMovable = !executing
+            updateClickThrough()
+        }
+        .onChange(of: isTargeting) { _ in
+            updateClickThrough()
+        }
+        .onAppear {
+            updateClickThrough()
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -52,6 +85,7 @@ struct ContentView: View {
                 Button(action: {
                     isTargeting.toggle()
                     if !isTargeting { mousePosition = nil }
+                    updateClickThrough()
                 }) {
                     Image(systemName: "scope")
                         .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
@@ -169,11 +203,12 @@ struct ContentView: View {
 
     private func executeMain() {
         isExecuting = true
+        animatedCursorPos = CGPoint(x: 20, y: 20)
 
         currentTask = Task {
             let window = await MainActor.run { NSApplication.shared.windows.first }
 
-            // Reset virtual cursor to (0, 0) — top-left of the capture area.
+            // Reset virtual cursor to (20, 20) — near top-left of the capture area.
             MouseService.shared.resetCursor()
 
             let sessionId = StorageService.shared.createSession()
@@ -226,7 +261,7 @@ struct ContentView: View {
                 1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
                 2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
 
-                The cursor starts at (0, 0) top-left.
+                The cursor starts at (20, 20).
                 """
             ]
             messages.append(systemMsg)
@@ -478,6 +513,10 @@ struct ContentView: View {
         return png.base64EncodedString()
     }
 
+    private func updateClickThrough() {
+        (NSApplication.shared.delegate as? AppDelegate)?.setClickThrough(!isExecuting && !isTargeting)
+    }
+
     // MARK: - Mouse Tracking
 
     private func makeTools() -> [[String: Any]] {
@@ -617,12 +656,14 @@ private class TrackingNSView: NSView {
     var onTap: ((CGPoint) -> Void)?
     private var trackingArea: NSTrackingArea?
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let old = trackingArea { removeTrackingArea(old) }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways],
             owner: self,
             userInfo: nil
         )
