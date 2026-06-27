@@ -83,7 +83,7 @@ When Pob is running with `start_mcp: true`, the server is already up on SSE — 
 {
   "mcpServers": {
     "pob": {
-      "url": "http://127.0.0.1:8000/sse"
+      "url": "http://127.0.0.1:8032/sse"
     }
   }
 }
@@ -124,7 +124,7 @@ Settings are stored in `settings.json` in the project root.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
-| `start_mcp` | `true` | Automatically start the MCP server (SSE on `http://127.0.0.1:8000`) when Pob launches |
+| `start_mcp` | `true` | Automatically start the MCP server (SSE on `http://127.0.0.1:8032`) when Pob launches |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |

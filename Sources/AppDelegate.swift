@@ -117,7 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try p.run()
             mcpProcess = p
-            AppLogger.log("MCP server started (SSE on http://127.0.0.1:8000)")
+            AppLogger.log("MCP server started (SSE on http://127.0.0.1:8032)")
         } catch {
             AppLogger.log("MCP server failed to start: \(error)")
         }

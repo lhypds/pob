@@ -9,7 +9,7 @@ Stdio mode (started by Claude Desktop):
     python3 pob_mcp_server.py
 
 SSE mode (started by Pob app, or run manually for persistent access):
-    python3 pob_mcp_server.py --sse          # port 8000
+    python3 pob_mcp_server.py --sse          # port 8032
     python3 pob_mcp_server.py --sse --port 9000
 
 Claude Desktop — stdio config:
@@ -26,7 +26,7 @@ Claude Desktop — SSE config (when Pob auto-starts the server):
     {
       "mcpServers": {
         "pob": {
-          "url": "http://localhost:8000/sse"
+          "url": "http://localhost:8032/sse"
         }
       }
     }
@@ -86,7 +86,7 @@ def take_screenshot(
 if __name__ == "__main__":
     args = sys.argv[1:]
     if "--sse" in args:
-        port = 8000
+        port = 8032
         if "--port" in args:
             idx = args.index("--port")
             if idx + 1 < len(args):
