@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showClearChoice = false
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
+    @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
     @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
@@ -207,10 +208,13 @@ struct ContentView: View {
         .alert("Warning", isPresented: $maxStepWarning) {
             Button("Continue") {
                 maxStepWarning = false
-                executeMain()
+                maxStepContinuation?.resume(returning: true)
+                maxStepContinuation = nil
             }
             Button("Stop", role: .cancel) {
                 maxStepWarning = false
+                maxStepContinuation?.resume(returning: false)
+                maxStepContinuation = nil
             }
         } message: {
             Text("Max step exceed.")
@@ -304,6 +308,9 @@ struct ContentView: View {
     }
 
     private func stop() {
+        maxStepContinuation?.resume(returning: false)
+        maxStepContinuation = nil
+        maxStepWarning = false
         currentTask?.cancel()
         currentTask = nil
         isExecuting = false
@@ -537,10 +544,14 @@ struct ContentView: View {
             while !Task.isCancelled {
                 if stepCount >= maxSteps {
                     AppLogger.log("[\(sessionId)] Max step exceed.")
-                    await MainActor.run {
-                        maxStepWarning = true
+                    let shouldContinue = await withCheckedContinuation { continuation in
+                        Task { @MainActor in
+                            maxStepContinuation = continuation
+                            maxStepWarning = true
+                        }
                     }
-                    break
+                    if !shouldContinue { break }
+                    stepCount = 0
                 }
                 stepCount += 1
 
