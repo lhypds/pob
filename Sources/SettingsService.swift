@@ -22,6 +22,7 @@ class SettingsService {
     private let defaultSettings: [String: Any] = [
         "model": "gpt-4o",
         "max_tokens": 2000,
+        "max_steps": 30,
         "editor": "system",
         "terminal": "system",
         "stop_hook": ""
@@ -78,6 +79,20 @@ class SettingsService {
 
     func getMaxTokens() -> Int {
         loadJSON(key: "max_tokens") as? Int ?? 2000
+    }
+
+    func getMaxSteps() -> Int {
+        if let value = loadJSON(key: "max_steps") as? Int {
+            return max(1, value)
+        }
+        if let value = loadJSON(key: "max_steps") as? Double {
+            return max(1, Int(value))
+        }
+        if let value = loadJSON(key: "max_steps") as? String,
+           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return max(1, intValue)
+        }
+        return 30
     }
 
     func getEditor() -> String {

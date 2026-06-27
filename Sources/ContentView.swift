@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var isTargeting = false
     @State private var mousePosition: CGPoint? = nil
     @State private var verificationError: String? = nil
+    @State private var maxStepWarning = false
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -79,6 +80,11 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { verificationError = nil }
         } message: {
             Text(verificationError ?? "")
+        }
+        .alert("Warning", isPresented: $maxStepWarning) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Max step exceed.")
         }
     }
 
@@ -170,6 +176,8 @@ struct ContentView: View {
             var lastContext: ScreenshotContext? = nil
             var lastScreenshot: NSImage? = nil
             var emptyResponseCount = 0
+            var stepCount = 0
+            let maxSteps = SettingsService.shared.getMaxSteps()
 
             AppLogger.log("[\(sessionId)] Session started")
 
@@ -229,6 +237,15 @@ struct ContentView: View {
             let tools = makeTools()
 
             while !Task.isCancelled {
+                if stepCount >= maxSteps {
+                    AppLogger.log("[\(sessionId)] Max step exceed.")
+                    await MainActor.run {
+                        maxStepWarning = true
+                    }
+                    break
+                }
+                stepCount += 1
+
                 AppLogger.log("[\(sessionId)/\(logId)] Analyzing...")
 
                 let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
