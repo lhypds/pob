@@ -501,6 +501,7 @@ struct ContentView: View {
                 return
             }
 
+            var stepCount = 0
             await executeInstruction(
                 sessionId: sessionId,
                 instruction: instruction,
@@ -508,7 +509,8 @@ struct ContentView: View {
                 initContext: initCtx,
                 initScreenshot: initShot,
                 window: window,
-                shouldRecord: shouldRecord
+                shouldRecord: shouldRecord,
+                stepCount: &stepCount
             )
 
             let wasCancelled = Task.isCancelled
@@ -535,14 +537,14 @@ struct ContentView: View {
         initContext: ScreenshotContext,
         initScreenshot: NSImage,
         window: NSWindow?,
-        shouldRecord: Bool
+        shouldRecord: Bool,
+        stepCount: inout Int
     ) async {
         var messages: [[String: Any]] = []
         var lastContext: ScreenshotContext? = initContext
         var lastScreenshot: NSImage? = initScreenshot
         var logId = 1
         var emptyResponseCount = 0
-        var stepCount = 0
         let maxSteps = SettingsService.shared.getMaxSteps()
 
         let systemMsg: [String: Any] = [
