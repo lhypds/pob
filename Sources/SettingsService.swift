@@ -23,7 +23,8 @@ class SettingsService {
         "model": "gpt-4o",
         "max_tokens": 2000,
         "editor": "system",
-        "terminal": "system"
+        "terminal": "system",
+        "stop_hook": ""
     ]
 
     private func serializeJSON(_ object: Any) -> String? {
@@ -85,6 +86,10 @@ class SettingsService {
 
     func getTerminal() -> String {
         loadJSON(key: "terminal") as? String ?? "system"
+    }
+
+    func getStopHook() -> String {
+        loadJSON(key: "stop_hook") as? String ?? ""
     }
 
     func getWindowFrame() -> NSRect? {

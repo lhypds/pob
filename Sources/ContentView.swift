@@ -420,6 +420,13 @@ struct ContentView: View {
             await MainActor.run {
                 isExecuting = false
                 currentTask = nil
+                let soundCmd = SettingsService.shared.getStopHook()
+                if !soundCmd.isEmpty {
+                    let p = Process()
+                    p.launchPath = "/bin/sh"
+                    p.arguments = ["-c", soundCmd]
+                    try? p.run()
+                }
             }
         }
     }

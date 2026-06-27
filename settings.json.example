@@ -1,0 +1,11 @@
+{
+  "editor": "system",
+  "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
+  "max_tokens": 8000,
+  "model": "gpt-4o",
+  "terminal": "iterm2",
+  "window_height": 680,
+  "window_width": 1227,
+  "window_x": 1828,
+  "window_y": 940
+}

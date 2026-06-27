@@ -35,6 +35,12 @@ if [ ! -f ".env" ] && [ -f ".env.example" ]; then
     echo "✅ Created .env from .env.example"
 fi
 
+# Initialize settings.json from example when available
+if [ ! -f "settings.json" ] && [ -f "settings.json.example" ]; then
+    cp settings.json.example settings.json
+    echo "✅ Created settings.json from settings.json.example"
+fi
+
 # Build the project
 echo "🔨 Building the project..."
 swift build
