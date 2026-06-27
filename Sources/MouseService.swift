@@ -13,6 +13,11 @@ class MouseService {
         virtualCursorPosition = point
     }
 
+    func moveCursorBy(dx: CGFloat, dy: CGFloat) {
+        virtualCursorPosition.x += dx
+        virtualCursorPosition.y += dy
+    }
+
     func resetCursor() {
         virtualCursorPosition = .zero
     }

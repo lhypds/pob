@@ -115,16 +115,6 @@ class ScreenshotService {
             ctx.draw(cursorCG, in: CGRect(x: rx, y: ry, width: cursorW, height: cursorH))
         }
 
-        // Red circle centred on the cursor tip (hotspot) to mark the exact click point.
-        let circleCX = pixelPos.x
-        let circleCY = CGFloat(pixelH) - pixelPos.y
-        let circleR = cursorH * 0.7
-        ctx.setStrokeColor(red: 1, green: 0, blue: 0, alpha: 0.9)
-        ctx.setLineWidth(4)
-        ctx.addEllipse(in: CGRect(x: circleCX - circleR, y: circleCY - circleR,
-                                  width: circleR * 2, height: circleR * 2))
-        ctx.strokePath()
-
         if let resultImg = ctx.makeImage() {
             return NSImage(cgImage: resultImg, size: image.size)
         }

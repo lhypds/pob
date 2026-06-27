@@ -65,7 +65,7 @@ struct ContentView: View {
 
             AppLogger.log("[\(sessionId)] Session started")
 
-            // Take initial screenshot with cursor at (0, 0).
+            // Take initial screenshot (no cursor overlay — no click requested yet).
             guard let (initShot, initCtx) = captureWithCursor(window: window) else {
                 AppLogger.log("Failed to capture screenshot")
                 await MainActor.run { isExecuting = false }
@@ -81,18 +81,17 @@ struct ContentView: View {
             }
 
             let instruction = SettingsService.shared.getInstruction()
-            let startPos = MouseService.shared.virtualCursorPosition
 
             let systemMsg: [String: Any] = [
                 "role": "system",
-                "content": "You are a desktop automation assistant controlling a virtual cursor. Use move() to position the cursor on a UI element. Each screenshot shows the cursor arrow surrounded by a RED CIRCLE — the tip of the arrow (inside the circle) is the EXACT pixel where the click will land. Keep calling move() until the cursor tip is precisely on the target element, then call click(). For the click verification you will also receive a 4× zoomed image; verify the cursor tip is on the target in the zoomed view before confirming."
+                "content": "You are a desktop automation assistant. All coordinates are screenshot pixel coordinates (origin = top-left of the screenshot, x right, y down). The app converts them to real screen positions — you never deal with screen or OS coordinates.\n\nWorkflow:\n1. Call move(dx, dy) to nudge the cursor by a pixel offset. You will see the cursor arrow — the arrow tip is where a click will land. Adjust until the tip is precisely on the target.\n2. Call click() to click at the current cursor position.\n\nThe cursor starts at the top-left (0, 0). Use move() repeatedly to walk it to the target element."
             ]
             messages.append(systemMsg)
 
             let userMsg: [String: Any] = [
                 "role": "user",
                 "content": [
-                    ["type": "text", "text": "Current cursor position: (\(Int(startPos.x)), \(Int(startPos.y)))\n\n\(instruction)"],
+                    ["type": "text", "text": instruction],
                     ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]]
                 ] as [[String: Any]]
             ]
@@ -145,7 +144,7 @@ struct ContentView: View {
                     AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
                     messages.append([
                         "role": "user",
-                        "content": "Continue the task. Check the cursor position in the screenshot and call move() to adjust if needed, or call click() if the cursor is on the correct target."
+                        "content": "Continue the task. Use move(dx, dy) to adjust the cursor, or click() if the cursor tip is already on the target."
                     ])
                     continue
                 }
@@ -157,19 +156,18 @@ struct ContentView: View {
                     switch toolCall.name {
 
                     case "move":
-                        let x: CGFloat = (toolCall.arguments["x"] as? Double).map { CGFloat($0) } ?? 0
-                        let y: CGFloat = (toolCall.arguments["y"] as? Double).map { CGFloat($0) } ?? 0
-                        MouseService.shared.moveCursor(to: CGPoint(x: x, y: y))
-                        AppLogger.log("[\(sessionId)] move(\(Int(x)), \(Int(y)))")
+                        let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
+                        let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
+                        MouseService.shared.moveCursorBy(dx: dx, dy: dy)
+                        let newPos = MouseService.shared.virtualCursorPosition
+                        AppLogger.log("[\(sessionId)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
 
-                        // Tool result must be plain text (OpenAI rejects images in role:tool).
                         messages.append([
                             "role": "tool",
                             "tool_call_id": toolCall.id,
-                            "content": "Cursor moved to (\(Int(x)), \(Int(y)))."
+                            "content": "Cursor moved by (\(Int(dx)), \(Int(dy))). New position: (\(Int(newPos.x)), \(Int(newPos.y)))."
                         ])
 
-                        // Send the updated screenshot as a follow-up user message.
                         if let (newShot, newCtx) = captureWithCursor(window: window) {
                             lastContext = newCtx
                             lastScreenshot = newShot
@@ -177,7 +175,7 @@ struct ContentView: View {
                                 messages.append([
                                     "role": "user",
                                     "content": [
-                                        ["type": "text", "text": "Cursor moved to (\(Int(x)), \(Int(y))). The red circle highlights the cursor; the arrow tip inside it is the click point."],
+                                        ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
                                         ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
                                     ] as [[String: Any]]
                                 ])
@@ -191,7 +189,7 @@ struct ContentView: View {
                         messages.append([
                             "role": "tool",
                             "tool_call_id": toolCall.id,
-                            "content": "Click requested. Verify cursor position then reply CONFIRM or call move() to adjust."
+                            "content": "Click requested. Verifying position — reply CONFIRM or call move() to adjust."
                         ])
 
                         if let (verifyShot, verifyCtx) = captureWithCursor(window: window),
@@ -200,7 +198,7 @@ struct ContentView: View {
                             lastScreenshot = verifyShot
 
                             var contentParts: [[String: Any]] = [
-                                ["type": "text", "text": "Current cursor position: (\(Int(curPos.x)), \(Int(curPos.y))). The cursor tip (arrow point inside the red circle) is the EXACT click point. First image: full screenshot. Second image: 4× zoom of the cursor area. Is the cursor tip precisely on the target? Reply CONFIRM if yes, or call move() to adjust."],
+                                ["type": "text", "text": "Cursor at (\(Int(curPos.x)), \(Int(curPos.y))). The arrow tip is the exact click point. Is it on the target? Reply CONFIRM or call move() to adjust."],
                                 ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
                             ]
 
@@ -212,7 +210,6 @@ struct ContentView: View {
                             messages.append(["role": "user", "content": contentParts])
                         }
 
-                        // pendingClick = true: the outer loop will execute the click when AI replies CONFIRM.
                         pendingClick = true
 
                     default:
@@ -253,14 +250,14 @@ struct ContentView: View {
                 "type": "function",
                 "function": [
                     "name": "move",
-                    "description": "Move the virtual cursor to a position on the screen. You will receive a new screenshot showing the cursor at the new position.",
+                    "description": "Nudge the cursor by a relative pixel offset in screenshot space. All coordinates are screenshot pixels (origin = top-left, x increases right, y increases down). The app converts to real screen coordinates — you never deal with screen-level positions. You will receive a new screenshot showing the updated cursor position.",
                     "parameters": [
                         "type": "object",
                         "properties": [
-                            "x": ["type": "number", "description": "X coordinate in screenshot pixels, measured from the left edge."],
-                            "y": ["type": "number", "description": "Y coordinate in screenshot pixels, measured from the top edge."]
+                            "dx": ["type": "number", "description": "Horizontal offset in screenshot pixels. Positive = right, negative = left."],
+                            "dy": ["type": "number", "description": "Vertical offset in screenshot pixels. Positive = down, negative = up."]
                         ],
-                        "required": ["x", "y"]
+                        "required": ["dx", "dy"]
                     ] as [String: Any]
                 ] as [String: Any]
             ],
@@ -268,7 +265,7 @@ struct ContentView: View {
                 "type": "function",
                 "function": [
                     "name": "click",
-                    "description": "Click at the current cursor position. This performs an actual system left mouse click.",
+                    "description": "Click at the current cursor position. You will receive a verification screenshot; reply CONFIRM to execute the click, or call move() to adjust first.",
                     "parameters": [
                         "type": "object",
                         "properties": [:] as [String: Any],
