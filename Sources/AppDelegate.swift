@@ -134,6 +134,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
 
+        let aboutMenuItem = NSMenuItem(title: "About Pob", action: #selector(showAbout), keyEquivalent: "")
+        aboutMenuItem.target = self
+        appMenu.addItem(aboutMenuItem)
+
+        appMenu.addItem(.separator())
+
         let quitMenuItem = NSMenuItem(title: "Quit Pob", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenu.addItem(quitMenuItem)
 
@@ -142,6 +148,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appMenuItem)
 
         NSApplication.shared.mainMenu = mainMenu
+    }
+
+    @objc private func showAbout() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 130),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = ""
+        panel.isFloatingPanel = true
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 130))
+
+        let nameLabel = NSTextField(labelWithString: "Pob")
+        nameLabel.font = NSFont.boldSystemFont(ofSize: 16)
+        nameLabel.frame = NSRect(x: 20, y: 82, width: 240, height: 22)
+        container.addSubview(nameLabel)
+
+        let fullNameLabel = NSTextField(labelWithString: "Perception and Operation Bridge")
+        fullNameLabel.font = NSFont.systemFont(ofSize: 12)
+        fullNameLabel.textColor = .secondaryLabelColor
+        fullNameLabel.frame = NSRect(x: 20, y: 60, width: 240, height: 18)
+        container.addSubview(fullNameLabel)
+
+        let versionLabel = NSTextField(labelWithString: "Version \(loadVersion())")
+        versionLabel.font = NSFont.systemFont(ofSize: 13)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.frame = NSRect(x: 20, y: 38, width: 240, height: 18)
+        container.addSubview(versionLabel)
+
+        let okButton = NSButton(title: "OK", target: panel, action: #selector(NSWindow.close))
+        okButton.bezelStyle = .rounded
+        okButton.keyEquivalent = "\r"
+        okButton.frame = NSRect(x: 200, y: 10, width: 60, height: 22)
+        container.addSubview(okButton)
+
+        panel.contentView = container
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
     }
 }
 

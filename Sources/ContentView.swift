@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var isLocked = false
     @State private var isRecording = false
     @State private var showMacroChoice = false
+    @State private var showClearChoice = false
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
     @State private var animatedCursorPos: CGPoint = CGPoint(x: 20, y: 20)
@@ -192,6 +193,11 @@ struct ContentView: View {
                         .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
                 }
                 .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
+
+                Button(action: { showClearChoice = true }) {
+                    Image(systemName: "trash")
+                }
+                .help("Clear")
             }
         }
         .onTapGesture {
@@ -215,6 +221,17 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("macro.txt has recorded actions.")
+        }
+        .confirmationDialog("Clear", isPresented: $showClearChoice) {
+            Button("Clear Instruction", role: .destructive) { SettingsService.shared.clearInstruction() }
+            Button("Clear Macro", role: .destructive) { SettingsService.shared.clearMacro() }
+            Button("Clear Logs", role: .destructive) { SettingsService.shared.clearLogs() }
+            Button("Clear All", role: .destructive) {
+                SettingsService.shared.clearInstruction()
+                SettingsService.shared.clearMacro()
+                SettingsService.shared.clearLogs()
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

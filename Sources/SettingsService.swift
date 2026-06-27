@@ -153,6 +153,15 @@ class SettingsService {
         try? "".write(to: macroFile, atomically: true, encoding: .utf8)
     }
 
+    func clearInstruction() {
+        try? "".write(to: instructionFile, atomically: true, encoding: .utf8)
+    }
+
+    func clearLogs() {
+        try? fileManager.removeItem(at: logsFolder)
+        try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
+    }
+
     func appendToMacro(_ line: String) {
         guard let data = (line + "\n").data(using: .utf8) else { return }
         if let handle = try? FileHandle(forWritingTo: macroFile) {
