@@ -41,6 +41,7 @@ struct ContentView: View {
                     Image(systemName: isExecuting ? "stop.fill" : "play.fill")
                 }
                 .help(isExecuting ? "Stop" : "Execute")
+                .animation(nil, value: isExecuting)
             }
         }
         .onTapGesture {
