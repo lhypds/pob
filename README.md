@@ -17,22 +17,14 @@ Roadmap
 
 Phase 1, Make AI see its frontend development result.  
          To improve the frontend development automation.  
-
 Phase 2, make the AI can operate the desktop application.  
-
 Phase 3, make AI learn users operation and do it for the user with instructions, or repeat.  
-
-
-Release
--------
-
-Use `build.sh` to build the app to `macos_app/Pob.app`.  
 
 
 Functions
 ---------
 
-These are the tools the AI can call during a session:
+These are the tools the AI can call during a session:  
 
 | Function | Parameters | Description |
 |----------|------------|-------------|
@@ -47,9 +39,8 @@ These are the tools the AI can call during a session:
 | `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
 | `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
 
-All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).
-
-These functions are also available in macros (see Macro below).
+All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).  
+These functions are also available in macros (see Macro below).  
 
 
 Macro
@@ -73,15 +64,9 @@ Use the record button (⏺) in the toolbar to record actions during an AI sessio
 MCP Server
 ----------
 
-`mcp/pob_mcp_server.py` is a standalone [Model Context Protocol](https://modelcontextprotocol.io) server that exposes `take_screenshot` to any MCP-compatible AI application (Claude Desktop, Cursor, etc.).
+Install dependency:
 
-**Install dependency:**
-
-```sh
-pip install mcp
-```
-
-**Register with Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Register with Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 When Pob is running with `start_mcp: true`, the server is already up on SSE — point Claude Desktop at it directly:
 
@@ -108,7 +93,7 @@ Alternatively, let Claude Desktop manage the process itself (stdio mode):
 }
 ```
 
-**Available tool:**
+MCP tools:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
@@ -147,3 +132,11 @@ Example:
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff"
 }
 ```
+
+
+Release
+-------
+
+Use `build.sh` to build the app to `macos_app/Pob.app`.  
+Update `VERSION`.  
+Then use `release.sh` to release to GitHub.  
