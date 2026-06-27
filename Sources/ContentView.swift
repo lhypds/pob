@@ -141,14 +141,22 @@ struct ContentView: View {
     @ViewBuilder
     private func positionLabel(at pos: CGPoint) -> some View {
         let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-        Text("(\(Int(pos.x * scale)), \(Int(pos.y * scale)))")
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
-            .foregroundColor(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Color.black.opacity(0.75))
-            .cornerRadius(4)
-            .position(x: pos.x + 55, y: max(14, pos.y - 14))
+        GeometryReader { geo in
+            let estimatedWidth: CGFloat = 100
+            let margin: CGFloat = 6
+            let rawX = pos.x + 55
+            let clampedX = min(rawX, geo.size.width - estimatedWidth / 2 - margin)
+            let finalX = max(estimatedWidth / 2 + margin, clampedX)
+            let finalY = max(14, pos.y - 14)
+            Text("(\(Int(pos.x * scale)), \(Int(pos.y * scale)))")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.black.opacity(0.75))
+                .cornerRadius(4)
+                .position(x: finalX, y: finalY)
+        }
     }
 
     private func stop() {
