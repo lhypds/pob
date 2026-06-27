@@ -5,6 +5,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "🚀 Setting up Pob development environment..."
 
 # Check for Swift
@@ -47,13 +49,12 @@ swift build
 
 if [ $? -eq 0 ]; then
     echo "✅ Build successful!"
-    echo ""
-    echo "📝 Next steps:"
-    echo "   1. Run: ./start.sh"
-    echo "   2. Open Settings and add your OpenAI API key"
-    echo "   3. Test the connection"
-    echo ""
 else
     echo "❌ Build failed"
     exit 1
 fi
+
+# Set up MCP server
+echo ""
+echo "🔌 Setting up MCP server..."
+"$SCRIPT_DIR/mcp/setup.sh"
