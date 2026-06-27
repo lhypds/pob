@@ -64,6 +64,53 @@ keyPress("return")
 Use the record button (⏺) in the toolbar to record actions during an AI session — they are appended to `macro.txt` automatically. Use the play button (▶) to run the macro directly without the AI.
 
 
+MCP Server
+----------
+
+`mcp/pob_mcp_server.py` is a standalone [Model Context Protocol](https://modelcontextprotocol.io) server that exposes `take_screenshot` to any MCP-compatible AI application (Claude Desktop, Cursor, etc.).
+
+**Install dependency:**
+
+```sh
+pip install mcp
+```
+
+**Register with Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+When Pob is running with `start_mcp: true`, the server is already up on SSE — point Claude Desktop at it directly:
+
+```json
+{
+  "mcpServers": {
+    "pob": {
+      "url": "http://127.0.0.1:8000/sse"
+    }
+  }
+}
+```
+
+Alternatively, let Claude Desktop manage the process itself (stdio mode):
+
+```json
+{
+  "mcpServers": {
+    "pob": {
+      "command": "python3",
+      "args": ["/path/to/pob/mcp/pob_mcp_server.py"]
+    }
+  }
+}
+```
+
+**Available tool:**
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the primary display and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
+
+The server communicates over stdio and requires macOS (uses the built-in `screencapture` command).
+
+
 `settings.json`
 ---------------
 
@@ -77,6 +124,7 @@ Settings are stored in `settings.json` in the project root.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
+| `start_mcp` | `true` | Automatically start the MCP server (SSE on `http://127.0.0.1:8000`) when Pob launches |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |

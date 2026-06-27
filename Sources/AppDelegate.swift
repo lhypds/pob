@@ -7,7 +7,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
-    private var clickThroughEnabled = true
+    private var clickThroughEnabled = false
+    private var mcpProcess: Process?
 
     override init() {
         super.init()
@@ -89,11 +90,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         updateIgnoresMouseEvents()
+
+        if SettingsService.shared.getStartMcp() {
+            startMcpServer()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor  { NSEvent.removeMonitor(m) }
+        mcpProcess?.terminate()
+        mcpProcess = nil
+    }
+
+    private func startMcpServer() {
+        let serverPath = SettingsService.shared.projectRoot
+            .appendingPathComponent("mcp/pob_mcp_server.py").path
+        guard FileManager.default.fileExists(atPath: serverPath) else {
+            AppLogger.log("MCP server not found at \(serverPath)")
+            return
+        }
+        let p = Process()
+        p.launchPath = "/usr/bin/env"
+        p.arguments = ["python3", serverPath, "--sse"]
+        p.terminationHandler = { [weak self] _ in self?.mcpProcess = nil }
+        do {
+            try p.run()
+            mcpProcess = p
+            AppLogger.log("MCP server started (SSE on http://127.0.0.1:8000)")
+        } catch {
+            AppLogger.log("MCP server failed to start: \(error)")
+        }
     }
 
     private func loadVersion() -> String {

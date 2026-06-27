@@ -3,6 +3,7 @@
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
   "max_steps": 12,
   "model": "gpt-4o",
+  "start_mcp": true,
   "terminal": "iterm2",
   "window_height": 680,
   "window_width": 1227,

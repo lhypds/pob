@@ -25,7 +25,8 @@ class SettingsService {
         "max_steps": 12,
         "editor": "system",
         "terminal": "system",
-        "stop_hook": ""
+        "stop_hook": "",
+        "start_mcp": true
     ]
 
     private func serializeJSON(_ object: Any) -> String? {
@@ -104,6 +105,10 @@ class SettingsService {
 
     func getStopHook() -> String {
         loadJSON(key: "stop_hook") as? String ?? ""
+    }
+
+    func getStartMcp() -> Bool {
+        loadJSON(key: "start_mcp") as? Bool ?? true
     }
 
     func getWindowFrame() -> NSRect? {
