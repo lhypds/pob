@@ -166,7 +166,6 @@ struct ContentView: View {
             var lastContext: ScreenshotContext? = nil
             var lastScreenshot: NSImage? = nil
             var emptyResponseCount = 0
-            var pendingClick = false
 
             AppLogger.log("[\(sessionId)] Session started")
 
@@ -196,12 +195,12 @@ struct ContentView: View {
 
                 Available actions:
                 • move(dx, dy) — nudge the cursor by a relative pixel offset; you receive a new screenshot showing the updated cursor arrow tip.
-                • click() — left-click at the current cursor position (requires CONFIRM reply).
+                • click() — left-click at the current cursor position (executes immediately).
                 • rightClick() — right-click at the current cursor position (executes immediately).
                 • doubleClick() — double-click at the current cursor position (executes immediately).
                 • drag(dx, dy) — drag from the current cursor position to current+(dx,dy); cursor ends at the new position.
                 • scroll(dx, dy) — scroll at the current cursor position; dy>0 = down, dy<0 = up, dx>0 = right.
-                • type(text) — type text at the current keyboard focus.
+                • typeText(text) — type text at the current keyboard focus.
                 • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
                 home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
 
@@ -248,20 +247,10 @@ struct ContentView: View {
 
                 if result.toolCalls.isEmpty {
                     let text = result.contentText ?? ""
-                    if pendingClick && text.uppercased().contains("CONFIRM") {
-                        let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] click confirmed at virtual(\(Int(curPos.x)), \(Int(curPos.y)))")
-                        if let ctx = lastContext {
-                            let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
-                            AppLogger.log("[\(sessionId)] executing click at screen(\(Int(cgPt.x)), \(Int(cgPt.y)))")
-                            await MouseService.shared.performClick(at: cgPt)
-                        }
-                        break
-                    } else if !text.isEmpty {
+                    if !text.isEmpty {
                         AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
                         break
                     }
-                    // Empty response — prompt the AI to continue rather than ending the session.
                     emptyResponseCount += 1
                     if emptyResponseCount >= 3 {
                         AppLogger.log("[\(sessionId)] Too many empty responses, stopping.")
@@ -270,7 +259,7 @@ struct ContentView: View {
                     AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
                     messages.append([
                         "role": "user",
-                        "content": "Continue the task. Use move(dx, dy) to adjust the cursor, or click() if the cursor tip is already on the target."
+                        "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action."
                     ])
                     continue
                 }
@@ -310,33 +299,20 @@ struct ContentView: View {
 
                     case "click":
                         let curPos = MouseService.shared.virtualCursorPosition
-                        AppLogger.log("[\(sessionId)] click() requested at (\(Int(curPos.x)), \(Int(curPos.y)))")
-
-                        messages.append([
-                            "role": "tool",
-                            "tool_call_id": toolCall.id,
-                            "content": "Click requested. Verifying position — reply CONFIRM or call move() to adjust."
-                        ])
-
-                        if let (verifyShot, verifyCtx) = captureWithCursor(window: window),
-                           let b64 = toBase64(verifyShot) {
-                            lastContext = verifyCtx
-                            lastScreenshot = verifyShot
-
-                            var contentParts: [[String: Any]] = [
-                                ["type": "text", "text": "Cursor at (\(Int(curPos.x)), \(Int(curPos.y))). The arrow tip is the exact click point. Is it on the target? Reply CONFIRM or call move() to adjust."],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
-                            ]
-
-                            if let zoomed = ScreenshotService.shared.zoomedView(verifyShot, around: curPos),
-                               let zoomB64 = toBase64(zoomed) {
-                                contentParts.append(["type": "image_url", "image_url": ["url": "data:image/png;base64,\(zoomB64)"]])
-                            }
-
-                            messages.append(["role": "user", "content": contentParts])
+                        AppLogger.log("[\(sessionId)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                        if let ctx = lastContext {
+                            let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
+                            await MouseService.shared.performClick(at: cgPt)
                         }
-
-                        pendingClick = true
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            messages.append(["role": "user", "content": [
+                                ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
 
                     case "rightClick":
                         let curPos = MouseService.shared.virtualCursorPosition
@@ -407,9 +383,9 @@ struct ContentView: View {
                             ] as [[String: Any]]])
                         }
 
-                    case "type":
+                    case "typeText":
                         let text = toolCall.arguments["text"] as? String ?? ""
-                        AppLogger.log("[\(sessionId)] type(\"\(text.prefix(80))\")")
+                        AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
                         await MouseService.shared.performType(text: text)
                         messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                          "content": "Typed \"\(text)\"."])
@@ -488,7 +464,7 @@ struct ContentView: View {
                 "type": "function",
                 "function": [
                     "name": "click",
-                    "description": "Click at the current cursor position. You will receive a verification screenshot; reply CONFIRM to execute the click, or call move() to adjust first.",
+                    "description": "Left-click at the current cursor position. Executes immediately; you will receive a screenshot after the click.",
                     "parameters": [
                         "type": "object",
                         "properties": [:] as [String: Any],
@@ -553,7 +529,7 @@ struct ContentView: View {
             [
                 "type": "function",
                 "function": [
-                    "name": "type",
+                    "name": "typeText",
                     "description": "Type text at the current keyboard focus.",
                     "parameters": [
                         "type": "object",

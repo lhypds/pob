@@ -1,5 +1,6 @@
 import CoreGraphics
 import AppKit
+import ApplicationServices
 
 class MouseService {
     static let shared = MouseService()
@@ -29,6 +30,8 @@ class MouseService {
         await MainActor.run {
             NSApplication.shared.windows.first?.ignoresMouseEvents = true
         }
+        // Give the window server time to process the hit-test change before posting the event.
+        try? await Task.sleep(nanoseconds: 100_000_000)
 
         if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                mouseCursorPosition: cgPoint, mouseButton: .left) {
@@ -47,6 +50,7 @@ class MouseService {
 
     func performRightClick(at cgPoint: CGPoint) async {
         await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        try? await Task.sleep(nanoseconds: 100_000_000)
         if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
                                mouseCursorPosition: cgPoint, mouseButton: .right) {
             down.post(tap: .cghidEventTap)
@@ -61,6 +65,7 @@ class MouseService {
 
     func performDoubleClick(at cgPoint: CGPoint) async {
         await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        try? await Task.sleep(nanoseconds: 100_000_000)
         for clickCount in [1, 2] {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                    mouseCursorPosition: cgPoint, mouseButton: .left) {
@@ -80,6 +85,7 @@ class MouseService {
 
     func performDrag(from: CGPoint, to: CGPoint) async {
         await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        try? await Task.sleep(nanoseconds: 100_000_000)
         if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                mouseCursorPosition: from, mouseButton: .left) {
             down.post(tap: .cghidEventTap)
@@ -104,6 +110,7 @@ class MouseService {
 
     func performScroll(at cgPoint: CGPoint, dx: Int32, dy: Int32) async {
         await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
+        try? await Task.sleep(nanoseconds: 100_000_000)
         // wheel1 = vertical (negative = down), wheel2 = horizontal (positive = right)
         if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
                                  wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0) {
@@ -114,19 +121,18 @@ class MouseService {
     }
 
     func performType(text: String) async {
-        let source = CGEventSource(stateID: .hidSystemState)
-        for scalar in text.unicodeScalars {
-            var char = UniChar(scalar.value <= 0xFFFF ? scalar.value : 0x3F)
-            if let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
-                down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
-                down.post(tap: .cghidEventTap)
+        // Use the Accessibility API to insert text at the focused element's cursor position.
+        // This works for any script (including CJK) without touching the clipboard.
+        let sysWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(sysWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+           let focusedRef {
+            let element = focusedRef as! AXUIElement
+            if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success {
+                return
             }
-            if let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
-                up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
-                up.post(tap: .cghidEventTap)
-            }
-            try? await Task.sleep(nanoseconds: 10_000_000)
         }
+        AppLogger.log("typeText: AX insertion failed — no fallback (would cause alert beep)")
     }
 
     func performKeyPress(key: String) async {
