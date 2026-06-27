@@ -36,6 +36,7 @@ class SettingsService {
         "openai_api_key": "",
         "model": "gpt-4o",
         "mcp_server_port": 8032,
+        "start_mcp": true,
         "max_steps": 12,
         "macro_default_delay": 1000,
         "editor": "system",
