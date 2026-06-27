@@ -5,7 +5,8 @@ import ApplicationServices
 class MouseService {
     static let shared = MouseService()
 
-    // Virtual cursor in screenshot pixel coordinates (origin: top-left)
+    // Virtual cursor in screenshot pixel coordinates (origin: top-left).
+    // Never touches the real system mouse pointer.
     var virtualCursorPosition: CGPoint = .zero
 
     private init() {}
@@ -23,106 +24,94 @@ class MouseService {
         virtualCursorPosition = .zero
     }
 
-    // Performs an actual system left-click at the given CG screen point (origin top-left).
-    // Requires Accessibility permission (System Preferences > Privacy & Security > Accessibility).
+    // MARK: - Mouse actions
+
     func performClick(at cgPoint: CGPoint) async {
-        // Temporarily pass clicks through the overlay so the event reaches the app below.
-        await MainActor.run {
-            NSApplication.shared.windows.first?.ignoresMouseEvents = true
-        }
-        // Give the window server time to process the hit-test change before posting the event.
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                               mouseCursorPosition: cgPoint, mouseButton: .left) {
-            down.post(tap: .cghidEventTap)
-        }
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                             mouseCursorPosition: cgPoint, mouseButton: .left) {
-            up.post(tap: .cghidEventTap)
-        }
-
-        await MainActor.run {
-            NSApplication.shared.windows.first?.ignoresMouseEvents = false
+        await passThrough {
+            if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                   mouseCursorPosition: cgPoint, mouseButton: .left) {
+                down.post(tap: .cghidEventTap)
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                                 mouseCursorPosition: cgPoint, mouseButton: .left) {
+                up.post(tap: .cghidEventTap)
+            }
         }
     }
 
     func performRightClick(at cgPoint: CGPoint) async {
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
-                               mouseCursorPosition: cgPoint, mouseButton: .right) {
-            down.post(tap: .cghidEventTap)
+        await passThrough {
+            if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
+                                   mouseCursorPosition: cgPoint, mouseButton: .right) {
+                down.post(tap: .cghidEventTap)
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
+                                 mouseCursorPosition: cgPoint, mouseButton: .right) {
+                up.post(tap: .cghidEventTap)
+            }
         }
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
-                             mouseCursorPosition: cgPoint, mouseButton: .right) {
-            up.post(tap: .cghidEventTap)
-        }
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
     }
 
     func performDoubleClick(at cgPoint: CGPoint) async {
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        for clickCount in [1, 2] {
-            if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                   mouseCursorPosition: cgPoint, mouseButton: .left) {
-                down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
-                down.post(tap: .cghidEventTap)
+        await passThrough {
+            for clickCount in [1, 2] {
+                if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                       mouseCursorPosition: cgPoint, mouseButton: .left) {
+                    down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+                    down.post(tap: .cghidEventTap)
+                }
+                try? await Task.sleep(nanoseconds: 30_000_000)
+                if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                                     mouseCursorPosition: cgPoint, mouseButton: .left) {
+                    up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+                    up.post(tap: .cghidEventTap)
+                }
+                if clickCount == 1 { try? await Task.sleep(nanoseconds: 50_000_000) }
             }
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                                 mouseCursorPosition: cgPoint, mouseButton: .left) {
-                up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
-                up.post(tap: .cghidEventTap)
-            }
-            if clickCount == 1 { try? await Task.sleep(nanoseconds: 50_000_000) }
         }
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
     }
 
     func performDrag(from: CGPoint, to: CGPoint) async {
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                               mouseCursorPosition: from, mouseButton: .left) {
-            down.post(tap: .cghidEventTap)
-        }
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        let steps = 20
-        for i in 1...steps {
-            let t = CGFloat(i) / CGFloat(steps)
-            let pt = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
-            if let drag = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
-                                   mouseCursorPosition: pt, mouseButton: .left) {
-                drag.post(tap: .cghidEventTap)
+        await passThrough {
+            if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                   mouseCursorPosition: from, mouseButton: .left) {
+                down.post(tap: .cghidEventTap)
             }
-            try? await Task.sleep(nanoseconds: 16_000_000)
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            let steps = 20
+            for i in 1...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let pt = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+                if let drag = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
+                                       mouseCursorPosition: pt, mouseButton: .left) {
+                    drag.post(tap: .cghidEventTap)
+                }
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+            if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                                 mouseCursorPosition: to, mouseButton: .left) {
+                up.post(tap: .cghidEventTap)
+            }
         }
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                             mouseCursorPosition: to, mouseButton: .left) {
-            up.post(tap: .cghidEventTap)
-        }
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
     }
 
     func performScroll(at cgPoint: CGPoint, dx: Int32, dy: Int32) async {
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = true }
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        // wheel1 = vertical (negative = down), wheel2 = horizontal (positive = right)
-        if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
-                                 wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0) {
-            scroll.location = cgPoint
-            scroll.post(tap: .cghidEventTap)
+        await passThrough {
+            // wheel1 = vertical (negative = scroll down), wheel2 = horizontal
+            if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                     wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0) {
+                scroll.location = cgPoint
+                scroll.post(tap: .cghidEventTap)
+            }
         }
-        await MainActor.run { NSApplication.shared.windows.first?.ignoresMouseEvents = false }
     }
 
+    // MARK: - Keyboard actions
+
     func performType(text: String) async {
-        // Use the Accessibility API to insert text at the focused element's cursor position.
-        // This works for any script (including CJK) without touching the clipboard.
+        // AX direct insertion: works for any script (CJK etc.) without touching the clipboard.
         let sysWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(sysWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
@@ -132,7 +121,7 @@ class MouseService {
                 return
             }
         }
-        AppLogger.log("typeText: AX insertion failed — no fallback (would cause alert beep)")
+        AppLogger.log("typeText: AX insertion failed for focused element")
     }
 
     func performKeyPress(key: String) async {
@@ -151,6 +140,39 @@ class MouseService {
             up.flags = flags
             up.post(tap: .cghidEventTap)
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Runs `body` with the overlay window set to click-through and the real mouse cursor frozen
+    /// in place, so automation events reach the app below without moving the user's pointer.
+    private func passThrough(_ body: () async -> Void) async {
+        await MainActor.run {
+            NSApplication.shared.windows.first?.ignoresMouseEvents = true
+        }
+        // Let the window server process the hit-test change before posting events.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Freeze the visible cursor so it never moves during the action.
+        let savedPos = Self.cgCursorPosition()
+        CGAssociateMouseAndMouseCursorPosition(0)
+
+        await body()
+
+        // Restore cursor position and re-couple movement.
+        CGWarpMouseCursorPosition(savedPos)
+        CGAssociateMouseAndMouseCursorPosition(1)
+
+        await MainActor.run {
+            NSApplication.shared.windows.first?.ignoresMouseEvents = false
+        }
+    }
+
+    /// Current system cursor position in CG coordinates (origin: top-left of primary display).
+    private static func cgCursorPosition() -> CGPoint {
+        guard let primary = NSScreen.screens.first else { return .zero }
+        let ns = NSEvent.mouseLocation  // NSScreen: y from bottom of primary
+        return CGPoint(x: ns.x, y: primary.frame.height - ns.y)
     }
 
     private static func resolveKey(_ key: String) -> (CGKeyCode, CGEventFlags)? {
