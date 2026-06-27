@@ -417,15 +417,18 @@ struct ContentView: View {
                 if Task.isCancelled { break }
             }
 
+            let wasCancelled = Task.isCancelled
             await MainActor.run {
                 isExecuting = false
                 currentTask = nil
-                let soundCmd = SettingsService.shared.getStopHook()
-                if !soundCmd.isEmpty {
-                    let p = Process()
-                    p.launchPath = "/bin/sh"
-                    p.arguments = ["-c", soundCmd]
-                    try? p.run()
+                if !wasCancelled {
+                    let soundCmd = SettingsService.shared.getStopHook()
+                    if !soundCmd.isEmpty {
+                        let p = Process()
+                        p.launchPath = "/bin/sh"
+                        p.arguments = ["-c", soundCmd]
+                        try? p.run()
+                    }
                 }
             }
         }
