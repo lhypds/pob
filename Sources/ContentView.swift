@@ -308,6 +308,7 @@ struct ContentView: View {
                 • typeText(text) — type text at the current keyboard focus.
                 • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
                 home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
+                • take_screenshot() — capture a fresh screenshot of the current screen state without moving or clicking.
 
                 Workflow:
                 1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
@@ -524,6 +525,19 @@ struct ContentView: View {
                             ] as [[String: Any]]])
                         }
 
+                    case "take_screenshot":
+                        AppLogger.log("[\(sessionId)] take_screenshot")
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Screenshot captured."])
+                        if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
+                            lastContext = ctx; lastScreenshot = shot
+                            StorageService.shared.saveScreenshot(shot, sessionId: sessionId)
+                            messages.append(["role": "user", "content": [
+                                ["type": "text", "text": "Current screenshot:"],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]
+                            ] as [[String: Any]]])
+                        }
+
                     default:
                         AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
                     }
@@ -691,6 +705,18 @@ struct ContentView: View {
                             "key": ["type": "string", "description": "Key name, e.g. \"return\", \"escape\", \"cmd+v\"."]
                         ] as [String: Any],
                         "required": ["key"]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "take_screenshot",
+                    "description": "Capture a fresh screenshot of the current screen state without moving or clicking. Use this when you need to observe the screen after waiting for something to load or appear.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [:] as [String: Any],
+                        "required": [] as [String]
                     ] as [String: Any]
                 ] as [String: Any]
             ]

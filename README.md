@@ -23,6 +23,26 @@ Phase 2, make the AI can operate the desktop application.
 Phase 3, make AI learn users operation and do it for the user with instructions, or repeat.  
 
 
+Functions
+---------
+
+These are the tools the AI can call during a session:
+
+| Function | Parameters | Description |
+|----------|------------|-------------|
+| `move(dx, dy)` | `dx`: number, `dy`: number | Nudge the cursor by a relative pixel offset. Positive `dx` = right, positive `dy` = down. Returns a new screenshot showing the updated cursor position. |
+| `click()` | — | Left-click at the current cursor position. |
+| `rightClick()` | — | Right-click at the current cursor position. |
+| `doubleClick()` | — | Double-click at the current cursor position. |
+| `drag(dx, dy)` | `dx`: number, `dy`: number | Drag from the current cursor position by `(dx, dy)` pixels. Cursor ends at the new position. |
+| `scroll(dx, dy)` | `dx`: number, `dy`: number | Scroll at the current cursor position. `dy > 0` = down, `dy < 0` = up, `dx > 0` = right. |
+| `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
+| `keyPress(key)` | `key`: string | Press a special key. Supported: `return`, `tab`, `space`, `delete`, `escape`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
+| `take_screenshot()` | — | Capture a fresh screenshot of the current screen state without moving or clicking. Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
+
+All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).
+
+
 `settings.json`
 ---------------
 

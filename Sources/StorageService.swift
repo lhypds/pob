@@ -47,6 +47,17 @@ class StorageService {
         }
     }
 
+    /// Saves a screenshot to logs/sessionId/screenshots/<unixtime>.png.
+    func saveScreenshot(_ image: NSImage, sessionId: String) {
+        let screenshotsDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("screenshots")
+        try? fileManager.createDirectory(at: screenshotsDir, withIntermediateDirectories: true)
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return }
+        let filename = "\(Int(Date().timeIntervalSince1970)).png"
+        try? png.write(to: screenshotsDir.appendingPathComponent(filename))
+    }
+
     private func stripImages(from messages: [[String: Any]]) -> [[String: Any]] {
         messages.map { msg in
             var m = msg
