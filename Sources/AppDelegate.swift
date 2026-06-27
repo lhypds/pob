@@ -2,10 +2,17 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
+
     var window: NSWindow?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var clickThroughEnabled = true
+
+    override init() {
+        super.init()
+        AppDelegate.shared = self
+    }
 
     // Called by ContentView whenever isExecuting or isTargeting changes.
     func setClickThrough(_ enabled: Bool) {

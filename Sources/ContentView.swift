@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var isExecuting = false
     @State private var currentTask: Task<Void, Never>?
     @State private var isTargeting = false
+    @State private var isClickThrough = true
     @State private var mousePosition: CGPoint? = nil
     @State private var verificationError: String? = nil
     @State private var maxStepWarning = false
@@ -67,6 +68,15 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
+                Button(action: {
+                    isClickThrough.toggle()
+                    updateClickThrough()
+                }) {
+                    Image(systemName: isClickThrough ? "hand.raised.slash" : "hand.raised")
+                        .foregroundStyle(isClickThrough ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                }
+                .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
+
                 Button(action: { SettingsService.shared.openSettingsFile() }) {
                     Image(systemName: "gearshape")
                 }
@@ -514,7 +524,7 @@ struct ContentView: View {
     }
 
     private func updateClickThrough() {
-        (NSApplication.shared.delegate as? AppDelegate)?.setClickThrough(!isExecuting && !isTargeting)
+        AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting)
     }
 
     // MARK: - Mouse Tracking
