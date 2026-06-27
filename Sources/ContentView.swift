@@ -385,6 +385,11 @@ struct ContentView: View {
                     AppLogger.log("[\(sessionId)] Macro keyPress(\"\(key)\")")
                     await MouseService.shared.performKeyPress(key: key)
 
+                case "sleep":
+                    guard let ms = args.first.flatMap({ Double($0) }) else { continue }
+                    AppLogger.log("[\(sessionId)] Macro sleep(\(Int(ms))ms)")
+                    try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
+
                 case "take_screenshot":
                     let cropRect: CGRect? = args.count >= 4
                         ? { guard let x = Double(args[0]), let y = Double(args[1]),
@@ -503,6 +508,7 @@ struct ContentView: View {
                 • typeText(text) — type text at the current keyboard focus.
                 • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
                 home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
+                • sleep(milliseconds) — pause execution for the given number of milliseconds.
                 • take_screenshot(crop_x, crop_y, crop_width, crop_height) — capture a fresh screenshot; all crop parameters are optional. When provided, the image is cropped to that pixel region before being returned.
 
                 Workflow:
@@ -728,6 +734,14 @@ struct ContentView: View {
                             ] as [[String: Any]]])
                         }
 
+                    case "sleep":
+                        let ms = toolCall.arguments["milliseconds"] as? Double ?? 0
+                        AppLogger.log("[\(sessionId)] sleep(\(Int(ms))ms)")
+                        if shouldRecord { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
+                        try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
+                        messages.append(["role": "tool", "tool_call_id": toolCall.id,
+                                         "content": "Slept for \(Int(ms))ms."])
+
                     case "take_screenshot":
                         let cropX = (toolCall.arguments["crop_x"] as? Double).map { CGFloat($0) }
                         let cropY = (toolCall.arguments["crop_y"] as? Double).map { CGFloat($0) }
@@ -932,6 +946,20 @@ struct ContentView: View {
                             "key": ["type": "string", "description": "Key name, e.g. \"return\", \"escape\", \"cmd+v\"."]
                         ] as [String: Any],
                         "required": ["key"]
+                    ] as [String: Any]
+                ] as [String: Any]
+            ],
+            [
+                "type": "function",
+                "function": [
+                    "name": "sleep",
+                    "description": "Pause execution for a given number of milliseconds.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "milliseconds": ["type": "number", "description": "Number of milliseconds to sleep."]
+                        ] as [String: Any],
+                        "required": ["milliseconds"]
                     ] as [String: Any]
                 ] as [String: Any]
             ],

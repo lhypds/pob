@@ -9,7 +9,7 @@ Perception and Operation Bridge.
 Purpose
 -------
 
-Make the AI see the deskotp application with screenshot, and operate it.  
+Make the AI see the desktop application with a screenshot, and operate it.
 
 
 Roadmap
@@ -38,9 +38,30 @@ These are the tools the AI can call during a session:
 | `scroll(dx, dy)` | `dx`: number, `dy`: number | Scroll at the current cursor position. `dy > 0` = down, `dy < 0` = up, `dx > 0` = right. |
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
 | `keyPress(key)` | `key`: string | Press a special key. Supported: `return`, `tab`, `space`, `delete`, `escape`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
+| `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
 | `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
 
 All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).
+
+These functions are also available in macros (see Macro below).
+
+
+Macro
+-----
+
+A macro is a recorded or hand-written sequence of actions stored in `macro.txt`. Each line is one function call using the same syntax as the AI tools above.
+
+Example `macro.txt`:
+
+```
+move(100, 200)
+click()
+sleep(500)
+typeText("hello")
+keyPress("return")
+```
+
+Use the record button (⏺) in the toolbar to record actions during an AI session — they are appended to `macro.txt` automatically. Use the play button (▶) to run the macro directly without the AI.
 
 
 `settings.json`
@@ -55,6 +76,7 @@ Settings are stored in `settings.json` in the project root.
 | `max_steps` | `12` | Maximum tool-execution steps before the run is stopped with a warning |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
+| `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |
@@ -67,6 +89,7 @@ Example:
   "model": "gpt-4o",
   "max_tokens": 2000,
   "max_steps": 12,
-  "editor": "vscode"
+  "editor": "vscode",
+  "stop_hook": "afplay /System/Library/Sounds/Morse.aiff"
 }
 ```
