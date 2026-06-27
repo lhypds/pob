@@ -36,9 +36,9 @@ class StorageService {
         try? macro.write(to: dest, atomically: true, encoding: .utf8)
     }
 
-    /// Writes a plan string to logs/sessionId/plan.txt.
+    /// Writes a plan JSON string to logs/sessionId/plan.json.
     func savePlan(_ plan: String, sessionId: String) {
-        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan.txt")
+        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan.json")
         try? plan.write(to: dest, atomically: true, encoding: .utf8)
     }
 
