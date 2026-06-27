@@ -57,7 +57,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.styleMask.insert(.miniaturizable)
             window.styleMask.insert(.closable)
 
-            window.level = .normal
+            window.level = .floating
             window.ignoresMouseEvents = false
 
             if let savedFrame = SettingsService.shared.getWindowFrame() {
