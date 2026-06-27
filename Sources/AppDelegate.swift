@@ -104,15 +104,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startMcpServer() {
-        let serverPath = SettingsService.shared.projectRoot
-            .appendingPathComponent("mcp/pob_mcp_server.py").path
+        let mcpDir = SettingsService.shared.projectRoot.appendingPathComponent("mcp")
+        let serverPath = mcpDir.appendingPathComponent("pob_mcp_server.py").path
         guard FileManager.default.fileExists(atPath: serverPath) else {
             AppLogger.log("MCP server not found at \(serverPath)")
             return
         }
+
+        // Prefer the pyenv Python pinned in mcp/.python-version over the system python3.
+        let python = resolvePython(mcpDir: mcpDir)
+
         let p = Process()
-        p.launchPath = "/usr/bin/env"
-        p.arguments = ["python3", serverPath, "--sse"]
+        p.launchPath = python
+        p.arguments = [serverPath, "--sse"]
         p.terminationHandler = { [weak self] _ in self?.mcpProcess = nil }
         do {
             try p.run()
@@ -121,6 +125,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             AppLogger.log("MCP server failed to start: \(error)")
         }
+    }
+
+    private func resolvePython(mcpDir: URL) -> String {
+        let versionFile = mcpDir.appendingPathComponent(".python-version")
+        if let version = try? String(contentsOf: versionFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+           !version.isEmpty {
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            let candidate = "\(home)/.pyenv/versions/\(version)/bin/python3"
+            if FileManager.default.fileExists(atPath: candidate) {
+                return candidate
+            }
+        }
+        return "/usr/bin/env python3"
     }
 
     private func loadVersion() -> String {

@@ -42,7 +42,20 @@ from typing import Optional
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("pob")
+
+def _parse_port(args: list[str], default: int) -> int:
+    if "--port" in args:
+        idx = args.index("--port")
+        if idx + 1 < len(args):
+            return int(args[idx + 1])
+    return default
+
+
+def _make_server(host: str = "127.0.0.1", port: int = 8032) -> FastMCP:
+    return FastMCP("pob", host=host, port=port)
+
+
+mcp = _make_server()
 
 
 @mcp.tool()
@@ -86,11 +99,10 @@ def take_screenshot(
 if __name__ == "__main__":
     args = sys.argv[1:]
     if "--sse" in args:
-        port = 8032
-        if "--port" in args:
-            idx = args.index("--port")
-            if idx + 1 < len(args):
-                port = int(args[idx + 1])
-        mcp.run(transport="sse", host="127.0.0.1", port=port)
+        port = _parse_port(args, 8032)
+        server = _make_server(host="127.0.0.1", port=port)
+        # Re-register tools on the new server instance
+        server.add_tool(take_screenshot)
+        server.run(transport="sse")
     else:
         mcp.run(transport="stdio")
