@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var currentTask: Task<Void, Never>?
     @State private var isTargeting = false
     @State private var isClickThrough = true
+    @State private var isLocked = false
     @State private var mousePosition: CGPoint? = nil
     @State private var verificationError: String? = nil
     @State private var maxStepWarning = false
@@ -56,27 +57,22 @@ struct ContentView: View {
                 animatedCursorPos = newPos
             }
         }
-        .onChange(of: isExecuting) { executing in
-            NSApplication.shared.windows.first?.isMovable = !executing
+        .onChange(of: isExecuting) { _ in
+            updateWindowLock()
             updateClickThrough()
+        }
+        .onChange(of: isLocked) { _ in
+            updateWindowLock()
         }
         .onChange(of: isTargeting) { _ in
             updateClickThrough()
         }
         .onAppear {
             updateClickThrough()
+            updateWindowLock()
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
-                Button(action: {
-                    isClickThrough.toggle()
-                    updateClickThrough()
-                }) {
-                    Image(systemName: isClickThrough ? "hand.raised.slash" : "hand.raised")
-                        .foregroundStyle(isClickThrough ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                }
-                .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
-
                 Button(action: { SettingsService.shared.openSettingsFile() }) {
                     Image(systemName: "gearshape")
                 }
@@ -107,6 +103,23 @@ struct ContentView: View {
                 }
                 .help(isExecuting ? "Stop" : "Execute")
                 .animation(nil, value: isExecuting)
+
+                Button(action: {
+                    isClickThrough.toggle()
+                    updateClickThrough()
+                }) {
+                    Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
+                        .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+                }
+                .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
+
+                Button(action: {
+                    isLocked.toggle()
+                }) {
+                    Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                        .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+                }
+                .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
             }
         }
         .onTapGesture {
@@ -529,6 +542,17 @@ struct ContentView: View {
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return png.base64EncodedString()
+    }
+
+    private func updateWindowLock() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        let shouldLock = isLocked || isExecuting
+        window.isMovable = !shouldLock
+        if shouldLock {
+            window.styleMask.remove(.resizable)
+        } else {
+            window.styleMask.insert(.resizable)
+        }
     }
 
     private func updateClickThrough() {
