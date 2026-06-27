@@ -233,11 +233,19 @@ struct ContentView: View {
 
             GeometryReader { geo in
                 let labelW: CGFloat = 180
+                let labelH: CGFloat = 22
                 let margin: CGFloat = 6
                 let rawX = minX + w / 2
                 let clampedX = min(max(labelW / 2 + margin, rawX), geo.size.width - labelW / 2 - margin)
-                let rawY = minY + h + 14
-                let finalY = rawY > geo.size.height - margin ? minY - 10 : rawY
+                let belowY = minY + h + 2 + labelH / 2
+                let aboveY = minY - 2 - labelH / 2
+                let minAllowed = margin + labelH / 2
+                let maxAllowed = geo.size.height - margin - labelH / 2
+                let finalY: CGFloat = {
+                    if belowY <= maxAllowed { return belowY }
+                    if aboveY >= minAllowed { return aboveY }
+                    return max(minAllowed, min(maxAllowed, belowY))
+                }()
                 Text("(\(Int(minX * scale)), \(Int(minY * scale))) \(Int(w * scale))×\(Int(h * scale))")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(.white)
