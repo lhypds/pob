@@ -23,6 +23,7 @@ class SettingsService {
     private let defaultSettings: [String: Any] = [
         "model": "gpt-4o",
         "max_steps": 12,
+        "macro_default_delay": 1000,
         "editor": "system",
         "terminal": "system",
         "stop_hook": "",
@@ -115,6 +116,12 @@ class SettingsService {
 
     func getStopHook() -> String {
         loadJSON(key: "stop_hook") as? String ?? ""
+    }
+
+    func getMacroDefaultDelay() -> Int {
+        if let value = loadJSON(key: "macro_default_delay") as? Int { return max(0, value) }
+        if let value = loadJSON(key: "macro_default_delay") as? Double { return max(0, Int(value)) }
+        return 1000
     }
 
     func getWindowFrame() -> NSRect? {

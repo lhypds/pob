@@ -1,9 +1,10 @@
 {
   "editor": "system",
-  "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
+  "macro_default_delay": 1000,
   "max_steps": 12,
   "model": "gpt-4o",
   "start_mcp": true,
+  "stop_hook": "",
   "terminal": "iterm2",
   "window_height": 680,
   "window_width": 1227,

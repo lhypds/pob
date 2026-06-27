@@ -411,7 +411,10 @@ struct ContentView: View {
                     AppLogger.log("[\(sessionId)] Macro: unknown action: \(name)")
                 }
 
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let delayMs = SettingsService.shared.getMacroDefaultDelay()
+                if delayMs > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+                }
             }
 
             AppLogger.log("Macro execution complete")
