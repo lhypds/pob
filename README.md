@@ -23,6 +23,12 @@ Phase 2, make the AI can operate the desktop application.
 Phase 3, make AI learn users operation and do it for the user with instructions, or repeat.  
 
 
+Release
+-------
+
+Use `build.sh` to build the app to `macos_app/Pob.app`.  
+
+
 Functions
 ---------
 

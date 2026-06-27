@@ -7,8 +7,7 @@ class StorageService {
     private let fileManager = FileManager.default
 
     private var logsDirectory: URL {
-        let root = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        return root.appendingPathComponent("logs")
+        SettingsService.shared.projectRoot.appendingPathComponent("logs")
     }
 
     private init() {

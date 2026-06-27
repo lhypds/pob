@@ -7,11 +7,23 @@ class SettingsService {
     private let fileManager = FileManager.default
 
     var projectRoot: URL {
-        URL(fileURLWithPath: fileManager.currentDirectoryPath)
+        let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+        // Dev workflow: start.sh runs the binary from the project root, which has settings.json
+        if fileManager.fileExists(atPath: cwd.appendingPathComponent("settings.json").path) {
+            return cwd
+        }
+        // Also accept a directory that looks like the project source tree
+        if fileManager.fileExists(atPath: cwd.appendingPathComponent("Sources").path) {
+            return cwd
+        }
+        // Production: app launched from Finder/Applications — use Application Support
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Pob")
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
     private var settingsFile: URL { projectRoot.appendingPathComponent("settings.json") }
-    private var envFile: URL { projectRoot.appendingPathComponent(".env") }
     private var instructionFile: URL { projectRoot.appendingPathComponent("instruction.txt") }
     private var macroFile: URL { projectRoot.appendingPathComponent("macro.txt") }
     private var logsFolder: URL { projectRoot.appendingPathComponent("logs") }
@@ -21,7 +33,9 @@ class SettingsService {
     }
 
     private let defaultSettings: [String: Any] = [
+        "openai_api_key": "",
         "model": "gpt-4o",
+        "mcp_server_port": 8032,
         "max_steps": 12,
         "macro_default_delay": 1000,
         "editor": "system",
@@ -65,27 +79,13 @@ class SettingsService {
     }
 
     func getAPIKey() -> String {
-        return envValue(key: "OPENAI_API_KEY")
+        return loadJSON(key: "openai_api_key") as? String ?? ""
     }
 
     func getMCPPort() -> UInt16 {
-        let raw = envValue(key: "MCP_SERVER_PORT")
-        if let n = UInt16(raw), n > 0 { return n }
+        if let n = loadJSON(key: "mcp_server_port") as? Int, n > 0 { return UInt16(n) }
+        if let n = loadJSON(key: "mcp_server_port") as? Double, n > 0 { return UInt16(n) }
         return 8032
-    }
-
-    private func envValue(key: String) -> String {
-        guard let content = try? String(contentsOf: envFile, encoding: .utf8) else { return "" }
-        let prefix = key + "="
-        for line in content.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix(prefix) {
-                return String(trimmed.dropFirst(prefix.count))
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-            }
-        }
-        return ""
     }
 
     func getModel() -> String {
