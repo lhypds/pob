@@ -27,16 +27,34 @@ It allows AI to:
 Roadmap
 -------
 
-Phase 1, Make AI see its frontend development result.  
-         To improve the frontend development automation.  
-Phase 2, make the AI can operate the desktop application.  
-Phase 3, make AI learn users operation and do it for the user with instructions, or repeat.  
+Phase 1. Make AI see its frontend development result.  
+         To improve the frontend development automation. (DONE)  
+Phase 2. Make the AI can operate the desktop application. (DONE)  
+Phase 3. Make AI learn users operation and do it for the user with instructions, or repeat. (IN PROGRESS)  
 
 
-Screenshot
-----------
+Features
+--------
 
 <img width="702" height="610" alt="image" src="https://github.com/user-attachments/assets/347585a4-5850-421b-92ee-f439cbe0a15f" />
+
+Toolbar buttons (left to right):
+
+| # | Button | Description |
+|---|--------|-------------|
+| 1 | Settings | Open the settings file |
+| 2 | Logs | Open the logs folder |
+| 3 | Instruction | Open the instruction file |
+| 4 | Macro | Open the macro file |
+| 5 | Record Macro | Start/stop macro recording; clears macro on start |
+| 6 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
+| 7 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
+| 8 | Execute / Stop | Run the instruction or macro; stop if already running |
+| 9 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
+| 10 | Lock | Lock the window to prevent moving or resizing |
+| 11 | Clear | Clear instruction, macro, logs, or all |
+
+* Target and Crop are helper functions for when you hard to describe the GUI element.  
 
 
 Functions
