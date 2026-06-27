@@ -22,13 +22,20 @@ class SettingsService {
     private let defaultSettings: [String: Any] = [
         "model": "gpt-4o",
         "max_tokens": 2000,
-        "editor": "system"
+        "editor": "system",
+        "terminal": "system"
     ]
+
+    private func serializeJSON(_ object: Any) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
+              var string = String(data: data, encoding: .utf8) else { return nil }
+        string = string.replacingOccurrences(of: "\" : ", with: "\": ")
+        return string
+    }
 
     private func ensureFiles() {
         if !fileManager.fileExists(atPath: settingsFile.path) {
-            if let data = try? JSONSerialization.data(withJSONObject: defaultSettings, options: [.prettyPrinted, .sortedKeys]),
-               let string = String(data: data, encoding: .utf8) {
+            if let string = serializeJSON(defaultSettings) {
                 try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
             }
         } else {
@@ -39,9 +46,7 @@ class SettingsService {
                     json[key] = value
                     changed = true
                 }
-                if changed,
-                   let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-                   let string = String(data: data, encoding: .utf8) {
+                if changed, let string = serializeJSON(json) {
                     try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
                 }
             }
@@ -78,6 +83,10 @@ class SettingsService {
         loadJSON(key: "editor") as? String ?? "system"
     }
 
+    func getTerminal() -> String {
+        loadJSON(key: "terminal") as? String ?? "system"
+    }
+
     func getWindowFrame() -> NSRect? {
         guard let x = loadJSON(key: "window_x") as? Double,
               let y = loadJSON(key: "window_y") as? Double,
@@ -96,8 +105,7 @@ class SettingsService {
         json["window_y"] = Double(frame.origin.y)
         json["window_width"] = Double(frame.size.width)
         json["window_height"] = Double(frame.size.height)
-        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-           let string = String(data: data, encoding: .utf8) {
+        if let string = serializeJSON(json) {
             try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
         }
     }
@@ -134,7 +142,12 @@ class SettingsService {
         case "vim":
             process.launchPath = "/usr/bin/osascript"
             let escaped = url.path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            process.arguments = ["-e", "tell application \"Terminal\" to do script \"vim \\\"\(escaped)\\\"\"", "-e", "tell application \"Terminal\" to activate"]
+            let cmd = "vim \\\"\(escaped)\\\""
+            if getTerminal() == "iterm2" {
+                process.arguments = ["-e", "tell application \"iTerm\" to create window with default profile command \"vim \\\"\(escaped)\\\"\"", "-e", "tell application \"iTerm\" to activate"]
+            } else {
+                process.arguments = ["-e", "tell application \"Terminal\" to do script \"\(cmd)\"", "-e", "tell application \"Terminal\" to activate"]
+            }
         default: // "system"
             process.launchPath = "/usr/bin/open"
             process.arguments = ["-t", url.path]

@@ -33,6 +33,7 @@ Settings are stored in `settings.json` in the project root.
 | `model` | `gpt-4o` | OpenAI model to use |
 | `max_tokens` | `2000` | Maximum tokens in the response |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
+| `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |
