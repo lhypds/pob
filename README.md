@@ -1,9 +1,19 @@
 
-aii
+Pob
 ===
 
 
+Perception and Operation Bridge.
+
+
+Purpose
+-------
+
 Make the AI see the deskotp application with screenshot, and operate it.  
+
+
+Roadmap
+-------
 
 Phase 1, Make AI see its frontend development result.  
          To improve the frontend development automation.  
