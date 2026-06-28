@@ -16,10 +16,14 @@ class AgentService {
             Respond with a JSON object in exactly this format:
             {
               "steps": [
-                { "sequence": 1, "description": "...", "status": "pending" },
-                { "sequence": 2, "description": "...", "status": "pending" }
+                { "sequence": 1, "instruction": "...", "expectation": "..." },
+                { "sequence": 2, "instruction": "...", "expectation": "..." }
               ]
             }
+
+            Fields:
+            - instruction: the concrete action to perform for this step.
+            - expectation: the observable outcome that confirms this step succeeded (e.g. "button is highlighted", "dialog appears", "text field is focused").
             """],
             ["role": "user", "content": [
                 ["type": "text", "text": "Task: \(instruction)"],

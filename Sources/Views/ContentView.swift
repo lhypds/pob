@@ -540,10 +540,10 @@ struct ContentView: View {
             return
         }
 
-        var steps: [(sequence: Int, description: String)] = []
+        var steps: [(sequence: Int, instruction: String, expectation: String)] = []
         for s in rawSteps {
-            if let seq = s["sequence"] as? Int, let desc = s["description"] as? String {
-                steps.append((seq, desc))
+            if let seq = s["sequence"] as? Int, let inst = s["instruction"] as? String {
+                steps.append((seq, inst, s["expectation"] as? String ?? ""))
             }
         }
         steps.sort { $0.sequence < $1.sequence }
@@ -586,7 +586,8 @@ struct ContentView: View {
                     await self.executeStep(
                         sessionId: sessionId,
                         stepSeq: step.sequence,
-                        stepDescription: step.description,
+                        stepInstruction: step.instruction,
+                        stepExpectation: step.expectation,
                         plan: plan,
                         window: window
                     )
@@ -599,12 +600,13 @@ struct ContentView: View {
     private func executeStep(
         sessionId: String,
         stepSeq: Int,
-        stepDescription: String,
+        stepInstruction: String,
+        stepExpectation: String,
         plan: String,
         window: NSWindow?
     ) async {
         StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, stepSeq: stepSeq)
-        AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepDescription)")
+        AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepInstruction)")
 
         guard let (initShot, initCtx) = captureWithCursor(window: window),
               let initBase64 = toBase64(initShot) else {
@@ -646,7 +648,8 @@ struct ContentView: View {
 
             The cursor starts at (20, 20).
 
-            Execute this step: \(stepDescription)
+            Execute this step: \(stepInstruction)
+            Expectation: \(stepExpectation)
 
             Full execution plan for reference:
             \(plan)
@@ -657,7 +660,7 @@ struct ContentView: View {
         let userMsg: [String: Any] = [
             "role": "user",
             "content": [
-                ["type": "text", "text": "Step \(stepSeq): \(stepDescription)"],
+                ["type": "text", "text": "Step \(stepSeq): \(stepInstruction)"],
                 ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
             ] as [[String: Any]],
         ]

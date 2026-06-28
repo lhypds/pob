@@ -54,8 +54,16 @@ class StorageService {
            let steps = json["steps"] as? [[String: Any]]
         {
             for step in steps {
-                if let seq = step["sequence"] as? Int {
-                    try? fileManager.createDirectory(at: planDir.appendingPathComponent("\(seq)"), withIntermediateDirectories: true)
+                guard let seq = step["sequence"] as? Int else { continue }
+                let stepDir = planDir.appendingPathComponent("\(seq)")
+                try? fileManager.createDirectory(at: stepDir, withIntermediateDirectories: true)
+                let stepEntry: [String: Any] = [
+                    "sequence": seq,
+                    "instruction": step["instruction"] as? String ?? "",
+                    "expectation": step["expectation"] as? String ?? "",
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: stepEntry, options: .prettyPrinted) {
+                    try? data.write(to: stepDir.appendingPathComponent("step.json"))
                 }
             }
         }
