@@ -491,10 +491,14 @@ struct ContentView: View {
             }
 
             let instruction = SettingsService.shared.getInstruction()
-
             StorageService.shared.saveInstruction(sessionId: sessionId)
+
+            // Generate plan (`plan.json`) from instruction
             AppLogger.log("[\(sessionId)] Generating plan...")
-            await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: initBase64, sessionId: sessionId)
+            let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: initBase64, sessionId: sessionId)
+            if let plan {
+                AppLogger.log("[\(sessionId)] Plan: \(plan)")
+            }
 
             guard !Task.isCancelled else {
                 await MainActor.run { isExecuting = false }
@@ -505,6 +509,7 @@ struct ContentView: View {
             await executeInstruction(
                 sessionId: sessionId,
                 instruction: instruction,
+                plan: plan,
                 initBase64: initBase64,
                 initContext: initCtx,
                 initScreenshot: initShot,
@@ -533,6 +538,7 @@ struct ContentView: View {
     private func executeInstruction(
         sessionId: String,
         instruction: String,
+        plan: String?,
         initBase64: String,
         initContext: ScreenshotContext,
         initScreenshot: NSImage,
@@ -572,6 +578,7 @@ struct ContentView: View {
             2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
 
             The cursor starts at (20, 20).
+            \(plan.map { "\n\nExecution plan (follow these steps in order):\n\($0)" } ?? "")
             """,
         ]
         messages.append(systemMsg)

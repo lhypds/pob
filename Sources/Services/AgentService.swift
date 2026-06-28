@@ -4,7 +4,7 @@ class AgentService {
     static let shared = AgentService()
     private init() {}
 
-    func generatePlan(instruction: String, screenshotBase64: String, sessionId: String) async {
+    func generatePlan(instruction: String, screenshotBase64: String, sessionId: String) async -> String? {
         let messages: [[String: Any]] = [
             ["role": "system", "content": """
             You are a desktop automation planner. Given a task instruction and a screenshot of the current screen, \
@@ -30,7 +30,9 @@ class AgentService {
         if let plan = result.contentText, !plan.isEmpty {
             StorageService.shared.savePlan(plan, sessionId: sessionId)
             AppLogger.log("[\(sessionId)] Plan saved")
+            return plan
         }
+        return nil
     }
 
     func makeTools() -> [[String: Any]] {
