@@ -467,7 +467,6 @@ struct ContentView: View {
     private func executeMain() {
         isExecuting = true
         animatedCursorPos = CGPoint(x: 20, y: 20)
-        let shouldRecord = isRecording
 
         currentTask = Task {
             let window = await MainActor.run { NSApplication.shared.windows.first }
@@ -508,8 +507,7 @@ struct ContentView: View {
             await executePlan(
                 sessionId: sessionId,
                 plan: plan,
-                window: window,
-                shouldRecord: shouldRecord
+                window: window
             )
 
             let wasCancelled = Task.isCancelled
@@ -532,8 +530,7 @@ struct ContentView: View {
     private func executePlan(
         sessionId: String,
         plan: String?,
-        window: NSWindow?,
-        shouldRecord: Bool
+        window: NSWindow?
     ) async {
         guard let plan,
               let data = plan.data(using: .utf8),
@@ -591,8 +588,7 @@ struct ContentView: View {
                         stepSeq: step.sequence,
                         stepDescription: step.description,
                         plan: plan,
-                        window: window,
-                        shouldRecord: shouldRecord
+                        window: window
                     )
                     resume() // fallback if watcher missed the event
                 }
@@ -605,8 +601,7 @@ struct ContentView: View {
         stepSeq: Int,
         stepDescription: String,
         plan: String,
-        window: NSWindow?,
-        shouldRecord: Bool
+        window: NSWindow?
     ) async {
         StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, stepSeq: stepSeq)
         AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepDescription)")
@@ -735,7 +730,7 @@ struct ContentView: View {
                     MouseService.shared.moveCursorBy(dx: dx, dy: dy)
                     let newPos = MouseService.shared.virtualCursorPosition
                     AppLogger.log("[\(sessionId)/step\(stepSeq)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
+                    if isRecording { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
 
                     messages.append([
                         "role": "tool",
@@ -760,7 +755,7 @@ struct ContentView: View {
                 case "click":
                     let curPos = MouseService.shared.virtualCursorPosition
                     AppLogger.log("[\(sessionId)/step\(stepSeq)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("click()") }
+                    if isRecording { SettingsService.shared.appendToMacro("click()") }
                     if let ctx = lastContext {
                         let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
                         await MouseService.shared.performClick(at: cgPt)
@@ -778,7 +773,7 @@ struct ContentView: View {
                 case "rightClick":
                     let curPos = MouseService.shared.virtualCursorPosition
                     AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("rightClick()") }
+                    if isRecording { SettingsService.shared.appendToMacro("rightClick()") }
                     if let ctx = lastContext {
                         await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
                     }
@@ -794,7 +789,7 @@ struct ContentView: View {
                 case "doubleClick":
                     let curPos = MouseService.shared.virtualCursorPosition
                     AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("doubleClick()") }
+                    if isRecording { SettingsService.shared.appendToMacro("doubleClick()") }
                     if let ctx = lastContext {
                         await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
                     }
@@ -813,7 +808,7 @@ struct ContentView: View {
                     let startPos = MouseService.shared.virtualCursorPosition
                     let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
                     AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
+                    if isRecording { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
                     if let ctx = lastContext {
                         let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
                         let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
@@ -835,7 +830,7 @@ struct ContentView: View {
                     let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
                     let curPos = MouseService.shared.virtualCursorPosition
                     AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if shouldRecord { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
+                    if isRecording { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
                     if let ctx = lastContext {
                         await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
                     }
@@ -851,7 +846,7 @@ struct ContentView: View {
                 case "typeText":
                     let text = toolCall.arguments["text"] as? String ?? ""
                     AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
-                    if shouldRecord { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
+                    if isRecording { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
                     await MouseService.shared.performType(text: text)
                     messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                      "content": "Typed \"\(text)\"."])
@@ -865,7 +860,7 @@ struct ContentView: View {
                 case "keyPress":
                     let key = toolCall.arguments["key"] as? String ?? ""
                     AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
-                    if shouldRecord { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
+                    if isRecording { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
                     await MouseService.shared.performKeyPress(key: key)
                     messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                      "content": "Pressed \"\(key)\"."])
@@ -879,7 +874,7 @@ struct ContentView: View {
                 case "sleep":
                     let ms = toolCall.arguments["milliseconds"] as? Double ?? 0
                     AppLogger.log("[\(sessionId)] sleep(\(Int(ms))ms)")
-                    if shouldRecord { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
+                    if isRecording { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
                     try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
                     messages.append(["role": "tool", "tool_call_id": toolCall.id,
                                      "content": "Slept for \(Int(ms))ms."])
@@ -893,10 +888,10 @@ struct ContentView: View {
                         ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
                     if let r = cropRect {
                         AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
-                        if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
+                        if isRecording { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
                     } else {
                         AppLogger.log("[\(sessionId)] take_screenshot")
-                        if shouldRecord { SettingsService.shared.appendToMacro("take_screenshot()") }
+                        if isRecording { SettingsService.shared.appendToMacro("take_screenshot()") }
                     }
                     await MainActor.run { flashScreenshot() }
                     messages.append(["role": "tool", "tool_call_id": toolCall.id,
