@@ -638,17 +638,17 @@ struct ContentView: View {
                     stepDone = true
                 case .resumeStep(let targetSeq):
                     if let targetSeq, let targetIndex = steps.firstIndex(where: { $0.sequence == targetSeq }), targetIndex != stepIndex {
-                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Jumping to step \(targetSeq)...")
+                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Jumping to step \(targetSeq)...")
                         jumpToIndex = targetIndex
                     } else {
-                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step \(step.sequence)...")
+                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Retrying step \(step.sequence)...")
                         isStepResume = true
                     }
                 case .resumePlan:
-                    AppLogger.log("[\(sessionId)] Resume All — regenerating plan...")
+                    AppLogger.log("[plan:\(sessionId)] Resume All — regenerating plan...")
                     return .resumePlan
                 case .stop:
-                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Stop — halting execution.")
+                    AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Stop — halting execution.")
                     return .stop
                 }
             }
@@ -669,7 +669,7 @@ struct ContentView: View {
         isResume: Bool = false
     ) async {
         StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
-        AppLogger.log("[\(sessionId)/step\(stepSeq)] \(isResume ? "Resuming" : "Starting") step \(stepSeq): \(stepInstruction)")
+        AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] \(isResume ? "Resuming" : "Starting") step \(stepSeq): \(stepInstruction)")
 
         guard let (initShot, initCtx) = captureWithCursor(window: window),
               let initBase64 = toBase64(initShot) else {
@@ -733,7 +733,7 @@ struct ContentView: View {
 
         while !Task.isCancelled {
             if stepCount >= maxSteps {
-                AppLogger.log("[\(sessionId)/step\(stepSeq)] Max step exceeded.")
+                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Max step exceeded.")
                 let shouldContinue = await withCheckedContinuation { continuation in
                     maxStepContinuation = continuation
                     maxStepWarning = true
@@ -743,7 +743,7 @@ struct ContentView: View {
             }
             stepCount += 1
 
-            AppLogger.log("[\(sessionId)/step\(stepSeq)/\(logId)] Analyzing...")
+            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)/log:\(logId)] Analyzing...")
 
             let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
 
@@ -758,7 +758,7 @@ struct ContentView: View {
             logId += 1
 
             if !result.success {
-                AppLogger.log("[\(sessionId)/step\(stepSeq)] Error: \(result.error ?? "Unknown")")
+                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Error: \(result.error ?? "Unknown")")
                 break
             }
 
@@ -767,15 +767,15 @@ struct ContentView: View {
             if result.toolCalls.isEmpty {
                 let text = result.contentText ?? ""
                 if !text.isEmpty {
-                    AppLogger.log("[\(sessionId)/step\(stepSeq)] Done: \(text.prefix(100))")
+                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Done: \(text.prefix(100))")
                     break
                 }
                 emptyResponseCount += 1
                 if emptyResponseCount >= 3 {
-                    AppLogger.log("[\(sessionId)/step\(stepSeq)] Too many empty responses, stopping.")
+                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Too many empty responses, stopping.")
                     break
                 }
-                AppLogger.log("[\(sessionId)/step\(stepSeq)] Empty response, prompting to continue...")
+                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Empty response, prompting to continue...")
                 messages.append([
                     "role": "user",
                     "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action.",
@@ -793,7 +793,7 @@ struct ContentView: View {
                     let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
                     MouseService.shared.moveCursorBy(dx: dx, dy: dy)
                     let newPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)/step\(stepSeq)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
+                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
                     if isRecording { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
 
                     messages.append([
@@ -818,7 +818,7 @@ struct ContentView: View {
 
                 case "click":
                     let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)/step\(stepSeq)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
                     if isRecording { SettingsService.shared.appendToMacro("click()") }
                     if let ctx = lastContext {
                         let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
@@ -1003,7 +1003,7 @@ struct ContentView: View {
         guard let (shot, _) = captureWithCursor(window: window),
               let b64 = toBase64(shot) else { return .verified }
 
-        AppLogger.log("[\(sessionId)/step\(stepSeq)] Verifying: \(expectation)")
+        AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verifying: \(expectation)")
 
         let messages: [[String: Any]] = [
             [
@@ -1048,16 +1048,16 @@ struct ContentView: View {
         switch resultStr {
         case "resumeStep":
             let seqDesc = targetSeq.map { " → step\($0)" } ?? ""
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME STEP\(seqDesc)\(reason.isEmpty ? "" : ": \(reason)")")
+            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification RESUME STEP\(seqDesc)\(reason.isEmpty ? "" : ": \(reason)")")
             return .resumeStep(targetSeq: targetSeq)
         case "resumePlan":
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME PLAN\(reason.isEmpty ? "" : ": \(reason)")")
+            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification RESUME PLAN\(reason.isEmpty ? "" : ": \(reason)")")
             return .resumePlan
         case "stop":
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification STOP\(reason.isEmpty ? "" : ": \(reason)")")
+            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification STOP\(reason.isEmpty ? "" : ": \(reason)")")
             return .stop
         default:
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification PASS")
+            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification PASS")
             return .verified
         }
     }
