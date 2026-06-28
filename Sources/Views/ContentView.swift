@@ -715,18 +715,7 @@ struct ContentView: View {
             (origin = top-left of the screenshot, x right, y down). The app converts them to real \
             screen positions — you never deal with screen or OS coordinates.
 
-            Available actions:
-            • move(dx, dy) — nudge the cursor by a relative pixel offset; you receive a new screenshot showing the updated cursor arrow tip.
-            • click() — left-click at the current cursor position (executes immediately).
-            • rightClick() — right-click at the current cursor position (executes immediately).
-            • doubleClick() — double-click at the current cursor position (executes immediately).
-            • drag(dx, dy) — drag from the current cursor position to current+(dx,dy); cursor ends at the new position.
-            • scroll(dx, dy) — scroll at the current cursor position; dy>0 = down, dy<0 = up, dx>0 = right.
-            • typeText(text) — type text at the current keyboard focus.
-            • keyPress(key) — press a special key: return, tab, space, delete, escape, left/right/up/down, \
-            home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.
-            • sleep(milliseconds) — pause execution for the given number of milliseconds.
-            • take_screenshot(crop_x, crop_y, crop_width, crop_height) — capture a fresh screenshot; all crop parameters are optional. When provided, the image is cropped to that pixel region before being returned.
+            Use the available tools to interact with the screen.
 
             Workflow:
             1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.

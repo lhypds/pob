@@ -172,7 +172,7 @@ class AgentService {
                 "type": "function",
                 "function": [
                     "name": "take_screenshot",
-                    "description": "Capture a fresh screenshot of the current screen state without moving or clicking. Optionally crop to a region using (crop_x, crop_y, crop_width, crop_height) in screenshot pixels.",
+                    "description": "Capture a fresh screenshot of the current screen state without moving or clicking. The screenshot is saved to disk but is NOT sent to the AI — use this only when you need to record the screen state for logging purposes, not when you need to see the screen. Optionally crop to a region using (crop_x, crop_y, crop_width, crop_height) in screenshot pixels.",
                     "parameters": [
                         "type": "object",
                         "properties": [
