@@ -724,7 +724,7 @@ struct ContentView: View {
 
             AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)/log:\(logId)] Analyzing...")
 
-            let result = await OpenAIClient.shared.chat(messages: messages, tools: tools, model: SettingsService.shared.getExecutionModel())
+            let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
 
             var responseToSave: [String: Any] = result.success
                 ? result.rawAssistantMessage

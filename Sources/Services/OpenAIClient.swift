@@ -24,14 +24,14 @@ class OpenAIClient {
     private init() {}
 
     /// Send a multi-turn conversation with optional tool definitions.
-    func chat(messages: [[String: Any]], tools: [[String: Any]] = [], jsonMode: Bool = false, model: String? = nil) async -> ChatResult {
+    func chat(messages: [[String: Any]], tools: [[String: Any]] = [], jsonMode: Bool = false) async -> ChatResult {
         let apiKey = SettingsService.shared.getAPIKey()
         guard !apiKey.isEmpty else {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
                               usage: nil, error: "API key not configured. Set OPENAI_API_KEY in .env file.")
         }
 
-        let model = model ?? SettingsService.shared.getModel()
+        let model = SettingsService.shared.getModel()
 
         var request = URLRequest(url: URL(string: "\(baseURL)/chat/completions")!)
         request.httpMethod = "POST"
