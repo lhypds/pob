@@ -42,6 +42,7 @@ Structure
 logs/  
     +--- <session>/ (instruction)            session executed from instruction.  
          +--- instruction.txt
+         +--- session.json                   session details, usage, etc.
          +--- <plan>/
               +--- plan.json
               +--- messages.json
@@ -55,6 +56,7 @@ logs/
          +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.  
 
     +--- <session>/ (macro)                  session executed from macro.
+         +--- session.json                   session details, start time, end time, etc.
          +--- macro.txt
          +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```

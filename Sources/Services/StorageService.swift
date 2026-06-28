@@ -186,6 +186,19 @@ class StorageService {
         try? png.write(to: screenshotsDir.appendingPathComponent(filename))
     }
 
+    /// Writes start and end time to logs/sessionId/session.json.
+    func saveMacroSessionTimes(sessionId: String, startTime: Date, endTime: Date) {
+        let formatter = ISO8601DateFormatter()
+        let entry: [String: Any] = [
+            "start_time": formatter.string(from: startTime),
+            "end_time": formatter.string(from: endTime),
+        ]
+        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("session.json")
+        if let data = try? JSONSerialization.data(withJSONObject: entry, options: .prettyPrinted) {
+            try? data.write(to: dest)
+        }
+    }
+
     /// Recursively accumulates usage from all response.json files under sessionId/ and writes session.json.
     func saveSessionUsage(sessionId: String) {
         let sessionDir = logsDirectory.appendingPathComponent(sessionId)
