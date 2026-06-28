@@ -1029,7 +1029,17 @@ struct ContentView: View {
             ],
         ]
 
-        let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
+        let verifySchema: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "result": ["type": "string", "enum": ["verified", "resumeStep", "resumePlan", "stop"]],
+                "reason": ["anyOf": [["type": "string"], ["type": "null"]]],
+                "stepSeq": ["anyOf": [["type": "integer"], ["type": "null"]]],
+            ],
+            "required": ["result", "reason", "stepSeq"],
+            "additionalProperties": false,
+        ]
+        let result = await OpenAIClient.shared.chat(messages: messages, responseSchema: verifySchema)
         StorageService.shared.saveVerification(
             sessionId: sessionId,
             planId: planId,

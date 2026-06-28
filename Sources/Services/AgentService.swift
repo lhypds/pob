@@ -30,7 +30,30 @@ class AgentService {
                 ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)", "detail": "low"]],
             ] as [[String: Any]]],
         ]
-        let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
+        let planSchema: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "steps": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "sequence": ["type": "integer"],
+                            "instruction": ["type": "string"],
+                            "expectation": ["type": "string"],
+                        ],
+                        "required": ["sequence", "instruction", "expectation"],
+                        "additionalProperties": false,
+                    ] as [String: Any],
+                ] as [String: Any],
+            ],
+            "required": ["steps"],
+            "additionalProperties": false,
+        ]
+        let result = await OpenAIClient.shared.chat(messages: messages, responseSchema: planSchema)
+        if !result.success {
+            AppLogger.log("[\(sessionId)] Plan generation failed: \(result.error ?? "unknown error")")
+        }
         if let plan = result.contentText, !plan.isEmpty {
             var responseToSave: [String: Any] = result.success
                 ? result.rawAssistantMessage
