@@ -240,6 +240,11 @@ class SettingsService {
         NSWorkspace.shared.open(logsFolder)
     }
 
+    func openAppLog() {
+        let appLog = projectRoot.appendingPathComponent("app.log")
+        openWithEditor(appLog)
+    }
+
     private func openWithEditor(_ url: URL) {
         let process = Process()
         switch getEditor() {

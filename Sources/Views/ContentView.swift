@@ -112,7 +112,8 @@ struct ContentView: View {
             updateWindowLock()
         }
         .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
+            ToolbarItem(placement: .automatic) {
+              HStack(spacing: 4) {
                 Button(action: { SettingsService.shared.openSettingsFile() }) {
                     Image(systemName: "gearshape")
                 }
@@ -122,6 +123,15 @@ struct ContentView: View {
                     Image(systemName: "doc.text")
                 }
                 .help("Logs")
+
+                Button(action: { SettingsService.shared.openAppLog() }) {
+                    VStack(spacing: 0) {
+                        Text("app")
+                        Text(".log")
+                    }
+                    .font(.system(size: 6, design: .monospaced))
+                }
+                .help("App Log")
 
                 Button(action: { SettingsService.shared.openInstructionFile() }) {
                     Image(systemName: "text.alignleft")
@@ -203,6 +213,7 @@ struct ContentView: View {
                     Image(systemName: "trash")
                 }
                 .help("Clear")
+              }
             }
         }
         .onTapGesture {
