@@ -224,6 +224,8 @@ class SettingsService {
     func clearLogs() {
         try? fileManager.removeItem(at: logsFolder)
         try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
+        let appLog = projectRoot.appendingPathComponent("app.log")
+        try? "".write(to: appLog, atomically: true, encoding: .utf8)
     }
 
     func appendToMacro(_ line: String) {
