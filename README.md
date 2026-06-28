@@ -40,21 +40,24 @@ Structure
 
 ```
 logs/  
-
-    +--- <session>/ (instruction)       session executed from instruction.  
+    +--- <session>/ (instruction)            session executed from instruction.  
          +--- instruction.txt
          +--- plan/
               +--- plan.json
               +--- messages.json
               +--- response.json
-              +--- <step>/            the sequence of plan steps (eg, 1, 2, 3...).
-                    +--- <log>
-         +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.  
-         +--- macro.txt
+              +--- <step>/                   the sequence of plan steps (eg, 1, 2, 3...).
+                    +--- <log>               the step log.
+                    +--- step.json           the step details, instruction, expectation, etc.
+                    +--- verification/       verification results for the step
+                        +--- messages.json
+                        +--- response.json
+         +--- plan_<unixtime>/               a step snapshot when resumed.  
+         +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.  
 
-    +--- <session>/ (macro)             session executed from macro.
+    +--- <session>/ (macro)                  session executed from macro.
          +--- macro.txt
-         +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.
+         +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```
 
 

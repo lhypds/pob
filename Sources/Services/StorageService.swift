@@ -94,6 +94,23 @@ class StorageService {
         }
     }
 
+    /// Saves messages.json and response.json to logs/sessionId/plan/stepSeq/verification/.
+    func saveVerification(sessionId: String, stepSeq: Int, messages: [[String: Any]], response: [String: Any]) {
+        let verifyDir = logsDirectory
+            .appendingPathComponent(sessionId)
+            .appendingPathComponent("plan")
+            .appendingPathComponent("\(stepSeq)")
+            .appendingPathComponent("verification")
+        try? fileManager.createDirectory(at: verifyDir, withIntermediateDirectories: true)
+        let stripped = stripImages(from: messages)
+        if let data = try? JSONSerialization.data(withJSONObject: stripped, options: .prettyPrinted) {
+            try? data.write(to: verifyDir.appendingPathComponent("messages.json"))
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
+            try? data.write(to: verifyDir.appendingPathComponent("response.json"))
+        }
+    }
+
     /// Renames logs/sessionId/plan/ to logs/sessionId/plan_<unixtime>/ to archive it before a restart.
     func archivePlan(sessionId: String) {
         let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")

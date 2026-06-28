@@ -1008,6 +1008,12 @@ struct ContentView: View {
         ]
 
         let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
+        StorageService.shared.saveVerification(
+            sessionId: sessionId,
+            stepSeq: stepSeq,
+            messages: messages + [result.rawAssistantMessage],
+            response: result.rawAssistantMessage
+        )
         guard result.success, let text = result.contentText,
               let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -1021,7 +1027,7 @@ struct ContentView: View {
             AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME STEP\(reason.isEmpty ? "" : ": \(reason)")")
             return .resumeStep
         case "resumePlan":
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME ALL\(reason.isEmpty ? "" : ": \(reason)")")
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME PLAN\(reason.isEmpty ? "" : ": \(reason)")")
             return .resumePlan
         case "stop":
             AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification STOP\(reason.isEmpty ? "" : ": \(reason)")")
