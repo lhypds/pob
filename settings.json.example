@@ -4,6 +4,7 @@
   "mcp_server_port": 8032,
   "max_steps": 50,
   "max_resumes": 5,
+  "max_steplogs": 10,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",

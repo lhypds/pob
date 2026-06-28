@@ -50,6 +50,7 @@ class SettingsService {
         "start_mcp": true,
         "max_steps": 12,
         "max_resumes": 5,
+        "max_steplogs": 10,
         "macro_default_delay": 1000,
         "editor": "system",
         "terminal": "system",
@@ -118,6 +119,21 @@ class SettingsService {
             return max(1, intValue)
         }
         return 12
+    }
+
+    func getMaxStepLogs() -> Int {
+        if let value = loadJSON(key: "max_steplogs") as? Int {
+            return max(1, value)
+        }
+        if let value = loadJSON(key: "max_steplogs") as? Double {
+            return max(1, Int(value))
+        }
+        if let value = loadJSON(key: "max_steplogs") as? String,
+           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        {
+            return max(1, intValue)
+        }
+        return 10
     }
 
     func getMaxResumes() -> Int {

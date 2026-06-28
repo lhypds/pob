@@ -183,6 +183,7 @@ Settings are stored in `settings.json` in the project root.
 | `max_tokens` | `2000` | Maximum tokens in the response |
 | `max_steps` | `12` | Maximum tool-execution steps per plan before pausing with a warning |
 | `max_resumes` | `5` | Maximum step-resume attempts per plan before the plan is force-stopped and regenerated |
+| `max_steplogs` | `10` | Maximum AI log iterations for a single step before it is automatically resumed |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
@@ -200,6 +201,7 @@ Example:
   "max_tokens": 2000,
   "max_steps": 12,
   "max_resumes": 5,
+  "max_steplogs": 10,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff"
 }

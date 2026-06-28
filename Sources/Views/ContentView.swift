@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
     @State private var globalStepCount = 0
     @State private var globalResumeCount = 0
+    @State private var stepLogLimitHit = false
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
@@ -588,6 +589,7 @@ struct ContentView: View {
             var isStepResume = false
 
             while !stepDone && jumpToIndex == nil && !Task.isCancelled {
+                await MainActor.run { stepLogLimitHit = false }
                 let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, planId: planId, stepSeq: step.sequence)
                 let stepDir = statusFile.deletingLastPathComponent()
 
@@ -632,6 +634,12 @@ struct ContentView: View {
                         )
                         resume() // fallback if watcher missed the event
                     }
+                }
+
+                if await MainActor.run(resultType: Bool.self, body: { stepLogLimitHit }) {
+                    AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Step log limit hit — resuming step...")
+                    isStepResume = true
+                    continue
                 }
 
                 let verifyResult = await verifyStep(
@@ -772,6 +780,12 @@ struct ContentView: View {
                                               response: responseToSave,
                                               screenshot: lastScreenshot)
             logId += 1
+
+            if logId > SettingsService.shared.getMaxStepLogs() {
+                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Step log limit exceeded.")
+                await MainActor.run { stepLogLimitHit = true }
+                break
+            }
 
             if !result.success {
                 AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Error: \(result.error ?? "Unknown")")
