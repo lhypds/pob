@@ -37,6 +37,7 @@ class StorageService {
     }
 
     /// Writes plan.json, messages.json, and response.json to logs/sessionId/plan/.
+    /// Also creates numbered subdirectories (1/, 2/, 3/, ...) for each step in the plan.
     func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String) {
         let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")
         try? fileManager.createDirectory(at: planDir, withIntermediateDirectories: true)
@@ -47,6 +48,16 @@ class StorageService {
         }
         if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
             try? data.write(to: planDir.appendingPathComponent("response.json"))
+        }
+        if let planData = plan.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: planData) as? [String: Any],
+           let steps = json["steps"] as? [[String: Any]]
+        {
+            for step in steps {
+                if let seq = step["sequence"] as? Int {
+                    try? fileManager.createDirectory(at: planDir.appendingPathComponent("\(seq)"), withIntermediateDirectories: true)
+                }
+            }
         }
     }
 

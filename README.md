@@ -43,7 +43,10 @@ logs/
 
   +--- <session>/ (instruction)       session executed from instruction.  
          +--- instruction.txt
-         +--- plan.json
+         +--- plan/
+              +--- plan.json
+              +--- messages.json
+              +--- response.json
          +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.  
          +--- macro.txt
          +--- <step>/
