@@ -186,6 +186,46 @@ class StorageService {
         try? png.write(to: screenshotsDir.appendingPathComponent(filename))
     }
 
+    /// Recursively accumulates usage from all response.json files under sessionId/ and writes session.json.
+    func saveSessionUsage(sessionId: String) {
+        let sessionDir = logsDirectory.appendingPathComponent(sessionId)
+        guard let enumerator = fileManager.enumerator(at: sessionDir, includingPropertiesForKeys: nil) else { return }
+
+        var promptTokens = 0
+        var completionTokens = 0
+        var totalTokens = 0
+        var reasoningTokens = 0
+        var cachedTokens = 0
+
+        for case let url as URL in enumerator where url.lastPathComponent == "response.json" {
+            guard let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let usage = json["usage"] as? [String: Any] else { continue }
+
+            promptTokens += usage["prompt_tokens"] as? Int ?? 0
+            completionTokens += usage["completion_tokens"] as? Int ?? 0
+            totalTokens += usage["total_tokens"] as? Int ?? 0
+
+            if let details = usage["completion_tokens_details"] as? [String: Any] {
+                reasoningTokens += details["reasoning_tokens"] as? Int ?? 0
+            }
+            if let details = usage["prompt_tokens_details"] as? [String: Any] {
+                cachedTokens += details["cached_tokens"] as? Int ?? 0
+            }
+        }
+
+        let summary: [String: Any] = [
+            "prompt_tokens": promptTokens,
+            "completion_tokens": completionTokens,
+            "total_tokens": totalTokens,
+            "completion_tokens_details": ["reasoning_tokens": reasoningTokens],
+            "prompt_tokens_details": ["cached_tokens": cachedTokens],
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: summary, options: .prettyPrinted) {
+            try? data.write(to: sessionDir.appendingPathComponent("session.json"))
+        }
+    }
+
     private func stripImages(from messages: [[String: Any]]) -> [[String: Any]] {
         messages.map { msg in
             var m = msg

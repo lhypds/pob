@@ -525,6 +525,9 @@ struct ContentView: View {
                 }
             }
 
+            StorageService.shared.saveSessionUsage(sessionId: sessionId)
+            AppLogger.log("[\(sessionId)] Session usage saved")
+
             let wasCancelled = Task.isCancelled
             await MainActor.run {
                 isExecuting = false
