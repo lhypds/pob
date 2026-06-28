@@ -506,7 +506,7 @@ struct ContentView: View {
             }
 
             var stepCount = 0
-            await executeInstruction(
+            await executePlan(
                 sessionId: sessionId,
                 instruction: instruction,
                 plan: plan,
@@ -535,7 +535,7 @@ struct ContentView: View {
         }
     }
 
-    private func executeInstruction(
+    private func executePlan(
         sessionId: String,
         instruction: String,
         plan: String?,

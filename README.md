@@ -41,21 +41,22 @@ Structure
 ```
 logs/  
 
-  +--- <session>/ (instruction)       session executed from instruction.  
+    +--- <session>/ (instruction)       session executed from instruction.  
          +--- instruction.txt
          +--- plan/
               +--- plan.json
               +--- messages.json
               +--- response.json
+              +--- <step>/            the sequence of plan steps (eg, 1, 2, 3...).
+                    +--- <log>
          +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.  
          +--- macro.txt
-         +--- <step>/
-              +--- <log>
 
-  +--- <session>/ (macro)             session executed from macro.
+    +--- <session>/ (macro)             session executed from macro.
          +--- macro.txt
          +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.
 ```
+
 
 Features
 --------
