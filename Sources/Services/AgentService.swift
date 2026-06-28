@@ -36,9 +36,18 @@ class AgentService {
                 ? result.rawAssistantMessage
                 : ["error": result.error ?? "Unknown error"]
             if let usage = result.usage { responseToSave["usage"] = usage }
-            StorageService.shared.savePlan(plan, messages: messages, response: responseToSave, sessionId: sessionId, planId: planId, screenshot: screenshot)
+            let normalizedPlan: String
+            if let data = plan.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data),
+               let pretty = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted),
+               let prettyStr = String(data: pretty, encoding: .utf8) {
+                normalizedPlan = prettyStr
+            } else {
+                normalizedPlan = plan
+            }
+            StorageService.shared.savePlan(normalizedPlan, messages: messages, response: responseToSave, sessionId: sessionId, planId: planId, screenshot: screenshot)
             AppLogger.log("[\(sessionId)] Plan saved")
-            return plan
+            return normalizedPlan
         }
         return nil
     }
