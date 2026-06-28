@@ -49,6 +49,7 @@ class SettingsService {
         "mcp_server_port": 8032,
         "start_mcp": true,
         "max_steps": 12,
+        "max_resumes": 5,
         "macro_default_delay": 1000,
         "editor": "system",
         "terminal": "system",
@@ -117,6 +118,21 @@ class SettingsService {
             return max(1, intValue)
         }
         return 12
+    }
+
+    func getMaxResumes() -> Int {
+        if let value = loadJSON(key: "max_resumes") as? Int {
+            return max(1, value)
+        }
+        if let value = loadJSON(key: "max_resumes") as? Double {
+            return max(1, Int(value))
+        }
+        if let value = loadJSON(key: "max_resumes") as? String,
+           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        {
+            return max(1, intValue)
+        }
+        return 5
     }
 
     func getEditor() -> String {

@@ -181,7 +181,8 @@ Settings are stored in `settings.json` in the project root.
 |-----|---------|-------------|
 | `model` | `gpt-4o` | OpenAI model to use |
 | `max_tokens` | `2000` | Maximum tokens in the response |
-| `max_steps` | `12` | Maximum tool-execution steps before the run is stopped with a warning |
+| `max_steps` | `12` | Maximum tool-execution steps per plan before pausing with a warning |
+| `max_resumes` | `5` | Maximum step-resume attempts per plan before the plan is force-stopped and regenerated |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
@@ -198,6 +199,7 @@ Example:
   "model": "gpt-4o",
   "max_tokens": 2000,
   "max_steps": 12,
+  "max_resumes": 5,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff"
 }

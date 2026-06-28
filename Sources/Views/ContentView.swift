@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var maxStepWarning = false
     @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
     @State private var globalStepCount = 0
+    @State private var globalResumeCount = 0
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
@@ -502,7 +503,7 @@ struct ContentView: View {
             var currentScreenshotBase64 = initBase64
             var outcome: PlanOutcome = .resumePlan
             while outcome == .resumePlan && !Task.isCancelled {
-                await MainActor.run { globalStepCount = 0 }
+                await MainActor.run { globalStepCount = 0; globalResumeCount = 0 }
                 let planId = StorageService.shared.createPlan(sessionId: sessionId)
                 AppLogger.log("[\(sessionId)/\(planId)] Generating plan...")
                 let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, screenshot: currentShot, sessionId: sessionId, planId: planId)
@@ -645,6 +646,14 @@ struct ContentView: View {
                 case .verified:
                     stepDone = true
                 case .resumeStep(let targetSeq):
+                    let resumeCount = await MainActor.run { () -> Int in
+                        globalResumeCount += 1
+                        return globalResumeCount
+                    }
+                    if resumeCount > SettingsService.shared.getMaxResumes() {
+                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Resume count \(resumeCount) exceeded limit — regenerating plan...")
+                        return .resumePlan
+                    }
                     if let targetSeq, let targetIndex = steps.firstIndex(where: { $0.sequence == targetSeq }), targetIndex != stepIndex {
                         AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Jumping to step \(targetSeq)...")
                         jumpToIndex = targetIndex
