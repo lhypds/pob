@@ -92,7 +92,7 @@ class StorageService {
             .appendingPathComponent(sessionId)
             .appendingPathComponent("plan")
             .appendingPathComponent("\(stepSeq)")
-            .appendingPathComponent("STATUS")
+            .appendingPathComponent("status.txt")
     }
 
     /// Writes a status string to logs/sessionId/plan/stepSeq/STATUS.
@@ -102,7 +102,7 @@ class StorageService {
             .appendingPathComponent("plan")
             .appendingPathComponent("\(stepSeq)")
         try? fileManager.createDirectory(at: stepDir, withIntermediateDirectories: true)
-        try? status.write(to: stepDir.appendingPathComponent("STATUS"), atomically: true, encoding: .utf8)
+        try? status.write(to: stepDir.appendingPathComponent("status.txt"), atomically: true, encoding: .utf8)
     }
 
     /// Saves one conversation log entry under logs/sessionId/plan/stepSeq/unixtime/.
