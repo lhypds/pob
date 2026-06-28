@@ -613,6 +613,7 @@ struct ContentView: View {
                     sessionId: sessionId,
                     planId: planId,
                     stepSeq: step.sequence,
+                    plan: plan,
                     window: window
                 )
                 switch verifyResult {
@@ -981,6 +982,7 @@ struct ContentView: View {
         sessionId: String,
         planId: String,
         stepSeq: Int,
+        plan: String,
         window: NSWindow?
     ) async -> VerifyResult {
         guard !expectation.isEmpty else { return .verified }
@@ -997,9 +999,14 @@ struct ContentView: View {
                 Respond with JSON using one of three results:
                   {"result": "verified"} — expectation is met, proceed to next step.
                   {"result": "resumeStep", "reason": "..."} — this step failed and should be retried from the beginning.
-                  {"result": "resumeStep", "stepSeq": N, "reason": "..."} — resume from step N (a specific step sequence number from the plan).
+                  {"result": "resumeStep", "stepSeq": N, "reason": "..."} — resume from step N (a specific step sequence number from the plan). Use this when a prior step must be re-executed to fix corrupted state.
                   {"result": "resumePlan", "reason": "..."} — a critical error occurred; the entire plan must be recreated and restarted.
                   {"result": "stop", "reason": "..."} — execution should stop entirely.
+
+                When the current state indicates that earlier steps were not completed correctly (e.g. wrong accumulated value), identify the earliest step that needs to be re-run and set stepSeq to that step's sequence number from the plan below.
+
+                Full plan for reference:
+                \(plan)
                 """,
             ],
             [
