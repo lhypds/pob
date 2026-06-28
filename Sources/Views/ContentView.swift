@@ -104,6 +104,7 @@ struct ContentView: View {
             updateClickThrough()
         }
         .onAppear {
+            AppLogger.log("Pob started")
             updateClickThrough()
             updateWindowLock()
         }
@@ -575,6 +576,7 @@ struct ContentView: View {
             let step = steps[stepIndex]
             var stepDone = false
             var jumpToIndex: Int? = nil
+            var isStepResume = false
 
             while !stepDone && jumpToIndex == nil && !Task.isCancelled {
                 let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, planId: planId, stepSeq: step.sequence)
@@ -616,7 +618,8 @@ struct ContentView: View {
                             stepInstruction: step.instruction,
                             stepExpectation: step.expectation,
                             plan: plan,
-                            window: window
+                            window: window,
+                            isResume: isStepResume
                         )
                         resume() // fallback if watcher missed the event
                     }
@@ -635,10 +638,11 @@ struct ContentView: View {
                     stepDone = true
                 case .resumeStep(let targetSeq):
                     if let targetSeq, let targetIndex = steps.firstIndex(where: { $0.sequence == targetSeq }), targetIndex != stepIndex {
-                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Jumping to step\(targetSeq)...")
+                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Jumping to step \(targetSeq)...")
                         jumpToIndex = targetIndex
                     } else {
-                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step...")
+                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step \(step.sequence)...")
+                        isStepResume = true
                     }
                 case .resumePlan:
                     AppLogger.log("[\(sessionId)] Resume All — regenerating plan...")
@@ -661,10 +665,11 @@ struct ContentView: View {
         stepInstruction: String,
         stepExpectation: String,
         plan: String,
-        window: NSWindow?
+        window: NSWindow?,
+        isResume: Bool = false
     ) async {
         StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
-        AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepInstruction)")
+        AppLogger.log("[\(sessionId)/step\(stepSeq)] \(isResume ? "Resuming" : "Starting") step \(stepSeq): \(stepInstruction)")
 
         guard let (initShot, initCtx) = captureWithCursor(window: window),
               let initBase64 = toBase64(initShot) else {
