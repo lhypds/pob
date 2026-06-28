@@ -36,10 +36,18 @@ class StorageService {
         try? macro.write(to: dest, atomically: true, encoding: .utf8)
     }
 
-    /// Writes a plan JSON string to logs/sessionId/plan.json.
-    func savePlan(_ plan: String, sessionId: String) {
-        let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan.json")
-        try? plan.write(to: dest, atomically: true, encoding: .utf8)
+    /// Writes plan.json, messages.json, and response.json to logs/sessionId/plan/.
+    func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String) {
+        let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")
+        try? fileManager.createDirectory(at: planDir, withIntermediateDirectories: true)
+        try? plan.write(to: planDir.appendingPathComponent("plan.json"), atomically: true, encoding: .utf8)
+        let stripped = stripImages(from: messages)
+        if let data = try? JSONSerialization.data(withJSONObject: stripped, options: .prettyPrinted) {
+            try? data.write(to: planDir.appendingPathComponent("messages.json"))
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
+            try? data.write(to: planDir.appendingPathComponent("response.json"))
+        }
     }
 
     /// Saves one conversation log entry under logs/sessionId/unixtime/.

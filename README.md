@@ -33,6 +33,27 @@ Phase 2. Make the AI can operate the desktop application. (DONE)
 Phase 3. Make AI learn users operation and do it for the user with instructions, or repeat. (IN PROGRESS)  
 
 
+Logs
+----
+
+Structure  
+
+```
+logs/  
+
+  +--- <session>/ (instruction)       session executed from instruction.  
+         +--- instruction.txt
+         +--- plan.json
+         +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.  
+         +--- macro.txt
+         +--- <step>/
+              +--- <log>
+
+  +--- <session>/ (macro)             session executed from macro.
+         +--- macro.txt
+         +--- screenshots/            screenshots taken during the session with `take_screenshot()` tool.
+```
+
 Features
 --------
 

@@ -28,7 +28,11 @@ class AgentService {
         ]
         let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
         if let plan = result.contentText, !plan.isEmpty {
-            StorageService.shared.savePlan(plan, sessionId: sessionId)
+            var responseToSave: [String: Any] = result.success
+                ? result.rawAssistantMessage
+                : ["error": result.error ?? "Unknown error"]
+            if let usage = result.usage { responseToSave["usage"] = usage }
+            StorageService.shared.savePlan(plan, messages: messages, response: responseToSave, sessionId: sessionId)
             AppLogger.log("[\(sessionId)] Plan saved")
             return plan
         }
