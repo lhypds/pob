@@ -94,6 +94,15 @@ class StorageService {
         }
     }
 
+    /// Renames logs/sessionId/plan/ to logs/sessionId/plan_<unixtime>/ to archive it before a restart.
+    func archivePlan(sessionId: String) {
+        let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")
+        guard fileManager.fileExists(atPath: planDir.path) else { return }
+        let archiveName = "plan_\(Int(Date().timeIntervalSince1970))"
+        let archiveDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent(archiveName)
+        try? fileManager.moveItem(at: planDir, to: archiveDir)
+    }
+
     /// Returns the URL of the STATUS file for a plan step.
     func stepStatusFile(sessionId: String, stepSeq: Int) -> URL {
         logsDirectory

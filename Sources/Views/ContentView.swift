@@ -492,23 +492,35 @@ struct ContentView: View {
             let instruction = SettingsService.shared.getInstruction()
             StorageService.shared.saveInstruction(sessionId: sessionId)
 
-            // Generate plan (`plan.json`) from instruction
-            AppLogger.log("[\(sessionId)] Generating plan...")
-            let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: initBase64, sessionId: sessionId)
-            if let plan {
-                AppLogger.log("[\(sessionId)] Plan: \(plan)")
-            }
+            // Generate plan and execute; loop on resumePlan, stop on stop/done/cancel.
+            var currentScreenshotBase64 = initBase64
+            var outcome: PlanOutcome = .resumePlan
+            while outcome == .resumePlan && !Task.isCancelled {
+                AppLogger.log("[\(sessionId)] Generating plan...")
+                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, sessionId: sessionId)
+                if let plan {
+                    AppLogger.log("[\(sessionId)] Plan: \(plan)")
+                }
 
-            guard !Task.isCancelled else {
-                await MainActor.run { isExecuting = false }
-                return
-            }
+                guard !Task.isCancelled else {
+                    await MainActor.run { isExecuting = false }
+                    return
+                }
 
-            await executePlan(
-                sessionId: sessionId,
-                plan: plan,
-                window: window
-            )
+                outcome = await executePlan(
+                    sessionId: sessionId,
+                    plan: plan,
+                    window: window
+                )
+
+                if outcome == .resumePlan {
+                    StorageService.shared.archivePlan(sessionId: sessionId)
+                    if let (freshShot, _) = captureWithCursor(window: window),
+                       let freshBase64 = toBase64(freshShot) {
+                        currentScreenshotBase64 = freshBase64
+                    }
+                }
+            }
 
             let wasCancelled = Task.isCancelled
             await MainActor.run {
@@ -527,17 +539,24 @@ struct ContentView: View {
         }
     }
 
+    private enum PlanOutcome {
+        case done
+        case resumePlan
+        case stop
+    }
+
+    @discardableResult
     private func executePlan(
         sessionId: String,
         plan: String?,
         window: NSWindow?
-    ) async {
+    ) async -> PlanOutcome {
         guard let plan,
               let data = plan.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rawSteps = json["steps"] as? [[String: Any]], !rawSteps.isEmpty else {
             AppLogger.log("[\(sessionId)] No plan steps to execute.")
-            return
+            return .done
         }
 
         var steps: [(sequence: Int, instruction: String, expectation: String)] = []
@@ -551,8 +570,8 @@ struct ContentView: View {
         for step in steps {
             guard !Task.isCancelled else { break }
 
-            var verified = false
-            while !verified && !Task.isCancelled {
+            var stepDone = false
+            while !stepDone && !Task.isCancelled {
                 let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, stepSeq: step.sequence)
                 let stepDir = statusFile.deletingLastPathComponent()
 
@@ -597,18 +616,28 @@ struct ContentView: View {
                     }
                 }
 
-                verified = await verifyStep(
+                let verifyResult = await verifyStep(
                     instruction: step.instruction,
                     expectation: step.expectation,
                     sessionId: sessionId,
                     stepSeq: step.sequence,
                     window: window
                 )
-                if !verified {
-                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Verification FAILED, retrying step...")
+                switch verifyResult {
+                case .verified:
+                    stepDone = true
+                case .resumeStep:
+                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step...")
+                case .resumePlan:
+                    AppLogger.log("[\(sessionId)] Resume All — regenerating plan...")
+                    return .resumePlan
+                case .stop:
+                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Stop — halting execution.")
+                    return .stop
                 }
             }
         }
+        return .done
     }
 
     private func executeStep(
@@ -937,16 +966,23 @@ struct ContentView: View {
         StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, stepSeq: stepSeq)
     }
 
+    private enum VerifyResult {
+        case verified
+        case resumeStep
+        case resumePlan
+        case stop
+    }
+
     private func verifyStep(
         instruction: String,
         expectation: String,
         sessionId: String,
         stepSeq: Int,
         window: NSWindow?
-    ) async -> Bool {
-        guard !expectation.isEmpty else { return true }
+    ) async -> VerifyResult {
+        guard !expectation.isEmpty else { return .verified }
         guard let (shot, _) = captureWithCursor(window: window),
-              let b64 = toBase64(shot) else { return true }
+              let b64 = toBase64(shot) else { return .verified }
 
         AppLogger.log("[\(sessionId)/step\(stepSeq)] Verifying: \(expectation)")
 
@@ -954,8 +990,12 @@ struct ContentView: View {
             [
                 "role": "system",
                 "content": """
-                You are a verification assistant. Given a screenshot, determine if the described expectation has been met.
-                Respond with JSON: {"verified": true} or {"verified": false, "reason": "brief reason"}.
+                You are a verification assistant. Given a screenshot and step details, determine the outcome.
+                Respond with JSON using one of three results:
+                  {"result": "verified"} — expectation is met, proceed to next step.
+                  {"result": "resumeStep", "reason": "..."} — this step failed and should be retried.
+                  {"result": "resumePlan", "reason": "..."} — a critical error occurred; the entire plan must be recreated and restarted.
+                  {"result": "stop", "reason": "..."} — execution should stop entirely.
                 """,
             ],
             [
@@ -971,12 +1011,25 @@ struct ContentView: View {
         guard result.success, let text = result.contentText,
               let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return true }
+        else { return .verified }
 
-        let verified = json["verified"] as? Bool ?? false
+        let resultStr = json["result"] as? String ?? "verified"
         let reason = json["reason"] as? String ?? ""
-        AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification \(verified ? "PASS" : "FAIL")\(reason.isEmpty ? "" : ": \(reason)")")
-        return verified
+
+        switch resultStr {
+        case "resumeStep":
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME STEP\(reason.isEmpty ? "" : ": \(reason)")")
+            return .resumeStep
+        case "resumePlan":
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME ALL\(reason.isEmpty ? "" : ": \(reason)")")
+            return .resumePlan
+        case "stop":
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification STOP\(reason.isEmpty ? "" : ": \(reason)")")
+            return .stop
+        default:
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification PASS")
+            return .verified
+        }
     }
 
     // MARK: - Helpers
