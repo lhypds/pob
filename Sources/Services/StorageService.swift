@@ -86,6 +86,50 @@ class StorageService {
         }
     }
 
+    /// Returns the URL of the STATUS file for a plan step.
+    func stepStatusFile(sessionId: String, stepSeq: Int) -> URL {
+        logsDirectory
+            .appendingPathComponent(sessionId)
+            .appendingPathComponent("plan")
+            .appendingPathComponent("\(stepSeq)")
+            .appendingPathComponent("STATUS")
+    }
+
+    /// Writes a status string to logs/sessionId/plan/stepSeq/STATUS.
+    func writeStepStatus(_ status: String, sessionId: String, stepSeq: Int) {
+        let stepDir = logsDirectory
+            .appendingPathComponent(sessionId)
+            .appendingPathComponent("plan")
+            .appendingPathComponent("\(stepSeq)")
+        try? fileManager.createDirectory(at: stepDir, withIntermediateDirectories: true)
+        try? status.write(to: stepDir.appendingPathComponent("STATUS"), atomically: true, encoding: .utf8)
+    }
+
+    /// Saves one conversation log entry under logs/sessionId/plan/stepSeq/unixtime/.
+    func saveStepLog(sessionId: String, stepSeq: Int, logId _: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
+        let logDir = logsDirectory
+            .appendingPathComponent(sessionId)
+            .appendingPathComponent("plan")
+            .appendingPathComponent("\(stepSeq)")
+            .appendingPathComponent("\(Int(Date().timeIntervalSince1970))")
+        do {
+            try fileManager.createDirectory(at: logDir, withIntermediateDirectories: true)
+        } catch { return }
+        if let screenshot = screenshot,
+           let tiff = screenshot.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: logDir.appendingPathComponent("screenshot.png"))
+        }
+        let stripped = stripImages(from: messages)
+        if let data = try? JSONSerialization.data(withJSONObject: stripped, options: .prettyPrinted) {
+            try? data.write(to: logDir.appendingPathComponent("messages.json"))
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
+            try? data.write(to: logDir.appendingPathComponent("response.json"))
+        }
+    }
+
     /// Saves a screenshot to logs/sessionId/screenshots/<unixtime>.png.
     func saveScreenshot(_ image: NSImage, sessionId: String) {
         let screenshotsDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("screenshots")

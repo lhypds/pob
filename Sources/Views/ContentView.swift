@@ -478,7 +478,7 @@ struct ContentView: View {
             let sessionId = StorageService.shared.createSession()
             AppLogger.log("[\(sessionId)] Session started")
 
-            guard let (initShot, initCtx) = captureWithCursor(window: window) else {
+            guard let (initShot, _) = captureWithCursor(window: window) else {
                 AppLogger.log("Failed to capture screenshot")
                 await MainActor.run { isExecuting = false }
                 return
@@ -505,17 +505,11 @@ struct ContentView: View {
                 return
             }
 
-            var stepCount = 0
             await executePlan(
                 sessionId: sessionId,
-                instruction: instruction,
                 plan: plan,
-                initBase64: initBase64,
-                initContext: initCtx,
-                initScreenshot: initShot,
                 window: window,
-                shouldRecord: shouldRecord,
-                stepCount: &stepCount
+                shouldRecord: shouldRecord
             )
 
             let wasCancelled = Task.isCancelled
@@ -537,20 +531,98 @@ struct ContentView: View {
 
     private func executePlan(
         sessionId: String,
-        instruction: String,
         plan: String?,
-        initBase64: String,
-        initContext: ScreenshotContext,
-        initScreenshot: NSImage,
         window: NSWindow?,
-        shouldRecord: Bool,
-        stepCount: inout Int
+        shouldRecord: Bool
     ) async {
+        guard let plan,
+              let data = plan.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawSteps = json["steps"] as? [[String: Any]], !rawSteps.isEmpty else {
+            AppLogger.log("[\(sessionId)] No plan steps to execute.")
+            return
+        }
+
+        var steps: [(sequence: Int, description: String)] = []
+        for s in rawSteps {
+            if let seq = s["sequence"] as? Int, let desc = s["description"] as? String {
+                steps.append((seq, desc))
+            }
+        }
+        steps.sort { $0.sequence < $1.sequence }
+
+        for step in steps {
+            guard !Task.isCancelled else { break }
+
+            let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, stepSeq: step.sequence)
+            let stepDir = statusFile.deletingLastPathComponent()
+
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let lock = NSLock()
+                var resumed = false
+                let resume = {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    guard !resumed else { return }
+                    resumed = true
+                    continuation.resume()
+                }
+
+                // Watch step directory; fire when STATUS = "DONE"
+                let fd = open(stepDir.path, O_EVTONLY)
+                if fd >= 0 {
+                    let src = DispatchSource.makeFileSystemObjectSource(
+                        fileDescriptor: fd, eventMask: .write, queue: .global()
+                    )
+                    src.setEventHandler {
+                        if let txt = try? String(contentsOf: statusFile, encoding: .utf8),
+                           txt.trimmingCharacters(in: .whitespacesAndNewlines) == "DONE" {
+                            src.cancel()
+                            resume()
+                        }
+                    }
+                    src.setCancelHandler { close(fd) }
+                    src.resume()
+                }
+
+                Task {
+                    await self.executeStep(
+                        sessionId: sessionId,
+                        stepSeq: step.sequence,
+                        stepDescription: step.description,
+                        plan: plan,
+                        window: window,
+                        shouldRecord: shouldRecord
+                    )
+                    resume() // fallback if watcher missed the event
+                }
+            }
+        }
+    }
+
+    private func executeStep(
+        sessionId: String,
+        stepSeq: Int,
+        stepDescription: String,
+        plan: String,
+        window: NSWindow?,
+        shouldRecord: Bool
+    ) async {
+        StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, stepSeq: stepSeq)
+        AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepDescription)")
+
+        guard let (initShot, initCtx) = captureWithCursor(window: window),
+              let initBase64 = toBase64(initShot) else {
+            StorageService.shared.writeStepStatus("ERROR", sessionId: sessionId, stepSeq: stepSeq)
+            return
+        }
+
         var messages: [[String: Any]] = []
-        var lastContext: ScreenshotContext? = initContext
-        var lastScreenshot: NSImage? = initScreenshot
+        var lastContext: ScreenshotContext? = initCtx
+        var lastScreenshot: NSImage? = initShot
         var logId = 1
         var emptyResponseCount = 0
+        var stepCount = 0
         let maxSteps = SettingsService.shared.getMaxSteps()
 
         let systemMsg: [String: Any] = [
@@ -578,7 +650,11 @@ struct ContentView: View {
             2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
 
             The cursor starts at (20, 20).
-            \(plan.map { "\n\nExecution plan (follow these steps in order):\n\($0)" } ?? "")
+
+            Execute this step: \(stepDescription)
+
+            Full execution plan for reference:
+            \(plan)
             """,
         ]
         messages.append(systemMsg)
@@ -586,7 +662,7 @@ struct ContentView: View {
         let userMsg: [String: Any] = [
             "role": "user",
             "content": [
-                ["type": "text", "text": instruction],
+                ["type": "text", "text": "Step \(stepSeq): \(stepDescription)"],
                 ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
             ] as [[String: Any]],
         ]
@@ -596,7 +672,7 @@ struct ContentView: View {
 
         while !Task.isCancelled {
             if stepCount >= maxSteps {
-                AppLogger.log("[\(sessionId)] Max step exceed.")
+                AppLogger.log("[\(sessionId)/step\(stepSeq)] Max step exceeded.")
                 let shouldContinue = await withCheckedContinuation { continuation in
                     Task { @MainActor in
                         maxStepContinuation = continuation
@@ -608,7 +684,7 @@ struct ContentView: View {
             }
             stepCount += 1
 
-            AppLogger.log("[\(sessionId)/\(logId)] Analyzing...")
+            AppLogger.log("[\(sessionId)/step\(stepSeq)/\(logId)] Analyzing...")
 
             let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
 
@@ -616,14 +692,14 @@ struct ContentView: View {
                 ? result.rawAssistantMessage
                 : ["error": result.error ?? "Unknown error"]
             if let usage = result.usage { responseToSave["usage"] = usage }
-            StorageService.shared.saveLog(sessionId: sessionId, logId: logId,
-                                          messages: messages,
-                                          response: responseToSave,
-                                          screenshot: lastScreenshot)
+            StorageService.shared.saveStepLog(sessionId: sessionId, stepSeq: stepSeq, logId: logId,
+                                              messages: messages,
+                                              response: responseToSave,
+                                              screenshot: lastScreenshot)
             logId += 1
 
             if !result.success {
-                AppLogger.log("Error: \(result.error ?? "Unknown")")
+                AppLogger.log("[\(sessionId)/step\(stepSeq)] Error: \(result.error ?? "Unknown")")
                 break
             }
 
@@ -632,15 +708,15 @@ struct ContentView: View {
             if result.toolCalls.isEmpty {
                 let text = result.contentText ?? ""
                 if !text.isEmpty {
-                    AppLogger.log("[\(sessionId)] Done: \(text.prefix(100))")
+                    AppLogger.log("[\(sessionId)/step\(stepSeq)] Done: \(text.prefix(100))")
                     break
                 }
                 emptyResponseCount += 1
                 if emptyResponseCount >= 3 {
-                    AppLogger.log("[\(sessionId)] Too many empty responses, stopping.")
+                    AppLogger.log("[\(sessionId)/step\(stepSeq)] Too many empty responses, stopping.")
                     break
                 }
-                AppLogger.log("[\(sessionId)] Empty response, prompting to continue...")
+                AppLogger.log("[\(sessionId)/step\(stepSeq)] Empty response, prompting to continue...")
                 messages.append([
                     "role": "user",
                     "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action.",
@@ -658,7 +734,7 @@ struct ContentView: View {
                     let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
                     MouseService.shared.moveCursorBy(dx: dx, dy: dy)
                     let newPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
+                    AppLogger.log("[\(sessionId)/step\(stepSeq)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
                     if shouldRecord { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
 
                     messages.append([
@@ -683,7 +759,7 @@ struct ContentView: View {
 
                 case "click":
                     let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
+                    AppLogger.log("[\(sessionId)/step\(stepSeq)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
                     if shouldRecord { SettingsService.shared.appendToMacro("click()") }
                     if let ctx = lastContext {
                         let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
@@ -845,6 +921,8 @@ struct ContentView: View {
 
             if Task.isCancelled { break }
         }
+
+        StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, stepSeq: stepSeq)
     }
 
     // MARK: - Helpers
