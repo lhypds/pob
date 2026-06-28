@@ -98,7 +98,8 @@ class SettingsService {
     }
 
     func getBaseURL() -> String {
-        return loadJSON(key: "base_url") as? String ?? "https://api.openai.com/v1"
+        let url = loadJSON(key: "base_url") as? String ?? ""
+        return url.isEmpty ? "https://api.openai.com/v1" : url
     }
 
     func getMCPPort() -> UInt16 {
