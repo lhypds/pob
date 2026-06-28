@@ -702,7 +702,7 @@ struct ContentView: View {
             "role": "user",
             "content": [
                 ["type": "text", "text": "Step \(stepSeq): \(stepInstruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)", "detail": "low"]],
             ] as [[String: Any]],
         ]
         messages.append(userMsg)
@@ -795,7 +795,7 @@ struct ContentView: View {
                                 "role": "user",
                                 "content": [
                                     ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
-                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                                 ] as [[String: Any]],
                             ])
                         }
@@ -815,7 +815,7 @@ struct ContentView: View {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
                             ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -831,7 +831,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -847,7 +847,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -870,7 +870,7 @@ struct ContentView: View {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
                             ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -888,7 +888,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -902,7 +902,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -916,7 +916,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                         ] as [[String: Any]]])
                     }
 
@@ -953,7 +953,7 @@ struct ContentView: View {
                         if let b64 = toBase64(finalShot) {
                             messages.append(["role": "user", "content": [
                                 ["type": "text", "text": "Current screenshot:"],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                             ] as [[String: Any]]])
                         }
                     }
@@ -1013,7 +1013,7 @@ struct ContentView: View {
                 "role": "user",
                 "content": [
                     ["type": "text", "text": "Step instruction: \(instruction)\nExpectation: \(expectation)\n\nDoes the current screenshot match this expectation?"],
-                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
                 ] as [[String: Any]],
             ],
         ]

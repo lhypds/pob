@@ -27,7 +27,7 @@ class AgentService {
             """],
             ["role": "user", "content": [
                 ["type": "text", "text": "Task: \(instruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)"]],
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)", "detail": "low"]],
             ] as [[String: Any]]],
         ]
         let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
