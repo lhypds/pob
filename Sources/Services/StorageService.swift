@@ -44,9 +44,9 @@ class StorageService {
         try? macro.write(to: dest, atomically: true, encoding: .utf8)
     }
 
-    /// Writes plan.json, messages.json, and response.json to logs/sessionId/planId/.
+    /// Writes plan.json, messages.json, response.json, and screenshot.png to logs/sessionId/planId/.
     /// Also creates numbered subdirectories (1/, 2/, 3/, ...) for each step in the plan.
-    func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String, planId: String) {
+    func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String, planId: String, screenshot: NSImage? = nil) {
         let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent(planId)
         try? fileManager.createDirectory(at: planDir, withIntermediateDirectories: true)
         try? plan.write(to: planDir.appendingPathComponent("plan.json"), atomically: true, encoding: .utf8)
@@ -56,6 +56,12 @@ class StorageService {
         }
         if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
             try? data.write(to: planDir.appendingPathComponent("response.json"))
+        }
+        if let screenshot = screenshot,
+           let tiff = screenshot.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: planDir.appendingPathComponent("screenshot.png"))
         }
         if let planData = plan.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: planData) as? [String: Any],
@@ -102,8 +108,8 @@ class StorageService {
         }
     }
 
-    /// Saves messages.json and response.json to logs/sessionId/planId/stepSeq/verification/.
-    func saveVerification(sessionId: String, planId: String, stepSeq: Int, messages: [[String: Any]], response: [String: Any]) {
+    /// Saves messages.json, response.json, and screenshot.png to logs/sessionId/planId/stepSeq/verification/.
+    func saveVerification(sessionId: String, planId: String, stepSeq: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
         let verifyDir = logsDirectory
             .appendingPathComponent(sessionId)
             .appendingPathComponent(planId)
@@ -116,6 +122,12 @@ class StorageService {
         }
         if let data = try? JSONSerialization.data(withJSONObject: response, options: .prettyPrinted) {
             try? data.write(to: verifyDir.appendingPathComponent("response.json"))
+        }
+        if let screenshot = screenshot,
+           let tiff = screenshot.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: verifyDir.appendingPathComponent("screenshot.png"))
         }
     }
 

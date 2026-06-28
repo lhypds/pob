@@ -493,12 +493,13 @@ struct ContentView: View {
             StorageService.shared.saveInstruction(sessionId: sessionId)
 
             // Generate plan and execute; loop on resumePlan, stop on stop/done/cancel.
+            var currentShot: NSImage = initShot
             var currentScreenshotBase64 = initBase64
             var outcome: PlanOutcome = .resumePlan
             while outcome == .resumePlan && !Task.isCancelled {
                 let planId = StorageService.shared.createPlan(sessionId: sessionId)
                 AppLogger.log("[\(sessionId)/\(planId)] Generating plan...")
-                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, sessionId: sessionId, planId: planId)
+                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, screenshot: currentShot, sessionId: sessionId, planId: planId)
                 if let plan {
                     AppLogger.log("[\(sessionId)/\(planId)] Plan: \(plan)")
                 }
@@ -518,6 +519,7 @@ struct ContentView: View {
                 if outcome == .resumePlan,
                    let (freshShot, _) = captureWithCursor(window: window),
                    let freshBase64 = toBase64(freshShot) {
+                    currentShot = freshShot
                     currentScreenshotBase64 = freshBase64
                 }
             }
@@ -568,11 +570,13 @@ struct ContentView: View {
         }
         steps.sort { $0.sequence < $1.sequence }
 
-        for step in steps {
-            guard !Task.isCancelled else { break }
-
+        var stepIndex = 0
+        while stepIndex < steps.count && !Task.isCancelled {
+            let step = steps[stepIndex]
             var stepDone = false
-            while !stepDone && !Task.isCancelled {
+            var jumpToIndex: Int? = nil
+
+            while !stepDone && jumpToIndex == nil && !Task.isCancelled {
                 let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, planId: planId, stepSeq: step.sequence)
                 let stepDir = statusFile.deletingLastPathComponent()
 
@@ -629,8 +633,13 @@ struct ContentView: View {
                 switch verifyResult {
                 case .verified:
                     stepDone = true
-                case .resumeStep:
-                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step...")
+                case .resumeStep(let targetSeq):
+                    if let targetSeq, let targetIndex = steps.firstIndex(where: { $0.sequence == targetSeq }), targetIndex != stepIndex {
+                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Jumping to step\(targetSeq)...")
+                        jumpToIndex = targetIndex
+                    } else {
+                        AppLogger.log("[\(sessionId)/step\(step.sequence)] Retrying step...")
+                    }
                 case .resumePlan:
                     AppLogger.log("[\(sessionId)] Resume All — regenerating plan...")
                     return .resumePlan
@@ -639,6 +648,8 @@ struct ContentView: View {
                     return .stop
                 }
             }
+
+            stepIndex = jumpToIndex ?? (stepIndex + 1)
         }
         return .done
     }
@@ -972,7 +983,7 @@ struct ContentView: View {
 
     private enum VerifyResult {
         case verified
-        case resumeStep
+        case resumeStep(targetSeq: Int?)
         case resumePlan
         case stop
     }
@@ -998,7 +1009,8 @@ struct ContentView: View {
                 You are a verification assistant. Given a screenshot and step details, determine the outcome.
                 Respond with JSON using one of three results:
                   {"result": "verified"} — expectation is met, proceed to next step.
-                  {"result": "resumeStep", "reason": "..."} — this step failed and should be retried.
+                  {"result": "resumeStep", "reason": "..."} — this step failed and should be retried from the beginning.
+                  {"result": "resumeStep", "stepSeq": N, "reason": "..."} — resume from step N (a specific step sequence number from the plan).
                   {"result": "resumePlan", "reason": "..."} — a critical error occurred; the entire plan must be recreated and restarted.
                   {"result": "stop", "reason": "..."} — execution should stop entirely.
                 """,
@@ -1018,7 +1030,8 @@ struct ContentView: View {
             planId: planId,
             stepSeq: stepSeq,
             messages: messages + [result.rawAssistantMessage],
-            response: result.rawAssistantMessage
+            response: result.rawAssistantMessage,
+            screenshot: shot
         )
         guard result.success, let text = result.contentText,
               let data = text.data(using: .utf8),
@@ -1027,11 +1040,13 @@ struct ContentView: View {
 
         let resultStr = json["result"] as? String ?? "verified"
         let reason = json["reason"] as? String ?? ""
+        let targetSeq = json["stepSeq"] as? Int
 
         switch resultStr {
         case "resumeStep":
-            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME STEP\(reason.isEmpty ? "" : ": \(reason)")")
-            return .resumeStep
+            let seqDesc = targetSeq.map { " → step\($0)" } ?? ""
+            AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME STEP\(seqDesc)\(reason.isEmpty ? "" : ": \(reason)")")
+            return .resumeStep(targetSeq: targetSeq)
         case "resumePlan":
             AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification RESUME PLAN\(reason.isEmpty ? "" : ": \(reason)")")
             return .resumePlan

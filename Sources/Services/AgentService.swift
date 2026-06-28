@@ -4,7 +4,7 @@ class AgentService {
     static let shared = AgentService()
     private init() {}
 
-    func generatePlan(instruction: String, screenshotBase64: String, sessionId: String, planId: String) async -> String? {
+    func generatePlan(instruction: String, screenshotBase64: String, screenshot: NSImage? = nil, sessionId: String, planId: String) async -> String? {
         let messages: [[String: Any]] = [
             ["role": "system", "content": """
             You are a desktop automation planner. Given a task instruction and a screenshot of the current screen, \
@@ -36,7 +36,7 @@ class AgentService {
                 ? result.rawAssistantMessage
                 : ["error": result.error ?? "Unknown error"]
             if let usage = result.usage { responseToSave["usage"] = usage }
-            StorageService.shared.savePlan(plan, messages: messages, response: responseToSave, sessionId: sessionId, planId: planId)
+            StorageService.shared.savePlan(plan, messages: messages, response: responseToSave, sessionId: sessionId, planId: planId, screenshot: screenshot)
             AppLogger.log("[\(sessionId)] Plan saved")
             return plan
         }
