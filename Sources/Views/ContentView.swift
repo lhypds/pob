@@ -551,47 +551,61 @@ struct ContentView: View {
         for step in steps {
             guard !Task.isCancelled else { break }
 
-            let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, stepSeq: step.sequence)
-            let stepDir = statusFile.deletingLastPathComponent()
+            var verified = false
+            while !verified && !Task.isCancelled {
+                let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, stepSeq: step.sequence)
+                let stepDir = statusFile.deletingLastPathComponent()
 
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                let lock = NSLock()
-                var resumed = false
-                let resume = {
-                    lock.lock()
-                    defer { lock.unlock() }
-                    guard !resumed else { return }
-                    resumed = true
-                    continuation.resume()
-                }
-
-                // Watch step directory; fire when STATUS = "DONE"
-                let fd = open(stepDir.path, O_EVTONLY)
-                if fd >= 0 {
-                    let src = DispatchSource.makeFileSystemObjectSource(
-                        fileDescriptor: fd, eventMask: .write, queue: .global()
-                    )
-                    src.setEventHandler {
-                        if let txt = try? String(contentsOf: statusFile, encoding: .utf8),
-                           txt.trimmingCharacters(in: .whitespacesAndNewlines) == "DONE" {
-                            src.cancel()
-                            resume()
-                        }
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    let lock = NSLock()
+                    var resumed = false
+                    let resume = {
+                        lock.lock()
+                        defer { lock.unlock() }
+                        guard !resumed else { return }
+                        resumed = true
+                        continuation.resume()
                     }
-                    src.setCancelHandler { close(fd) }
-                    src.resume()
+
+                    // Watch step directory; fire when STATUS = "DONE"
+                    let fd = open(stepDir.path, O_EVTONLY)
+                    if fd >= 0 {
+                        let src = DispatchSource.makeFileSystemObjectSource(
+                            fileDescriptor: fd, eventMask: .write, queue: .global()
+                        )
+                        src.setEventHandler {
+                            if let txt = try? String(contentsOf: statusFile, encoding: .utf8),
+                               txt.trimmingCharacters(in: .whitespacesAndNewlines) == "DONE" {
+                                src.cancel()
+                                resume()
+                            }
+                        }
+                        src.setCancelHandler { close(fd) }
+                        src.resume()
+                    }
+
+                    Task {
+                        await self.executeStep(
+                            sessionId: sessionId,
+                            stepSeq: step.sequence,
+                            stepInstruction: step.instruction,
+                            stepExpectation: step.expectation,
+                            plan: plan,
+                            window: window
+                        )
+                        resume() // fallback if watcher missed the event
+                    }
                 }
 
-                Task {
-                    await self.executeStep(
-                        sessionId: sessionId,
-                        stepSeq: step.sequence,
-                        stepInstruction: step.instruction,
-                        stepExpectation: step.expectation,
-                        plan: plan,
-                        window: window
-                    )
-                    resume() // fallback if watcher missed the event
+                verified = await verifyStep(
+                    instruction: step.instruction,
+                    expectation: step.expectation,
+                    sessionId: sessionId,
+                    stepSeq: step.sequence,
+                    window: window
+                )
+                if !verified {
+                    AppLogger.log("[\(sessionId)/step\(step.sequence)] Verification FAILED, retrying step...")
                 }
             }
         }
@@ -921,6 +935,48 @@ struct ContentView: View {
         }
 
         StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, stepSeq: stepSeq)
+    }
+
+    private func verifyStep(
+        instruction: String,
+        expectation: String,
+        sessionId: String,
+        stepSeq: Int,
+        window: NSWindow?
+    ) async -> Bool {
+        guard !expectation.isEmpty else { return true }
+        guard let (shot, _) = captureWithCursor(window: window),
+              let b64 = toBase64(shot) else { return true }
+
+        AppLogger.log("[\(sessionId)/step\(stepSeq)] Verifying: \(expectation)")
+
+        let messages: [[String: Any]] = [
+            [
+                "role": "system",
+                "content": """
+                You are a verification assistant. Given a screenshot, determine if the described expectation has been met.
+                Respond with JSON: {"verified": true} or {"verified": false, "reason": "brief reason"}.
+                """,
+            ],
+            [
+                "role": "user",
+                "content": [
+                    ["type": "text", "text": "Step instruction: \(instruction)\nExpectation: \(expectation)\n\nDoes the current screenshot match this expectation?"],
+                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
+                ] as [[String: Any]],
+            ],
+        ]
+
+        let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
+        guard result.success, let text = result.contentText,
+              let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return true }
+
+        let verified = json["verified"] as? Bool ?? false
+        let reason = json["reason"] as? String ?? ""
+        AppLogger.log("[\(sessionId)/step\(stepSeq)] Verification \(verified ? "PASS" : "FAIL")\(reason.isEmpty ? "" : ": \(reason)")")
+        return verified
     }
 
     // MARK: - Helpers
