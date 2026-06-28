@@ -730,10 +730,8 @@ struct ContentView: View {
             if stepCount >= maxSteps {
                 AppLogger.log("[\(sessionId)/step\(stepSeq)] Max step exceeded.")
                 let shouldContinue = await withCheckedContinuation { continuation in
-                    Task { @MainActor in
-                        maxStepContinuation = continuation
-                        maxStepWarning = true
-                    }
+                    maxStepContinuation = continuation
+                    maxStepWarning = true
                 }
                 if !shouldContinue { break }
                 stepCount = 0
