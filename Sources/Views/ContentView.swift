@@ -590,51 +590,16 @@ struct ContentView: View {
 
             while !stepDone && jumpToIndex == nil && !Task.isCancelled {
                 await MainActor.run { stepLogLimitHit = false }
-                let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, planId: planId, stepSeq: step.sequence)
-                let stepDir = statusFile.deletingLastPathComponent()
-
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    let lock = NSLock()
-                    var resumed = false
-                    let resume = {
-                        lock.lock()
-                        defer { lock.unlock() }
-                        guard !resumed else { return }
-                        resumed = true
-                        continuation.resume()
-                    }
-
-                    // Watch step directory; fire when STATUS = "DONE"
-                    let fd = open(stepDir.path, O_EVTONLY)
-                    if fd >= 0 {
-                        let src = DispatchSource.makeFileSystemObjectSource(
-                            fileDescriptor: fd, eventMask: .write, queue: .global()
-                        )
-                        src.setEventHandler {
-                            if let txt = try? String(contentsOf: statusFile, encoding: .utf8),
-                               txt.trimmingCharacters(in: .whitespacesAndNewlines) == "DONE" {
-                                src.cancel()
-                                resume()
-                            }
-                        }
-                        src.setCancelHandler { close(fd) }
-                        src.resume()
-                    }
-
-                    Task {
-                        await self.executeStep(
-                            sessionId: sessionId,
-                            planId: planId,
-                            stepSeq: step.sequence,
-                            stepInstruction: step.instruction,
-                            stepExpectation: step.expectation,
-                            plan: plan,
-                            window: window,
-                            isResume: isStepResume
-                        )
-                        resume() // fallback if watcher missed the event
-                    }
-                }
+                await executeStep(
+                    sessionId: sessionId,
+                    planId: planId,
+                    stepSeq: step.sequence,
+                    stepInstruction: step.instruction,
+                    stepExpectation: step.expectation,
+                    plan: plan,
+                    window: window,
+                    isResume: isStepResume
+                )
 
                 if await MainActor.run(resultType: Bool.self, body: { stepLogLimitHit }) {
                     AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Step log limit hit — resuming step...")
