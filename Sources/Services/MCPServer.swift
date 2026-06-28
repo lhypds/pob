@@ -178,6 +178,12 @@ class MCPServer {
         // Notifications have no id and need no response.
         guard let reqId = requestId else { return }
 
+        if rpcMethod == "tools/call", let toolName = params["name"] as? String {
+            AppLogger.log("MCPServer: \(rpcMethod) → \(toolName)")
+        } else {
+            AppLogger.log("MCPServer: \(rpcMethod)")
+        }
+
         sessionsLock.lock()
         let sseConn = sessions[sessionId]
         sessionsLock.unlock()

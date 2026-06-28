@@ -5,8 +5,6 @@
 
 set -e
 
-echo "🚀 Starting Pob..."
-
 echo "🔨 Building..."
 swift build
 
