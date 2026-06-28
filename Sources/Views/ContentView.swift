@@ -496,10 +496,11 @@ struct ContentView: View {
             var currentScreenshotBase64 = initBase64
             var outcome: PlanOutcome = .resumePlan
             while outcome == .resumePlan && !Task.isCancelled {
-                AppLogger.log("[\(sessionId)] Generating plan...")
-                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, sessionId: sessionId)
+                let planId = StorageService.shared.createPlan(sessionId: sessionId)
+                AppLogger.log("[\(sessionId)/\(planId)] Generating plan...")
+                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, sessionId: sessionId, planId: planId)
                 if let plan {
-                    AppLogger.log("[\(sessionId)] Plan: \(plan)")
+                    AppLogger.log("[\(sessionId)/\(planId)] Plan: \(plan)")
                 }
 
                 guard !Task.isCancelled else {
@@ -509,16 +510,15 @@ struct ContentView: View {
 
                 outcome = await executePlan(
                     sessionId: sessionId,
+                    planId: planId,
                     plan: plan,
                     window: window
                 )
 
-                if outcome == .resumePlan {
-                    StorageService.shared.archivePlan(sessionId: sessionId)
-                    if let (freshShot, _) = captureWithCursor(window: window),
-                       let freshBase64 = toBase64(freshShot) {
-                        currentScreenshotBase64 = freshBase64
-                    }
+                if outcome == .resumePlan,
+                   let (freshShot, _) = captureWithCursor(window: window),
+                   let freshBase64 = toBase64(freshShot) {
+                    currentScreenshotBase64 = freshBase64
                 }
             }
 
@@ -548,6 +548,7 @@ struct ContentView: View {
     @discardableResult
     private func executePlan(
         sessionId: String,
+        planId: String,
         plan: String?,
         window: NSWindow?
     ) async -> PlanOutcome {
@@ -572,7 +573,7 @@ struct ContentView: View {
 
             var stepDone = false
             while !stepDone && !Task.isCancelled {
-                let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, stepSeq: step.sequence)
+                let statusFile = StorageService.shared.stepStatusFile(sessionId: sessionId, planId: planId, stepSeq: step.sequence)
                 let stepDir = statusFile.deletingLastPathComponent()
 
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -606,6 +607,7 @@ struct ContentView: View {
                     Task {
                         await self.executeStep(
                             sessionId: sessionId,
+                            planId: planId,
                             stepSeq: step.sequence,
                             stepInstruction: step.instruction,
                             stepExpectation: step.expectation,
@@ -620,6 +622,7 @@ struct ContentView: View {
                     instruction: step.instruction,
                     expectation: step.expectation,
                     sessionId: sessionId,
+                    planId: planId,
                     stepSeq: step.sequence,
                     window: window
                 )
@@ -642,18 +645,19 @@ struct ContentView: View {
 
     private func executeStep(
         sessionId: String,
+        planId: String,
         stepSeq: Int,
         stepInstruction: String,
         stepExpectation: String,
         plan: String,
         window: NSWindow?
     ) async {
-        StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, stepSeq: stepSeq)
+        StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
         AppLogger.log("[\(sessionId)/step\(stepSeq)] Starting: \(stepInstruction)")
 
         guard let (initShot, initCtx) = captureWithCursor(window: window),
               let initBase64 = toBase64(initShot) else {
-            StorageService.shared.writeStepStatus("ERROR", sessionId: sessionId, stepSeq: stepSeq)
+            StorageService.shared.writeStepStatus("ERROR", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
             return
         }
 
@@ -733,7 +737,7 @@ struct ContentView: View {
                 ? result.rawAssistantMessage
                 : ["error": result.error ?? "Unknown error"]
             if let usage = result.usage { responseToSave["usage"] = usage }
-            StorageService.shared.saveStepLog(sessionId: sessionId, stepSeq: stepSeq, logId: logId,
+            StorageService.shared.saveStepLog(sessionId: sessionId, planId: planId, stepSeq: stepSeq, logId: logId,
                                               messages: messages,
                                               response: responseToSave,
                                               screenshot: lastScreenshot)
@@ -963,7 +967,7 @@ struct ContentView: View {
             if Task.isCancelled { break }
         }
 
-        StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, stepSeq: stepSeq)
+        StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
     }
 
     private enum VerifyResult {
@@ -977,6 +981,7 @@ struct ContentView: View {
         instruction: String,
         expectation: String,
         sessionId: String,
+        planId: String,
         stepSeq: Int,
         window: NSWindow?
     ) async -> VerifyResult {
@@ -1010,6 +1015,7 @@ struct ContentView: View {
         let result = await OpenAIClient.shared.chat(messages: messages, jsonMode: true)
         StorageService.shared.saveVerification(
             sessionId: sessionId,
+            planId: planId,
             stepSeq: stepSeq,
             messages: messages + [result.rawAssistantMessage],
             response: result.rawAssistantMessage

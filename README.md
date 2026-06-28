@@ -42,7 +42,7 @@ Structure
 logs/  
     +--- <session>/ (instruction)            session executed from instruction.  
          +--- instruction.txt
-         +--- plan/
+         +--- <plan>/
               +--- plan.json
               +--- messages.json
               +--- response.json
@@ -52,13 +52,17 @@ logs/
                     +--- verification/       verification results for the step
                         +--- messages.json
                         +--- response.json
-         +--- plan_<unixtime>/               a step snapshot when resumed.  
          +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.  
 
     +--- <session>/ (macro)                  session executed from macro.
          +--- macro.txt
          +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```
+
+`<session>` is a unique session ID named as a unixtime.  
+`<plan>` is a unique plan ID named as a unixtime.  
+`<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  
+`<log>` is a unique log ID named as a unixtime.  
 
 
 Features

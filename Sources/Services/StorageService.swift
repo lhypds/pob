@@ -22,6 +22,14 @@ class StorageService {
         return sessionId
     }
 
+    /// Creates a new plan folder under the session. Returns the plan ID (Unix timestamp string).
+    func createPlan(sessionId: String) -> String {
+        let planId = "\(Int(Date().timeIntervalSince1970))"
+        let dir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent(planId)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return planId
+    }
+
     /// Copies the current instruction.txt content into the session folder root.
     func saveInstruction(sessionId: String) {
         let instruction = SettingsService.shared.getInstruction()
@@ -36,10 +44,10 @@ class StorageService {
         try? macro.write(to: dest, atomically: true, encoding: .utf8)
     }
 
-    /// Writes plan.json, messages.json, and response.json to logs/sessionId/plan/.
+    /// Writes plan.json, messages.json, and response.json to logs/sessionId/planId/.
     /// Also creates numbered subdirectories (1/, 2/, 3/, ...) for each step in the plan.
-    func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String) {
-        let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")
+    func savePlan(_ plan: String, messages: [[String: Any]], response: [String: Any], sessionId: String, planId: String) {
+        let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent(planId)
         try? fileManager.createDirectory(at: planDir, withIntermediateDirectories: true)
         try? plan.write(to: planDir.appendingPathComponent("plan.json"), atomically: true, encoding: .utf8)
         let stripped = stripImages(from: messages)
@@ -94,11 +102,11 @@ class StorageService {
         }
     }
 
-    /// Saves messages.json and response.json to logs/sessionId/plan/stepSeq/verification/.
-    func saveVerification(sessionId: String, stepSeq: Int, messages: [[String: Any]], response: [String: Any]) {
+    /// Saves messages.json and response.json to logs/sessionId/planId/stepSeq/verification/.
+    func saveVerification(sessionId: String, planId: String, stepSeq: Int, messages: [[String: Any]], response: [String: Any]) {
         let verifyDir = logsDirectory
             .appendingPathComponent(sessionId)
-            .appendingPathComponent("plan")
+            .appendingPathComponent(planId)
             .appendingPathComponent("\(stepSeq)")
             .appendingPathComponent("verification")
         try? fileManager.createDirectory(at: verifyDir, withIntermediateDirectories: true)
@@ -111,39 +119,30 @@ class StorageService {
         }
     }
 
-    /// Renames logs/sessionId/plan/ to logs/sessionId/plan_<unixtime>/ to archive it before a restart.
-    func archivePlan(sessionId: String) {
-        let planDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("plan")
-        guard fileManager.fileExists(atPath: planDir.path) else { return }
-        let archiveName = "plan_\(Int(Date().timeIntervalSince1970))"
-        let archiveDir = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent(archiveName)
-        try? fileManager.moveItem(at: planDir, to: archiveDir)
-    }
-
     /// Returns the URL of the STATUS file for a plan step.
-    func stepStatusFile(sessionId: String, stepSeq: Int) -> URL {
+    func stepStatusFile(sessionId: String, planId: String, stepSeq: Int) -> URL {
         logsDirectory
             .appendingPathComponent(sessionId)
-            .appendingPathComponent("plan")
+            .appendingPathComponent(planId)
             .appendingPathComponent("\(stepSeq)")
             .appendingPathComponent("status.txt")
     }
 
-    /// Writes a status string to logs/sessionId/plan/stepSeq/STATUS.
-    func writeStepStatus(_ status: String, sessionId: String, stepSeq: Int) {
+    /// Writes a status string to logs/sessionId/planId/stepSeq/status.txt.
+    func writeStepStatus(_ status: String, sessionId: String, planId: String, stepSeq: Int) {
         let stepDir = logsDirectory
             .appendingPathComponent(sessionId)
-            .appendingPathComponent("plan")
+            .appendingPathComponent(planId)
             .appendingPathComponent("\(stepSeq)")
         try? fileManager.createDirectory(at: stepDir, withIntermediateDirectories: true)
         try? status.write(to: stepDir.appendingPathComponent("status.txt"), atomically: true, encoding: .utf8)
     }
 
-    /// Saves one conversation log entry under logs/sessionId/plan/stepSeq/unixtime/.
-    func saveStepLog(sessionId: String, stepSeq: Int, logId _: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
+    /// Saves one conversation log entry under logs/sessionId/planId/stepSeq/unixtime/.
+    func saveStepLog(sessionId: String, planId: String, stepSeq: Int, logId _: Int, messages: [[String: Any]], response: [String: Any], screenshot: NSImage? = nil) {
         let logDir = logsDirectory
             .appendingPathComponent(sessionId)
-            .appendingPathComponent("plan")
+            .appendingPathComponent(planId)
             .appendingPathComponent("\(stepSeq)")
             .appendingPathComponent("\(Int(Date().timeIntervalSince1970))")
         do {
