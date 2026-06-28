@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var mousePosition: CGPoint? = nil
     @State private var maxStepWarning = false
     @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
+    @State private var globalStepCount = 0
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
@@ -501,6 +502,7 @@ struct ContentView: View {
             var currentScreenshotBase64 = initBase64
             var outcome: PlanOutcome = .resumePlan
             while outcome == .resumePlan && !Task.isCancelled {
+                await MainActor.run { globalStepCount = 0 }
                 let planId = StorageService.shared.createPlan(sessionId: sessionId)
                 AppLogger.log("[\(sessionId)/\(planId)] Generating plan...")
                 let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, screenshot: currentShot, sessionId: sessionId, planId: planId)
@@ -688,8 +690,6 @@ struct ContentView: View {
         var lastScreenshot: NSImage? = initShot
         var logId = 1
         var emptyResponseCount = 0
-        var stepCount = 0
-        let maxSteps = SettingsService.shared.getMaxSteps()
 
         let systemMsg: [String: Any] = [
             "role": "system",
@@ -738,16 +738,17 @@ struct ContentView: View {
         let tools = AgentService.shared.makeTools()
 
         while !Task.isCancelled {
-            if stepCount >= maxSteps {
+            let maxSteps = SettingsService.shared.getMaxSteps()
+            if globalStepCount >= maxSteps {
                 AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Max step exceeded.")
                 let shouldContinue = await withCheckedContinuation { continuation in
                     maxStepContinuation = continuation
                     maxStepWarning = true
                 }
                 if !shouldContinue { break }
-                stepCount = 0
+                await MainActor.run { globalStepCount = 0 }
             }
-            stepCount += 1
+            await MainActor.run { globalStepCount += 1 }
 
             AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)/log:\(logId)] Analyzing...")
 

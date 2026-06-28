@@ -2,7 +2,7 @@
   "openai_api_key": "",
   "model": "gpt-5.5",
   "mcp_server_port": 8032,
-  "max_steps": 12,
+  "max_steps": 50,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",
