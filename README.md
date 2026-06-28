@@ -179,7 +179,8 @@ Settings are stored in `settings.json` in the project root.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `model` | `gpt-4o` | OpenAI model to use |
+| `model` | `gpt-4o` | OpenAI model for planning and failure recovery |
+| `execution_model` | _(same as `model`)_ | OpenAI model for step execution (set to a cheaper model e.g. `gpt-4o-mini`) |
 | `max_tokens` | `2000` | Maximum tokens in the response |
 | `max_steps` | `12` | Maximum tool-execution steps per plan before pausing with a warning |
 | `max_resumes` | `5` | Maximum step-resume attempts per plan before the plan is force-stopped and regenerated |

@@ -46,6 +46,7 @@ class SettingsService {
     private let defaultSettings: [String: Any] = [
         "openai_api_key": "",
         "model": "gpt-4o",
+        "execution_model": "",
         "mcp_server_port": 8032,
         "start_mcp": true,
         "max_steps": 12,
@@ -104,6 +105,11 @@ class SettingsService {
 
     func getModel() -> String {
         loadJSON(key: "model") as? String ?? "gpt-4o"
+    }
+
+    func getExecutionModel() -> String {
+        let v = loadJSON(key: "execution_model") as? String ?? ""
+        return v.isEmpty ? getModel() : v
     }
 
     func getMaxSteps() -> Int {
