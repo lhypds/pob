@@ -45,6 +45,7 @@ class SettingsService {
 
     private let defaultSettings: [String: Any] = [
         "openai_api_key": "",
+        "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o",
         "mcp_server_port": 8032,
         "start_mcp": true,
@@ -94,6 +95,10 @@ class SettingsService {
 
     func getAPIKey() -> String {
         return loadJSON(key: "openai_api_key") as? String ?? ""
+    }
+
+    func getBaseURL() -> String {
+        return loadJSON(key: "base_url") as? String ?? "https://api.openai.com/v1"
     }
 
     func getMCPPort() -> UInt16 {

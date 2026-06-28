@@ -19,8 +19,6 @@ struct ChatResult {
 class OpenAIClient {
     static let shared = OpenAIClient()
 
-    private let baseURL = "https://api.openai.com/v1"
-
     private init() {}
 
     /// Send a multi-turn conversation with optional tool definitions.
@@ -28,10 +26,11 @@ class OpenAIClient {
         let apiKey = SettingsService.shared.getAPIKey()
         guard !apiKey.isEmpty else {
             return ChatResult(success: false, contentText: nil, toolCalls: [], rawAssistantMessage: [:],
-                              usage: nil, error: "API key not configured. Set OPENAI_API_KEY in .env file.")
+                              usage: nil, error: "API key not configured. Set openai_api_key in settings.json.")
         }
 
         let model = SettingsService.shared.getModel()
+        let baseURL = SettingsService.shared.getBaseURL()
 
         var request = URLRequest(url: URL(string: "\(baseURL)/chat/completions")!)
         request.httpMethod = "POST"
