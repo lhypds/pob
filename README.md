@@ -91,15 +91,16 @@ Toolbar buttons (left to right):
 |---|--------|-------------|
 | 1 | Settings | Open the settings file |
 | 2 | Logs | Open the logs folder |
-| 3 | Instruction | Open the instruction file |
-| 4 | Macro | Open the macro file |
-| 5 | Record Macro | Start/stop macro recording; clears macro on start |
-| 6 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
-| 7 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
-| 8 | Execute / Stop | Run the instruction or macro; stop if already running |
-| 9 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
-| 10 | Lock | Lock the window to prevent moving or resizing |
-| 11 | Clear | Clear instruction, macro, logs, or all |
+| 3 | App Log | Open the app log file |
+| 4 | Instruction | Open the instruction file |
+| 5 | Macro | Open the macro file |
+| 6 | Record Macro | Start/stop macro recording; clears macro on start |
+| 7 | Execute / Stop | Run the instruction or macro; stop if already running |
+| 8 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
+| 9 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
+| 10 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
+| 11 | Lock | Lock the window to prevent moving or resizing |
+| 12 | Clear | Clear instruction, macro, logs, or all |
 
 * Target and Crop are helper functions for when you hard to describe the GUI element.  
 
