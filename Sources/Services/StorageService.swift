@@ -19,7 +19,10 @@ class StorageService {
         let sessionId = "\(Int(Date().timeIntervalSince1970))"
         let dir = logsDirectory.appendingPathComponent(sessionId)
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        let entry: [String: Any] = ["settings": SettingsService.shared.getSettingsDict()]
+        let entry: [String: Any] = [
+            "start_time": Int(Date().timeIntervalSince1970),
+            "settings": SettingsService.shared.getSettingsDict(),
+        ]
         if let data = try? JSONSerialization.data(withJSONObject: entry, options: .prettyPrinted) {
             try? data.write(to: dir.appendingPathComponent("session.json"))
         }
@@ -192,12 +195,11 @@ class StorageService {
 
     /// Writes start and end time to logs/sessionId/session.json.
     func saveMacroSessionTimes(sessionId: String, startTime: Date, endTime: Date) {
-        let formatter = ISO8601DateFormatter()
         let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("session.json")
         var entry: [String: Any] = (try? Data(contentsOf: dest))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        entry["start_time"] = formatter.string(from: startTime)
-        entry["end_time"] = formatter.string(from: endTime)
+        entry["start_time"] = Int(startTime.timeIntervalSince1970)
+        entry["end_time"] = Int(endTime.timeIntervalSince1970)
         if let data = try? JSONSerialization.data(withJSONObject: entry, options: .prettyPrinted) {
             try? data.write(to: dest)
         }
