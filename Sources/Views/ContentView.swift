@@ -581,7 +581,7 @@ struct ContentView: View {
         var messages: [[String: Any]] = []
         var lastContext: ScreenshotContext? = initCtx
         var lastScreenshot: NSImage? = initShot
-        var logId = 1
+        var logCount = 0
         var emptyResponseCount = 0
 
         let systemMsg: [String: Any] = [
@@ -632,6 +632,8 @@ struct ContentView: View {
             }
             await MainActor.run { globalStepCount += 1 }
 
+            let logId = Int(Date().timeIntervalSince1970)
+            logCount += 1
             AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)/log:\(logId)] Analyzing...")
 
             let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
@@ -644,9 +646,8 @@ struct ContentView: View {
                                               messages: messages,
                                               response: responseToSave,
                                               screenshot: lastScreenshot)
-            logId += 1
 
-            if logId > SettingsService.shared.getMaxStepLogs() {
+            if logCount > SettingsService.shared.getMaxStepLogs() {
                 AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Step log limit exceeded.")
                 await MainActor.run { stepLogLimitHit = true }
                 break
