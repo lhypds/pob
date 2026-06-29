@@ -1182,6 +1182,7 @@ private class HoverNSView: NSView {
         trackingArea = area
     }
 
+    override func hitTest(_: NSPoint) -> NSView? { nil }
     override func mouseEntered(with _: NSEvent) { onHoverChange?(true) }
     override func mouseExited(with _: NSEvent) { onHoverChange?(false) }
 }
