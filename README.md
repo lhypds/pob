@@ -7,7 +7,7 @@ Pob
 ===
 
 
-Perception and Operation Bridge.  
+Perception & Operation Bridge.  
 
 
 Purpose
