@@ -83,7 +83,7 @@ logs/
 Features
 --------
 
-<img width="702" height="610" alt="image" src="https://github.com/user-attachments/assets/347585a4-5850-421b-92ee-f439cbe0a15f" />
+<img width="839" height="762" alt="image" src="https://github.com/user-attachments/assets/e74edfe9-7bd7-40b1-a403-d0391477d2d8" />
 
 Toolbar buttons (left to right):
 
