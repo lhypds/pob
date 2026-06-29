@@ -281,6 +281,12 @@ class SettingsService {
         try? process.run()
     }
 
+    func getSettingsDict() -> [String: Any] {
+        guard let data = try? Data(contentsOf: settingsFile),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return json
+    }
+
     private func loadJSON(key: String) -> Any? {
         guard let data = try? Data(contentsOf: settingsFile),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }

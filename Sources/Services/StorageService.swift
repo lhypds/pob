@@ -19,6 +19,10 @@ class StorageService {
         let sessionId = "\(Int(Date().timeIntervalSince1970))"
         let dir = logsDirectory.appendingPathComponent(sessionId)
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let entry: [String: Any] = ["settings": SettingsService.shared.getSettingsDict()]
+        if let data = try? JSONSerialization.data(withJSONObject: entry, options: .prettyPrinted) {
+            try? data.write(to: dir.appendingPathComponent("session.json"))
+        }
         return sessionId
     }
 
@@ -189,11 +193,11 @@ class StorageService {
     /// Writes start and end time to logs/sessionId/session.json.
     func saveMacroSessionTimes(sessionId: String, startTime: Date, endTime: Date) {
         let formatter = ISO8601DateFormatter()
-        let entry: [String: Any] = [
-            "start_time": formatter.string(from: startTime),
-            "end_time": formatter.string(from: endTime),
-        ]
         let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("session.json")
+        var entry: [String: Any] = (try? Data(contentsOf: dest))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        entry["start_time"] = formatter.string(from: startTime)
+        entry["end_time"] = formatter.string(from: endTime)
         if let data = try? JSONSerialization.data(withJSONObject: entry, options: .prettyPrinted) {
             try? data.write(to: dest)
         }
@@ -227,7 +231,10 @@ class StorageService {
             }
         }
 
-        let summary: [String: Any] = [
+        let dest = sessionDir.appendingPathComponent("session.json")
+        var summary: [String: Any] = (try? Data(contentsOf: dest))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        summary["usage"] = [
             "prompt_tokens": promptTokens,
             "completion_tokens": completionTokens,
             "total_tokens": totalTokens,
@@ -235,7 +242,7 @@ class StorageService {
             "prompt_tokens_details": ["cached_tokens": cachedTokens],
         ]
         if let data = try? JSONSerialization.data(withJSONObject: summary, options: .prettyPrinted) {
-            try? data.write(to: sessionDir.appendingPathComponent("session.json"))
+            try? data.write(to: dest)
         }
     }
 

@@ -389,6 +389,7 @@ struct ContentView: View {
             MouseService.shared.resetCursor()
 
             let sessionId = StorageService.shared.createSession()
+            let sessionStartTime = Date()
             AppLogger.log("[\(sessionId)] Session started")
 
             guard let (initShot, _) = captureWithCursor(window: window) else {
@@ -440,6 +441,7 @@ struct ContentView: View {
                 }
             }
 
+            StorageService.shared.saveMacroSessionTimes(sessionId: sessionId, startTime: sessionStartTime, endTime: Date())
             StorageService.shared.saveSessionUsage(sessionId: sessionId)
             AppLogger.log("[\(sessionId)] Session usage saved")
 
