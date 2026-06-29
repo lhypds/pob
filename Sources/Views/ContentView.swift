@@ -338,7 +338,7 @@ struct ContentView: View {
                 }
             }
 
-            StorageService.shared.saveMacroSessionTimes(sessionId: sessionId, startTime: macroStartTime, endTime: Date())
+            StorageService.shared.saveSessionTimes(sessionId: sessionId, startTime: macroStartTime, endTime: Date())
             AppLogger.log("[\(sessionId)] Macro session times saved")
             AppLogger.log("Macro execution complete")
             await MainActor.run { isExecuting = false; currentTask = nil }
@@ -441,7 +441,7 @@ struct ContentView: View {
                 }
             }
 
-            StorageService.shared.saveMacroSessionTimes(sessionId: sessionId, startTime: sessionStartTime, endTime: Date())
+            StorageService.shared.saveSessionTimes(sessionId: sessionId, startTime: sessionStartTime, endTime: Date())
             StorageService.shared.saveSessionUsage(sessionId: sessionId)
             AppLogger.log("[\(sessionId)] Session usage saved")
 

@@ -194,7 +194,7 @@ class StorageService {
     }
 
     /// Writes start and end time to logs/sessionId/session.json.
-    func saveMacroSessionTimes(sessionId: String, startTime: Date, endTime: Date) {
+    func saveSessionTimes(sessionId: String, startTime: Date, endTime: Date) {
         let dest = logsDirectory.appendingPathComponent(sessionId).appendingPathComponent("session.json")
         var entry: [String: Any] = (try? Data(contentsOf: dest))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
