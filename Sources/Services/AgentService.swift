@@ -27,7 +27,7 @@ class AgentService {
             """],
             ["role": "user", "content": [
                 ["type": "text", "text": "Task: \(instruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)", "detail": "low"]],
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(screenshotBase64)"]],
             ] as [[String: Any]]],
         ]
         let planSchema: [String: Any] = [
@@ -63,7 +63,8 @@ class AgentService {
             if let data = plan.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data),
                let pretty = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted),
-               let prettyStr = String(data: pretty, encoding: .utf8) {
+               let prettyStr = String(data: pretty, encoding: .utf8)
+            {
                 normalizedPlan = prettyStr
             } else {
                 normalizedPlan = plan

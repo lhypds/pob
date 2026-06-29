@@ -113,107 +113,107 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-              HStack(spacing: 4) {
-                Button(action: { SettingsService.shared.openSettingsFile() }) {
-                    Image(systemName: "gearshape")
-                }
-                .help("Settings")
-
-                Button(action: { SettingsService.shared.openLogsFolder() }) {
-                    Image(systemName: "doc.text")
-                }
-                .help("Logs")
-
-                Button(action: { SettingsService.shared.openAppLog() }) {
-                    VStack(spacing: 0) {
-                        Text("app")
-                        Text(".log")
+                HStack(spacing: 4) {
+                    Button(action: { SettingsService.shared.openSettingsFile() }) {
+                        Image(systemName: "gearshape")
                     }
-                    .font(.system(size: 6, design: .monospaced))
-                }
-                .help("App Log")
+                    .help("Settings")
 
-                Button(action: { SettingsService.shared.openInstructionFile() }) {
-                    Image(systemName: "text.alignleft")
-                }
-                .help("Instruction")
+                    Button(action: { SettingsService.shared.openLogsFolder() }) {
+                        Image(systemName: "doc.text")
+                    }
+                    .help("Logs")
 
-                Button(action: { SettingsService.shared.openMacroFile() }) {
-                    Image(systemName: "wand.and.rays")
-                }
-                .help("Macro")
-
-                Button(action: {
-                    isRecording.toggle()
-                    if isRecording { SettingsService.shared.clearMacro() }
-                }) {
-                    Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
-                        .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                }
-                .help(isRecording ? "Recording (click to stop)" : "Record Macro")
-
-                Button(action: {
-                    isTargeting.toggle()
-                    if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
-                    if !isTargeting { mousePosition = nil }
-                    updateClickThrough()
-                }) {
-                    Image(systemName: "scope")
-                        .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                }
-                .help(isTargeting ? "Stop Targeting" : "Target")
-
-                Button(action: {
-                    isCropping.toggle()
-                    if isCropping { isTargeting = false; mousePosition = nil }
-                    if !isCropping { cropStart = nil; cropCurrent = nil }
-                    updateClickThrough()
-                }) {
-                    Image(systemName: "crop")
-                        .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                }
-                .help(isCropping ? "Stop Cropping" : "Crop")
-
-                Button(action: {
-                    if isExecuting {
-                        stop()
-                    } else {
-                        let macro = SettingsService.shared.getMacro()
-                        if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            isExecuting = true
-                            executeMain()
-                        } else {
-                            showMacroChoice = true
+                    Button(action: { SettingsService.shared.openAppLog() }) {
+                        VStack(spacing: 0) {
+                            Text("app")
+                            Text(".log")
                         }
+                        .font(.system(size: 6, design: .monospaced))
                     }
-                }) {
-                    Image(systemName: isExecuting ? "stop.fill" : "play.fill")
-                }
-                .help(isExecuting ? "Stop" : "Execute")
-                .animation(nil, value: isExecuting)
+                    .help("App Log")
 
-                Button(action: {
-                    isClickThrough.toggle()
-                    updateClickThrough()
-                }) {
-                    Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
-                        .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
-                }
-                .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
+                    Button(action: { SettingsService.shared.openInstructionFile() }) {
+                        Image(systemName: "text.alignleft")
+                    }
+                    .help("Instruction")
 
-                Button(action: {
-                    isLocked.toggle()
-                }) {
-                    Image(systemName: isLocked ? "lock.fill" : "lock.open")
-                        .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
-                }
-                .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
+                    Button(action: { SettingsService.shared.openMacroFile() }) {
+                        Image(systemName: "wand.and.rays")
+                    }
+                    .help("Macro")
 
-                Button(action: { showClearChoice = true }) {
-                    Image(systemName: "trash")
+                    Button(action: {
+                        isRecording.toggle()
+                        if isRecording { SettingsService.shared.clearMacro() }
+                    }) {
+                        Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
+                            .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                    }
+                    .help(isRecording ? "Recording (click to stop)" : "Record Macro")
+
+                    Button(action: {
+                        isTargeting.toggle()
+                        if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
+                        if !isTargeting { mousePosition = nil }
+                        updateClickThrough()
+                    }) {
+                        Image(systemName: "scope")
+                            .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                    }
+                    .help(isTargeting ? "Stop Targeting" : "Target")
+
+                    Button(action: {
+                        isCropping.toggle()
+                        if isCropping { isTargeting = false; mousePosition = nil }
+                        if !isCropping { cropStart = nil; cropCurrent = nil }
+                        updateClickThrough()
+                    }) {
+                        Image(systemName: "crop")
+                            .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+                    }
+                    .help(isCropping ? "Stop Cropping" : "Crop")
+
+                    Button(action: {
+                        if isExecuting {
+                            stop()
+                        } else {
+                            let macro = SettingsService.shared.getMacro()
+                            if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                isExecuting = true
+                                executeMain()
+                            } else {
+                                showMacroChoice = true
+                            }
+                        }
+                    }) {
+                        Image(systemName: isExecuting ? "stop.fill" : "play.fill")
+                    }
+                    .help(isExecuting ? "Stop" : "Execute")
+                    .animation(nil, value: isExecuting)
+
+                    Button(action: {
+                        isClickThrough.toggle()
+                        updateClickThrough()
+                    }) {
+                        Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
+                            .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+                    }
+                    .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
+
+                    Button(action: {
+                        isLocked.toggle()
+                    }) {
+                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                            .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+                    }
+                    .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
+
+                    Button(action: { showClearChoice = true }) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Clear")
                 }
-                .help("Clear")
-              }
             }
         }
         .onTapGesture {
@@ -537,7 +537,8 @@ struct ContentView: View {
 
                 if outcome == .resumePlan,
                    let (freshShot, _) = captureWithCursor(window: window),
-                   let freshBase64 = toBase64(freshShot) {
+                   let freshBase64 = toBase64(freshShot)
+                {
                     currentShot = freshShot
                     currentScreenshotBase64 = freshBase64
                 }
@@ -579,7 +580,8 @@ struct ContentView: View {
         guard let plan,
               let data = plan.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawSteps = json["steps"] as? [[String: Any]], !rawSteps.isEmpty else {
+              let rawSteps = json["steps"] as? [[String: Any]], !rawSteps.isEmpty
+        else {
             AppLogger.log("[\(sessionId)] No plan steps to execute.")
             return .done
         }
@@ -630,7 +632,7 @@ struct ContentView: View {
                 switch verifyResult {
                 case .verified:
                     stepDone = true
-                case .resumeStep(let targetSeq):
+                case let .resumeStep(targetSeq):
                     let resumeCount = await MainActor.run { () -> Int in
                         globalResumeCount += 1
                         return globalResumeCount
@@ -674,7 +676,8 @@ struct ContentView: View {
         AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] \(isResume ? "Resuming" : "Starting") step \(stepSeq): \(stepInstruction)")
 
         guard let (initShot, initCtx) = captureWithCursor(window: window),
-              let initBase64 = toBase64(initShot) else {
+              let initBase64 = toBase64(initShot)
+        else {
             StorageService.shared.writeStepStatus("ERROR", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
             return
         }
@@ -713,7 +716,7 @@ struct ContentView: View {
             "role": "user",
             "content": [
                 ["type": "text", "text": "Step \(stepSeq): \(stepInstruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)", "detail": "low"]],
+                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
             ] as [[String: Any]],
         ]
         messages.append(userMsg)
@@ -806,7 +809,7 @@ struct ContentView: View {
                                 "role": "user",
                                 "content": [
                                     ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
-                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                                 ] as [[String: Any]],
                             ])
                         }
@@ -826,7 +829,7 @@ struct ContentView: View {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
                             ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -842,7 +845,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -858,7 +861,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -881,7 +884,7 @@ struct ContentView: View {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
                             ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -899,7 +902,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -913,7 +916,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -927,7 +930,7 @@ struct ContentView: View {
                     if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
                         lastContext = ctx; lastScreenshot = shot
                         messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                         ] as [[String: Any]]])
                     }
 
@@ -964,7 +967,7 @@ struct ContentView: View {
                         if let b64 = toBase64(finalShot) {
                             messages.append(["role": "user", "content": [
                                 ["type": "text", "text": "Current screenshot:"],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                             ] as [[String: Any]]])
                         }
                     }
@@ -1024,7 +1027,7 @@ struct ContentView: View {
                 "role": "user",
                 "content": [
                     ["type": "text", "text": "Step instruction: \(instruction)\nExpectation: \(expectation)\n\nDoes the current screenshot match this expectation?"],
-                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)", "detail": "low"]],
+                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
                 ] as [[String: Any]],
             ],
         ]
