@@ -1020,6 +1020,25 @@ struct ContentView: View {
             }
             .help(isRecording ? "Recording (click to stop)" : "Record Macro")
         }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                if isExecuting {
+                    stop()
+                } else {
+                    let macro = SettingsService.shared.getMacro()
+                    if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        isExecuting = true
+                        executeMain()
+                    } else {
+                        showMacroChoice = true
+                    }
+                }
+            }) {
+                Image(systemName: isExecuting ? "stop.fill" : "play.fill")
+            }
+            .help(isExecuting ? "Stop" : "Execute")
+            .animation(nil, value: isExecuting)
+        }
     }
 
     @ToolbarContentBuilder
@@ -1047,25 +1066,6 @@ struct ContentView: View {
                     .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
             }
             .help(isCropping ? "Stop Cropping" : "Crop")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button(action: {
-                if isExecuting {
-                    stop()
-                } else {
-                    let macro = SettingsService.shared.getMacro()
-                    if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        isExecuting = true
-                        executeMain()
-                    } else {
-                        showMacroChoice = true
-                    }
-                }
-            }) {
-                Image(systemName: isExecuting ? "stop.fill" : "play.fill")
-            }
-            .help(isExecuting ? "Stop" : "Execute")
-            .animation(nil, value: isExecuting)
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
