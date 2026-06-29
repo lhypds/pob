@@ -111,111 +111,7 @@ struct ContentView: View {
             updateClickThrough()
             updateWindowLock()
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                HStack(spacing: 4) {
-                    Button(action: { SettingsService.shared.openSettingsFile() }) {
-                        Image(systemName: "gearshape")
-                    }
-                    .help("Settings")
-
-                    Button(action: { SettingsService.shared.openLogsFolder() }) {
-                        Image(systemName: "doc.text")
-                    }
-                    .help("Logs")
-
-                    Button(action: { SettingsService.shared.openAppLog() }) {
-                        VStack(spacing: 0) {
-                            Text("app")
-                            Text(".log")
-                        }
-                        .font(.system(size: 6, design: .monospaced))
-                    }
-                    .help("App Log")
-
-                    Button(action: { SettingsService.shared.openInstructionFile() }) {
-                        Image(systemName: "text.alignleft")
-                    }
-                    .help("Instruction")
-
-                    Button(action: { SettingsService.shared.openMacroFile() }) {
-                        Image(systemName: "wand.and.rays")
-                    }
-                    .help("Macro")
-
-                    Button(action: {
-                        isRecording.toggle()
-                        if isRecording { SettingsService.shared.clearMacro() }
-                    }) {
-                        Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
-                            .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                    }
-                    .help(isRecording ? "Recording (click to stop)" : "Record Macro")
-
-                    Button(action: {
-                        isTargeting.toggle()
-                        if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
-                        if !isTargeting { mousePosition = nil }
-                        updateClickThrough()
-                    }) {
-                        Image(systemName: "scope")
-                            .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                    }
-                    .help(isTargeting ? "Stop Targeting" : "Target")
-
-                    Button(action: {
-                        isCropping.toggle()
-                        if isCropping { isTargeting = false; mousePosition = nil }
-                        if !isCropping { cropStart = nil; cropCurrent = nil }
-                        updateClickThrough()
-                    }) {
-                        Image(systemName: "crop")
-                            .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
-                    }
-                    .help(isCropping ? "Stop Cropping" : "Crop")
-
-                    Button(action: {
-                        if isExecuting {
-                            stop()
-                        } else {
-                            let macro = SettingsService.shared.getMacro()
-                            if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                isExecuting = true
-                                executeMain()
-                            } else {
-                                showMacroChoice = true
-                            }
-                        }
-                    }) {
-                        Image(systemName: isExecuting ? "stop.fill" : "play.fill")
-                    }
-                    .help(isExecuting ? "Stop" : "Execute")
-                    .animation(nil, value: isExecuting)
-
-                    Button(action: {
-                        isClickThrough.toggle()
-                        updateClickThrough()
-                    }) {
-                        Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
-                            .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
-                    }
-                    .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
-
-                    Button(action: {
-                        isLocked.toggle()
-                    }) {
-                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
-                            .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
-                    }
-                    .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
-
-                    Button(action: { showClearChoice = true }) {
-                        Image(systemName: "trash")
-                    }
-                    .help("Clear")
-                }
-            }
-        }
+        .toolbar { toolbarContent }
         .onTapGesture {
             NSApplication.shared.activate(ignoringOtherApps: true)
             NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
@@ -1077,6 +973,125 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        toolbarFileItems
+        toolbarActionItems
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarFileItems: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button(action: { SettingsService.shared.openSettingsFile() }) {
+                Image(systemName: "gearshape")
+            }
+            .help("Settings")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { SettingsService.shared.openLogsFolder() }) {
+                Image(systemName: "doc.text")
+            }
+            .help("Logs")
+        }
+        ToolbarItem(placement: .automatic) {
+            AppLogButton { SettingsService.shared.openAppLog() }
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { SettingsService.shared.openInstructionFile() }) {
+                Image(systemName: "text.alignleft")
+            }
+            .help("Instruction")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { SettingsService.shared.openMacroFile() }) {
+                Image(systemName: "wand.and.rays")
+            }
+            .help("Macro")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                isRecording.toggle()
+                if isRecording { SettingsService.shared.clearMacro() }
+            }) {
+                Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
+                    .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+            }
+            .help(isRecording ? "Recording (click to stop)" : "Record Macro")
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarActionItems: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                isTargeting.toggle()
+                if isTargeting { isCropping = false; cropStart = nil; cropCurrent = nil }
+                if !isTargeting { mousePosition = nil }
+                updateClickThrough()
+            }) {
+                Image(systemName: "scope")
+                    .foregroundStyle(isTargeting ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+            }
+            .help(isTargeting ? "Stop Targeting" : "Target")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                isCropping.toggle()
+                if isCropping { isTargeting = false; mousePosition = nil }
+                if !isCropping { cropStart = nil; cropCurrent = nil }
+                updateClickThrough()
+            }) {
+                Image(systemName: "crop")
+                    .foregroundStyle(isCropping ? Color.accentColor : (controlActiveState == .inactive ? Color.secondary : Color.primary))
+            }
+            .help(isCropping ? "Stop Cropping" : "Crop")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                if isExecuting {
+                    stop()
+                } else {
+                    let macro = SettingsService.shared.getMacro()
+                    if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        isExecuting = true
+                        executeMain()
+                    } else {
+                        showMacroChoice = true
+                    }
+                }
+            }) {
+                Image(systemName: isExecuting ? "stop.fill" : "play.fill")
+            }
+            .help(isExecuting ? "Stop" : "Execute")
+            .animation(nil, value: isExecuting)
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                isClickThrough.toggle()
+                updateClickThrough()
+            }) {
+                Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
+                    .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+            }
+            .help(isClickThrough ? "Click-Through On (click to disable)" : "Click-Through Off (click to enable)")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { isLocked.toggle() }) {
+                Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                    .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+            }
+            .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { showClearChoice = true }) {
+                Image(systemName: "trash")
+            }
+            .help("Clear")
+        }
+    }
+
     // MARK: - Helpers
 
     private func captureWithCursor(window: NSWindow?) -> (NSImage, ScreenshotContext)? {
@@ -1115,6 +1130,60 @@ struct ContentView: View {
     private func updateClickThrough() {
         AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting && !isCropping)
     }
+}
+
+private struct AppLogButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                Text("app")
+                Text(".log")
+            }
+            .font(.system(size: 6, design: .monospaced))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
+        )
+        .overlay(HoverDetectorView(isHovered: $isHovered))
+        .help("App Log")
+    }
+}
+
+private struct HoverDetectorView: NSViewRepresentable {
+    @Binding var isHovered: Bool
+
+    func makeNSView(context _: Context) -> HoverNSView {
+        let view = HoverNSView()
+        view.onHoverChange = { isHovered = $0 }
+        return view
+    }
+
+    func updateNSView(_ nsView: HoverNSView, context _: Context) {
+        nsView.onHoverChange = { isHovered = $0 }
+    }
+}
+
+private class HoverNSView: NSView {
+    var onHoverChange: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with _: NSEvent) { onHoverChange?(true) }
+    override func mouseExited(with _: NSEvent) { onHoverChange?(false) }
 }
 
 private struct MouseTrackingOverlay: NSViewRepresentable {
