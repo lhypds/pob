@@ -33,6 +33,19 @@ Phase 2. Make the AI can operate the desktop application. (DONE)
 Phase 3. Make AI learn users operation and do it for the user with instructions, or repeat. (IN PROGRESS)  
 
 
+Test
+----
+
+OpenAI
+gpt-5.5, works
+
+Claude
+claude-opus-4-8, works, but the mouse fly outside of the window sometimes.
+
+Google
+gemini-2.5-flash, not working
+
+
 Logs
 ----
 
