@@ -21,7 +21,11 @@ Requirements
 - A real X11 session (Xorg). On Wayland the app runs under XWayland but
   cannot see or control native Wayland windows — use an Xorg session.
 - A running compositor (GNOME/KDE/Xfce defaults are fine); without one the
-  overlay cannot be transparent.
+  overlay cannot be transparent — the content area shows as solid gray.
+  On Raspberry Pi OS (PIXEL/openbox has no compositor by default), enable
+  one with `sudo raspi-config` → Advanced Options → Compositor (xcompmgr),
+  or `sudo apt install picom` and run `picom -b`. Check `app.log` — the shell
+  logs a warning when no compositor or RGBA visual is available.
 - Build dependencies:
 
 ```
@@ -41,8 +45,9 @@ Build & run
 ./linux-x11/start.sh         # build and run in the foreground
 ./linux-x11/restart.sh       # rebuild and (re)start in the background
 ./linux-x11/stop.sh
-./linux-x11/build.sh         # release build (native, on a Linux machine)
-./linux-x11/build-docker.sh  # release build from any Docker host (used by release.sh)
+./linux-x11/build.sh         # release build — native on Linux; on macOS
+                             # (SYSTEM=macos) it delegates to build_docker.sh
+./linux-x11/build_docker.sh  # release build from any Docker host (used by release.sh)
 ```
 
 Both build scripts produce `linux-x11/dist/Pob/` (`pob` + `pob-core` side by

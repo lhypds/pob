@@ -4,11 +4,17 @@
 # pob-core next to its own binary, like the macOS bundle layout).
 # Produces: ./linux-x11/dist/Pob/  and  Pob-<version>-linux-<arch>.zip
 #
-# To cross-build from macOS (or any Docker host), use ./build-docker.sh.
+# When SYSTEM is macos (or the host is Darwin) there is no native GTK/X11
+# toolchain, so this delegates to ./build_docker.sh automatically.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+SYSTEM="$( { tr -d '[:space:]' < "$ROOT_DIR/SYSTEM"; } 2>/dev/null || true)"
+if [[ "$SYSTEM" == "macos" || ( -z "$SYSTEM" && "$(uname -s)" == "Darwin" ) ]]; then
+    exec "$SCRIPT_DIR/build_docker.sh" "$@"
+fi
 
 VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo '0.0.1')"
 case "$(uname -m)" in

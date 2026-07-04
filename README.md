@@ -264,12 +264,15 @@ be run directly.
 Release
 -------
 
-Update `VERSION`, then run `release.sh` (on macOS, with Docker running).
-It builds both shells and publishes them to GitHub as two release assets:
+Update `VERSION`, then run `release.sh`. What it builds follows the
+`SYSTEM` file:
 
-- `Pob-<version>-macos.zip` — the app bundle from `macos/build.sh`
-  (`pob-core` embedded)
-- `Pob-<version>-linux-<arch>.zip` — `pob` + `pob-core` side by side, built
-  by `linux-x11/build-docker.sh` (Go core cross-compiled on the host, GTK
-  shell compiled in a Debian container; `LINUX_ARCH=amd64|arm64`, default
-  amd64)
+- `SYSTEM=macos` (requires Docker running) — builds both shells:
+  - `Pob-<version>-macos.zip` — the app bundle from `macos/build.sh`
+    (`pob-core` embedded)
+  - `Pob-<version>-linux-amd64.zip` and `Pob-<version>-linux-arm64.zip` —
+    `pob` + `pob-core` side by side, built by `linux-x11/build_docker.sh`
+    (Go core cross-compiled on the host, GTK shell compiled in a Debian
+    container; override the list with `LINUX_ARCHS="amd64 arm64"`)
+- `SYSTEM=linux-*` — builds `Pob-<version>-linux-<arch>.zip` natively via
+  `linux-x11/build.sh` for the host architecture only
