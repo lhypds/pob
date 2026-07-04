@@ -10,4 +10,5 @@ instruction.txt
 macro.txt
 app.log
 macos_app/
+core/bin/
 *.zip

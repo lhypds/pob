@@ -1,10 +1,10 @@
 #!/bin/bash
-# Builds Pob.app bundle from the Swift Package Manager project.
-# Produces: ./macos_app/Pob.app  (ad-hoc signed, no sandbox)
+# Builds Pob.app bundle: Go core (pob-core) + Swift shell, assembled together.
+# Produces: ./macos/macos_app/Pob.app  (ad-hoc signed, no sandbox)
 #
 # Usage:
-#   ./build_app.sh              # release build
-#   ./build_app.sh --debug      # debug build
+#   ./build.sh              # release build
+#   ./build.sh --debug      # debug build
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,14 +20,20 @@ done
 VERSION="$(cat VERSION 2>/dev/null || echo '0.0.1')"
 APP_NAME="Pob"
 BUNDLE_ID="jp.co.linktivity.pob"
-OUTPUT_DIR="$SCRIPT_DIR/macos_app"
+MACOS_DIR="$SCRIPT_DIR/macos"
+OUTPUT_DIR="$MACOS_DIR/macos_app"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 CONTENTS="$APP_BUNDLE/Contents"
-BINARY_SRC=".build/$CONFIG/$APP_NAME"
+BINARY_SRC="$MACOS_DIR/.build/$CONFIG/$APP_NAME"
+CORE_BINARY="$SCRIPT_DIR/core/bin/pob-core"
 
-# ── build ────────────────────────────────────────────────────────────────────
-echo "Building ($CONFIG)…"
-swift build $SWIFT_CONFIG_FLAG
+# ── build core (Go) ──────────────────────────────────────────────────────────
+echo "Building pob-core (Go)…"
+(cd "$SCRIPT_DIR/core" && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core)
+
+# ── build shell (Swift) ──────────────────────────────────────────────────────
+echo "Building macOS shell ($CONFIG)…"
+(cd "$MACOS_DIR" && swift build $SWIFT_CONFIG_FLAG)
 
 # ── assemble bundle ──────────────────────────────────────────────────────────
 echo "Assembling $APP_NAME.app…"
@@ -35,17 +41,18 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$CONTENTS/MacOS"
 
 cp "$BINARY_SRC" "$CONTENTS/MacOS/$APP_NAME"
+cp "$CORE_BINARY" "$CONTENTS/MacOS/pob-core"
 
 # ── app icon ─────────────────────────────────────────────────────────────────
 echo "Generating app icon…"
 mkdir -p "$CONTENTS/Resources"
-ICONSET_DIR="$SCRIPT_DIR/.build/Pob.iconset"
+ICONSET_DIR="$MACOS_DIR/.build/Pob.iconset"
 ICNS_PATH="$CONTENTS/Resources/AppIcon.icns"
 mkdir -p "$ICONSET_DIR"
 
 # Generate 1024x1024 base PNG via Swift script
-BASE_PNG="$SCRIPT_DIR/.build/pob_icon_1024.png"
-swift "$SCRIPT_DIR/generate_icon.swift" "$BASE_PNG"
+BASE_PNG="$MACOS_DIR/.build/pob_icon_1024.png"
+swift "$MACOS_DIR/generate_icon.swift" "$BASE_PNG"
 
 # Resize to all required iconset sizes
 for SIZE in 16 32 128 256 512; do
@@ -114,6 +121,11 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 
 echo "Signing with: $IDENTITY"
+# Sign the embedded Go core first, then the bundle.
+codesign --force --options runtime \
+  --entitlements "$ENTITLEMENTS" \
+  --sign "$IDENTITY" \
+  "$CONTENTS/MacOS/pob-core"
 codesign --force --deep --options runtime \
   --entitlements "$ENTITLEMENTS" \
   --sign "$IDENTITY" \

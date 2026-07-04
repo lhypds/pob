@@ -1,14 +1,18 @@
 #!/bin/bash
 
 # Run script for Pob project
-# Builds and runs the macOS desktop application
+# Builds the Go core + macOS shell and runs the app in the foreground
 
 set -e
 
-echo "🔨 Building..."
-swift build
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-EXECUTABLE_PATH=".build/debug/Pob"
+echo "🔨 Building core (Go)..."
+(cd "$SCRIPT_DIR/core" && go build -o bin/pob-core ./cmd/pob-core)
+
+echo "🔨 Building macOS shell (Swift)..."
+(cd "$SCRIPT_DIR/macos" && swift build)
 
 echo "▶️  Launching Pob..."
-"$EXECUTABLE_PATH"
+cd "$SCRIPT_DIR"
+"$SCRIPT_DIR/macos/.build/debug/Pob"

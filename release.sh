@@ -5,7 +5,7 @@ cd "$SCRIPT_DIR"
 
 VERSION="$(cat VERSION)"
 TAG="v$VERSION"
-APP_BUNDLE="macos_app/Pob.app"
+APP_BUNDLE="macos/macos_app/Pob.app"
 ZIP_NAME="Pob-${VERSION}-macos.zip"
 
 echo "==> Releasing Pob $TAG"

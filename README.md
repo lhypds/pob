@@ -24,6 +24,33 @@ It allows AI to:
 - Work with MCP-compatible AI clients
 
 
+Architecture
+------------
+
+Pob is split into a platform-independent brain and a native shell:
+
+```
+core/    The brain (Go, zero dependencies). Agent loop (plan → execute →
+         verify), OpenAI-compatible LLM client, session logs, macro engine,
+         and the MCP SSE server. Compiled to a single binary: pob-core.
+
+macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
+         virtual cursor, mouse/keyboard event injection, and the permission
+         surface (Screen Recording / Accessibility).
+```
+
+The shell spawns `pob-core` as a child process and the two talk over
+stdin/stdout with line-delimited JSON-RPC:
+
+- Shell → core: `run.instruction`, `run.macro`, `run.stop`, `recording.changed`
+- Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
+  `keyboard.type`, `ui.confirmMaxStep`, … and `session.state` notifications
+
+All coordinates crossing the boundary are screenshot pixels; the shell owns
+the conversion to real screen positions. Porting to Windows/Linux means
+reimplementing only the shell — the brain is shared.
+
+
 Roadmap
 -------
 
@@ -148,11 +175,10 @@ Use the record button (⏺) in the toolbar to record actions during an AI sessio
 MCP Server
 ----------
 
-Install dependency:
+The MCP server is built into `pob-core` and starts automatically with the app
+when `start_mcp: true` (SSE transport, port `8032` by default).
 
 Register with Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-When Pob is running with `start_mcp: true`, the server is already up on SSE — point Claude Desktop at it directly:
 
 ```json
 {
@@ -164,26 +190,11 @@ When Pob is running with `start_mcp: true`, the server is already up on SSE — 
 }
 ```
 
-Alternatively, let Claude Desktop manage the process itself (stdio mode):
-
-```json
-{
-  "mcpServers": {
-    "pob": {
-      "command": "python3",
-      "args": ["/path/to/pob/mcp/pob_mcp_server.py"]
-    }
-  }
-}
-```
-
 MCP tools:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the primary display and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
-
-The server communicates over stdio and requires macOS (uses the built-in `screencapture` command).
+| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the Pob window content area and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
 
 
 `settings.json`
@@ -224,9 +235,23 @@ Example:
 ```
 
 
+Development
+-----------
+
+Requirements: Xcode Command Line Tools (Swift) and Go (`brew install go`).
+
+```
+./setup.sh      # check toolchains, build core (Go) + macOS shell (Swift)
+./start.sh      # build and run in the foreground
+./restart.sh    # rebuild and relaunch in the background (logs to app.log)
+./stop.sh       # stop the app and the core process
+```
+
+
 Release
 -------
 
-Use `build.sh` to build the app to `macos_app/Pob.app`.  
+Use `build.sh` to build the app to `macos/macos_app/Pob.app` (the `pob-core`
+binary is embedded into the bundle).  
 Update `VERSION`.  
 Then use `release.sh` to release to GitHub.  

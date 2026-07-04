@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Setup script for Pob project
-# This script configures the development environment for the macOS desktop app
+# Configures the development environment: Go core + macOS Swift shell
 
 set -e
 
@@ -16,45 +16,43 @@ if ! command -v swift &> /dev/null; then
     exit 1
 fi
 
-echo "✅ Swift found: $(swift --version)"
+echo "✅ Swift found: $(swift --version | head -1)"
 
-# Create necessary directories
-echo "📁 Creating necessary directories..."
-mkdir -p Sources
-mkdir -p ~/.config/Pob
-
-# Verify Package.swift exists
-if [ ! -f "Package.swift" ]; then
-    echo "❌ Package.swift not found in current directory"
+# Check for Go
+if ! command -v go &> /dev/null; then
+    echo "❌ Go is not installed. Install it with Homebrew:"
+    echo "   brew install go"
+    echo "   (or download from https://go.dev/dl/)"
     exit 1
 fi
 
-echo "✅ Package.swift found"
+echo "✅ Go found: $(go version)"
 
-# Initialize .env from template when available
-if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-    cp .env.example .env
-    echo "✅ Created .env from .env.example"
+# Verify project layout
+if [ ! -f "$SCRIPT_DIR/core/go.mod" ]; then
+    echo "❌ core/go.mod not found — is this the project root?"
+    exit 1
+fi
+
+if [ ! -f "$SCRIPT_DIR/macos/Package.swift" ]; then
+    echo "❌ macos/Package.swift not found — is this the project root?"
+    exit 1
 fi
 
 # Initialize settings.json from example when available
-if [ ! -f "settings.json" ] && [ -f "settings.json.example" ]; then
-    cp settings.json.example settings.json
+if [ ! -f "$SCRIPT_DIR/settings.json" ] && [ -f "$SCRIPT_DIR/settings.json.example" ]; then
+    cp "$SCRIPT_DIR/settings.json.example" "$SCRIPT_DIR/settings.json"
     echo "✅ Created settings.json from settings.json.example"
 fi
 
-# Build the project
-echo "🔨 Building the project..."
-swift build
+# Download Go module dependencies (currently none — stdlib only) and build
+echo "🔨 Building core (Go)..."
+(cd "$SCRIPT_DIR/core" && go mod download && go build -o bin/pob-core ./cmd/pob-core)
+echo "✅ core build successful"
 
-if [ $? -eq 0 ]; then
-    echo "✅ Build successful!"
-else
-    echo "❌ Build failed"
-    exit 1
-fi
+echo "🔨 Building macOS shell (Swift)..."
+(cd "$SCRIPT_DIR/macos" && swift build)
+echo "✅ macOS shell build successful"
 
-# Set up MCP server
 echo ""
-echo "🔌 Setting up MCP server..."
-"$SCRIPT_DIR/mcp/setup.sh"
+echo "Done. Start the app with ./start.sh (foreground) or ./restart.sh (background)."

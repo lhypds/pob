@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @State private var isExecuting = false
-    @State private var currentTask: Task<Void, Never>?
     @State private var isTargeting = false
     @State private var isCropping = false
     @State private var cropStart: CGPoint? = nil
@@ -14,14 +12,10 @@ struct ContentView: View {
     @State private var showMacroChoice = false
     @State private var showClearChoice = false
     @State private var mousePosition: CGPoint? = nil
-    @State private var maxStepWarning = false
-    @State private var maxStepContinuation: CheckedContinuation<Bool, Never>?
-    @State private var globalStepCount = 0
-    @State private var globalResumeCount = 0
-    @State private var stepLogLimitHit = false
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
     @ObservedObject private var mouseService = MouseService.shared
+    @ObservedObject private var bridge = CoreBridge.shared
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -68,7 +62,7 @@ struct ContentView: View {
                 }
             }
 
-            if isExecuting {
+            if bridge.isExecuting {
                 let scale = NSScreen.main?.backingScaleFactor ?? 2.0
                 let cursorImg = NSCursor.arrow.image
                 let hot = NSCursor.arrow.hotSpot
@@ -93,9 +87,15 @@ struct ContentView: View {
                 animatedCursorPos = newPos
             }
         }
-        .onChange(of: isExecuting) { _ in
+        .onChange(of: bridge.isExecuting) { executing in
+            if executing {
+                animatedCursorPos = CGPoint(x: 20, y: 20)
+            }
             updateWindowLock()
             updateClickThrough()
+        }
+        .onChange(of: bridge.flashTick) { _ in
+            flashScreenshot()
         }
         .onChange(of: isLocked) { _ in
             updateWindowLock()
@@ -116,23 +116,19 @@ struct ContentView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
         }
-        .alert("Warning", isPresented: $maxStepWarning) {
+        .alert("Warning", isPresented: $bridge.showMaxStepWarning) {
             Button("Continue") {
-                maxStepWarning = false
-                maxStepContinuation?.resume(returning: true)
-                maxStepContinuation = nil
+                bridge.resolveMaxStep(true)
             }
             Button("Stop", role: .cancel) {
-                maxStepWarning = false
-                maxStepContinuation?.resume(returning: false)
-                maxStepContinuation = nil
+                bridge.resolveMaxStep(false)
             }
         } message: {
             Text("Max step exceed.")
         }
         .alert("What would you like to run?", isPresented: $showMacroChoice) {
-            Button("Run Instruction") { isExecuting = true; executeMain() }
-            Button("Run Macro") { isExecuting = true; executeMacro() }
+            Button("Run Instruction") { bridge.runInstruction(recording: isRecording) }
+            Button("Run Macro") { bridge.runMacro() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("macro.txt has recorded actions.")
@@ -218,764 +214,6 @@ struct ContentView: View {
         .allowsHitTesting(false)
     }
 
-    private func stop() {
-        maxStepContinuation?.resume(returning: false)
-        maxStepContinuation = nil
-        maxStepWarning = false
-        currentTask?.cancel()
-        currentTask = nil
-        isExecuting = false
-        AppLogger.log("Stopped")
-    }
-
-    private func executeMacro() {
-        animatedCursorPos = CGPoint(x: 20, y: 20)
-        currentTask = Task {
-            let window = await MainActor.run { NSApplication.shared.windows.first }
-            MouseService.shared.resetCursor()
-
-            let lines = SettingsService.shared.getMacro().components(separatedBy: .newlines)
-            AppLogger.log("Executing macro (\(lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count) actions)")
-
-            guard let (_, ctx) = captureWithCursor(window: window) else {
-                AppLogger.log("Macro: failed to get screenshot context")
-                await MainActor.run { isExecuting = false }
-                return
-            }
-
-            let sessionId = StorageService.shared.createSession()
-            StorageService.shared.saveMacro(sessionId: sessionId)
-            let macroStartTime = Date()
-            AppLogger.log("[\(sessionId)] Macro session started")
-
-            for line in lines {
-                guard !Task.isCancelled else { break }
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { continue }
-                guard let (name, args) = parseMacroLine(trimmed) else {
-                    AppLogger.log("Macro: skipping line: \(trimmed)")
-                    continue
-                }
-
-                switch name {
-                case "move":
-                    guard args.count >= 2, let dx = Double(args[0]).map({ CGFloat($0) }), let dy = Double(args[1]).map({ CGFloat($0) }) else { continue }
-                    MouseService.shared.moveCursorBy(dx: dx, dy: dy)
-                    let pos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] Macro move(\(Int(dx)), \(Int(dy))) -> (\(Int(pos.x)), \(Int(pos.y)))")
-                    await MainActor.run { withAnimation(.easeOut(duration: 0.1)) { animatedCursorPos = pos } }
-
-                case "click":
-                    let pos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] Macro click at (\(Int(pos.x)), \(Int(pos.y)))")
-                    await MouseService.shared.performClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
-
-                case "rightClick":
-                    let pos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] Macro rightClick at (\(Int(pos.x)), \(Int(pos.y)))")
-                    await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
-
-                case "doubleClick":
-                    let pos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] Macro doubleClick at (\(Int(pos.x)), \(Int(pos.y)))")
-                    await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
-
-                case "drag":
-                    guard args.count >= 2, let dx = Double(args[0]).map({ CGFloat($0) }), let dy = Double(args[1]).map({ CGFloat($0) }) else { continue }
-                    let startPos = MouseService.shared.virtualCursorPosition
-                    let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
-                    AppLogger.log("[\(sessionId)] Macro drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
-                    await MouseService.shared.performDrag(from: ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y), to: ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y))
-                    MouseService.shared.moveCursor(to: endPos)
-                    await MainActor.run { withAnimation(.easeOut(duration: 0.1)) { animatedCursorPos = endPos } }
-
-                case "scroll":
-                    guard args.count >= 2, let dx = Double(args[0]).map({ Int32($0) }), let dy = Double(args[1]).map({ Int32($0) }) else { continue }
-                    let pos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] Macro scroll(\(dx), \(dy)) at (\(Int(pos.x)), \(Int(pos.y)))")
-                    await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
-
-                case "typeText":
-                    guard let text = args.first else { continue }
-                    AppLogger.log("[\(sessionId)] Macro typeText(\"\(text.prefix(80))\")")
-                    await MouseService.shared.performType(text: text)
-
-                case "keyPress":
-                    guard let key = args.first else { continue }
-                    AppLogger.log("[\(sessionId)] Macro keyPress(\"\(key)\")")
-                    await MouseService.shared.performKeyPress(key: key)
-
-                case "sleep":
-                    guard let ms = args.first.flatMap({ Double($0) }) else { continue }
-                    AppLogger.log("[\(sessionId)] Macro sleep(\(Int(ms))ms)")
-                    try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
-
-                case "take_screenshot":
-                    let cropRect: CGRect? = args.count >= 4
-                        ? { guard let x = Double(args[0]), let y = Double(args[1]),
-                                  let w = Double(args[2]), let h = Double(args[3]) else { return nil }
-                            return CGRect(x: x, y: y, width: w, height: h)
-                        }()
-                        : nil
-                    if let r = cropRect {
-                        AppLogger.log("[\(sessionId)] Macro take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
-                    } else {
-                        AppLogger.log("[\(sessionId)] Macro take_screenshot")
-                    }
-                    await MainActor.run { flashScreenshot() }
-                    if let (shot, _) = captureWithCursor(window: window) {
-                        let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
-                        StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
-                    }
-
-                default:
-                    AppLogger.log("[\(sessionId)] Macro: unknown action: \(name)")
-                }
-
-                let delayMs = SettingsService.shared.getMacroDefaultDelay()
-                if delayMs > 0 {
-                    try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
-                }
-            }
-
-            StorageService.shared.saveSessionStartEndTimes(sessionId: sessionId, startTime: macroStartTime, endTime: Date())
-            AppLogger.log("[\(sessionId)] Macro session times saved")
-            AppLogger.log("Macro execution complete")
-            await MainActor.run { isExecuting = false; currentTask = nil }
-        }
-    }
-
-    private func parseMacroLine(_ line: String) -> (name: String, args: [String])? {
-        guard let openParen = line.firstIndex(of: "("), line.hasSuffix(")") else { return nil }
-        let name = String(line[line.startIndex ..< openParen]).trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return nil }
-
-        let argsStart = line.index(after: openParen)
-        let argsEnd = line.index(before: line.endIndex)
-        let argsStr = String(line[argsStart ..< argsEnd]).trimmingCharacters(in: .whitespaces)
-        if argsStr.isEmpty { return (name, []) }
-
-        if argsStr.hasPrefix("\"") {
-            var result = ""
-            var i = argsStr.index(after: argsStr.startIndex)
-            while i < argsStr.endIndex {
-                let ch = argsStr[i]
-                if ch == "\\" {
-                    let next = argsStr.index(after: i)
-                    if next < argsStr.endIndex { result.append(argsStr[next]); i = argsStr.index(after: next) }
-                    else { i = next }
-                } else if ch == "\"" {
-                    break
-                } else {
-                    result.append(ch)
-                    i = argsStr.index(after: i)
-                }
-            }
-            return (name, [result])
-        }
-
-        let parts = argsStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        return (name, parts)
-    }
-
-    private func executeMain() {
-        isExecuting = true
-        animatedCursorPos = CGPoint(x: 20, y: 20)
-
-        currentTask = Task {
-            let window = await MainActor.run { NSApplication.shared.windows.first }
-
-            // Reset virtual cursor to (20, 20) — near top-left of the capture area.
-            MouseService.shared.resetCursor()
-
-            let sessionId = StorageService.shared.createSession()
-            let sessionStartTime = Date()
-            AppLogger.log("[\(sessionId)] Session started")
-
-            guard let (initShot, _) = captureWithCursor(window: window) else {
-                AppLogger.log("Failed to capture screenshot")
-                await MainActor.run { isExecuting = false }
-                return
-            }
-
-            guard let initBase64 = toBase64(initShot) else {
-                AppLogger.log("Failed to encode screenshot")
-                await MainActor.run { isExecuting = false }
-                return
-            }
-
-            let instruction = SettingsService.shared.getInstruction()
-            StorageService.shared.saveInstruction(sessionId: sessionId)
-
-            // Generate plan and execute; loop on resumePlan, stop on stop/done/cancel.
-            var currentShot: NSImage = initShot
-            var currentScreenshotBase64 = initBase64
-            var outcome: PlanOutcome = .resumePlan
-            while outcome == .resumePlan && !Task.isCancelled {
-                await MainActor.run { globalStepCount = 0; globalResumeCount = 0 }
-                let planId = StorageService.shared.createPlan(sessionId: sessionId)
-                AppLogger.log("[\(sessionId)/\(planId)] Generating plan...")
-                let plan = await AgentService.shared.generatePlan(instruction: instruction, screenshotBase64: currentScreenshotBase64, screenshot: currentShot, sessionId: sessionId, planId: planId)
-                if let plan {
-                    AppLogger.log("[\(sessionId)/\(planId)] Plan: \(plan)")
-                }
-
-                guard !Task.isCancelled else {
-                    await MainActor.run { isExecuting = false }
-                    return
-                }
-
-                outcome = await executePlan(
-                    sessionId: sessionId,
-                    planId: planId,
-                    plan: plan,
-                    window: window
-                )
-
-                if outcome == .resumePlan,
-                   let (freshShot, _) = captureWithCursor(window: window),
-                   let freshBase64 = toBase64(freshShot)
-                {
-                    currentShot = freshShot
-                    currentScreenshotBase64 = freshBase64
-                }
-            }
-
-            StorageService.shared.saveSessionStartEndTimes(sessionId: sessionId, startTime: sessionStartTime, endTime: Date())
-            StorageService.shared.saveSessionUsage(sessionId: sessionId)
-            AppLogger.log("[\(sessionId)] Session usage saved")
-
-            let wasCancelled = Task.isCancelled
-            await MainActor.run {
-                isExecuting = false
-                currentTask = nil
-                if !wasCancelled {
-                    let soundCmd = SettingsService.shared.getStopHook()
-                    if !soundCmd.isEmpty {
-                        let p = Process()
-                        p.launchPath = "/bin/sh"
-                        p.arguments = ["-c", soundCmd]
-                        try? p.run()
-                    }
-                }
-            }
-        }
-    }
-
-    private enum PlanOutcome {
-        case done
-        case resumePlan
-        case stop
-    }
-
-    @discardableResult
-    private func executePlan(
-        sessionId: String,
-        planId: String,
-        plan: String?,
-        window: NSWindow?
-    ) async -> PlanOutcome {
-        guard let plan,
-              let data = plan.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawSteps = json["steps"] as? [[String: Any]], !rawSteps.isEmpty
-        else {
-            AppLogger.log("[\(sessionId)] No plan steps to execute.")
-            return .done
-        }
-
-        var steps: [(sequence: Int, instruction: String, expectation: String)] = []
-        for s in rawSteps {
-            if let seq = s["sequence"] as? Int, let inst = s["instruction"] as? String {
-                steps.append((seq, inst, s["expectation"] as? String ?? ""))
-            }
-        }
-        steps.sort { $0.sequence < $1.sequence }
-
-        var stepIndex = 0
-        while stepIndex < steps.count && !Task.isCancelled {
-            let step = steps[stepIndex]
-            var stepDone = false
-            var jumpToIndex: Int? = nil
-            var isStepResume = false
-
-            while !stepDone && jumpToIndex == nil && !Task.isCancelled {
-                await MainActor.run { stepLogLimitHit = false }
-                await executeStep(
-                    sessionId: sessionId,
-                    planId: planId,
-                    stepSeq: step.sequence,
-                    stepInstruction: step.instruction,
-                    stepExpectation: step.expectation,
-                    plan: plan,
-                    window: window,
-                    isResume: isStepResume
-                )
-
-                if await MainActor.run(resultType: Bool.self, body: { stepLogLimitHit }) {
-                    AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Step log limit hit — resuming step...")
-                    isStepResume = true
-                    continue
-                }
-
-                let verifyResult = await verifyStep(
-                    instruction: step.instruction,
-                    expectation: step.expectation,
-                    sessionId: sessionId,
-                    planId: planId,
-                    stepSeq: step.sequence,
-                    plan: plan,
-                    window: window
-                )
-                switch verifyResult {
-                case .verified:
-                    stepDone = true
-                case let .resumeStep(targetSeq):
-                    let resumeCount = await MainActor.run { () -> Int in
-                        globalResumeCount += 1
-                        return globalResumeCount
-                    }
-                    if resumeCount > SettingsService.shared.getMaxResumes() {
-                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Resume count \(resumeCount) exceeded limit — regenerating plan...")
-                        return .resumePlan
-                    }
-                    if let targetSeq, let targetIndex = steps.firstIndex(where: { $0.sequence == targetSeq }), targetIndex != stepIndex {
-                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Jumping to step \(targetSeq)...")
-                        jumpToIndex = targetIndex
-                    } else {
-                        AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Retrying step \(step.sequence)...")
-                        isStepResume = true
-                    }
-                case .resumePlan:
-                    AppLogger.log("[plan:\(sessionId)] Resume All — regenerating plan...")
-                    return .resumePlan
-                case .stop:
-                    AppLogger.log("[plan:\(sessionId)/step:\(step.sequence)] Stop — halting execution.")
-                    return .stop
-                }
-            }
-
-            stepIndex = jumpToIndex ?? (stepIndex + 1)
-        }
-        return .done
-    }
-
-    private func executeStep(
-        sessionId: String,
-        planId: String,
-        stepSeq: Int,
-        stepInstruction: String,
-        stepExpectation: String,
-        plan: String,
-        window: NSWindow?,
-        isResume: Bool = false
-    ) async {
-        StorageService.shared.writeStepStatus("RUNNING", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
-        AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] \(isResume ? "Resuming" : "Starting") step \(stepSeq): \(stepInstruction)")
-
-        guard let (initShot, initCtx) = captureWithCursor(window: window),
-              let initBase64 = toBase64(initShot)
-        else {
-            StorageService.shared.writeStepStatus("ERROR", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
-            return
-        }
-
-        var messages: [[String: Any]] = []
-        var lastContext: ScreenshotContext? = initCtx
-        var lastScreenshot: NSImage? = initShot
-        var logCount = 0
-        var emptyResponseCount = 0
-
-        let systemMsg: [String: Any] = [
-            "role": "system",
-            "content": """
-            You are a desktop automation assistant. All coordinates are screenshot pixel coordinates \
-            (origin = top-left of the screenshot, x right, y down). The app converts them to real \
-            screen positions — you never deal with screen or OS coordinates.
-
-            Use the available tools to interact with the screen.
-
-            Workflow:
-            1. Use move(dx, dy) repeatedly to position the cursor arrow tip precisely on the target.
-            2. Call the appropriate action (click, rightClick, doubleClick, drag, scroll, type, keyPress).
-
-            The cursor starts at (20, 20).
-
-            Execute this step: \(stepInstruction)
-            Expectation: \(stepExpectation)
-
-            Full execution plan for reference:
-            \(plan)
-            """,
-        ]
-        messages.append(systemMsg)
-
-        let userMsg: [String: Any] = [
-            "role": "user",
-            "content": [
-                ["type": "text", "text": "Step \(stepSeq): \(stepInstruction)"],
-                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(initBase64)"]],
-            ] as [[String: Any]],
-        ]
-        messages.append(userMsg)
-
-        let tools = AgentService.shared.makeTools()
-
-        while !Task.isCancelled {
-            let maxSteps = SettingsService.shared.getMaxSteps()
-            if globalStepCount >= maxSteps {
-                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Max step exceeded.")
-                let shouldContinue = await withCheckedContinuation { continuation in
-                    maxStepContinuation = continuation
-                    maxStepWarning = true
-                }
-                if !shouldContinue { break }
-                await MainActor.run { globalStepCount = 0 }
-            }
-            await MainActor.run { globalStepCount += 1 }
-
-            let logId = Int(Date().timeIntervalSince1970)
-            logCount += 1
-            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)/log:\(logId)] Analyzing...")
-
-            let result = await OpenAIClient.shared.chat(messages: messages, tools: tools)
-
-            var responseToSave: [String: Any] = result.success
-                ? result.rawAssistantMessage
-                : ["error": result.error ?? "Unknown error"]
-            if let usage = result.usage { responseToSave["usage"] = usage }
-            StorageService.shared.saveStepLog(sessionId: sessionId, planId: planId, stepSeq: stepSeq, logId: logId,
-                                              messages: messages,
-                                              response: responseToSave,
-                                              screenshot: lastScreenshot)
-
-            if logCount > SettingsService.shared.getMaxStepLogs() {
-                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Step log limit exceeded.")
-                await MainActor.run { stepLogLimitHit = true }
-                break
-            }
-
-            if !result.success {
-                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Error: \(result.error ?? "Unknown")")
-                break
-            }
-
-            messages.append(result.rawAssistantMessage)
-
-            if result.toolCalls.isEmpty {
-                let text = result.contentText ?? ""
-                if !text.isEmpty {
-                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Done: \(text.prefix(100))")
-                    break
-                }
-                emptyResponseCount += 1
-                if emptyResponseCount >= 3 {
-                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Too many empty responses, stopping.")
-                    break
-                }
-                AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Empty response, prompting to continue...")
-                messages.append([
-                    "role": "user",
-                    "content": "Continue the task. Use move(dx, dy) to position the cursor, then call the appropriate action.",
-                ])
-                continue
-            }
-            emptyResponseCount = 0
-
-            for toolCall in result.toolCalls {
-                guard !Task.isCancelled else { break }
-
-                switch toolCall.name {
-                case "move":
-                    let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
-                    let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
-                    MouseService.shared.moveCursorBy(dx: dx, dy: dy)
-                    let newPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] move(dx:\(Int(dx)), dy:\(Int(dy))) -> (\(Int(newPos.x)), \(Int(newPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("move(\(Int(dx)), \(Int(dy)))") }
-
-                    messages.append([
-                        "role": "tool",
-                        "tool_call_id": toolCall.id,
-                        "content": "Cursor moved by (\(Int(dx)), \(Int(dy))). New position: (\(Int(newPos.x)), \(Int(newPos.y))).",
-                    ])
-
-                    if let (newShot, newCtx) = captureWithCursor(window: window) {
-                        lastContext = newCtx
-                        lastScreenshot = newShot
-                        if let b64 = toBase64(newShot) {
-                            messages.append([
-                                "role": "user",
-                                "content": [
-                                    ["type": "text", "text": "Cursor at (\(Int(newPos.x)), \(Int(newPos.y))). The arrow tip is the click point. Move again or call click()."],
-                                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                                ] as [[String: Any]],
-                            ])
-                        }
-                    }
-
-                case "click":
-                    let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] click at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("click()") }
-                    if let ctx = lastContext {
-                        let cgPt = ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y)
-                        await MouseService.shared.performClick(at: cgPt)
-                    }
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "text", "text": "Clicked at (\(Int(curPos.x)), \(Int(curPos.y))). Screenshot after click:"],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "rightClick":
-                    let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] rightClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("rightClick()") }
-                    if let ctx = lastContext {
-                        await MouseService.shared.performRightClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
-                    }
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Right-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "doubleClick":
-                    let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] doubleClick at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("doubleClick()") }
-                    if let ctx = lastContext {
-                        await MouseService.shared.performDoubleClick(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y))
-                    }
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Double-clicked at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "drag":
-                    let dx: CGFloat = (toolCall.arguments["dx"] as? Double).map { CGFloat($0) } ?? 0
-                    let dy: CGFloat = (toolCall.arguments["dy"] as? Double).map { CGFloat($0) } ?? 0
-                    let startPos = MouseService.shared.virtualCursorPosition
-                    let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
-                    AppLogger.log("[\(sessionId)] drag(\(Int(dx)), \(Int(dy))) -> (\(Int(endPos.x)), \(Int(endPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("drag(\(Int(dx)), \(Int(dy)))") }
-                    if let ctx = lastContext {
-                        let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
-                        let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
-                        await MouseService.shared.performDrag(from: from, to: to)
-                    }
-                    MouseService.shared.moveCursor(to: endPos)
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Dragged to (\(Int(endPos.x)), \(Int(endPos.y)))."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "text", "text": "Cursor at (\(Int(endPos.x)), \(Int(endPos.y)))."],
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "scroll":
-                    let dx = (toolCall.arguments["dx"] as? Double).map { Int32($0) } ?? 0
-                    let dy = (toolCall.arguments["dy"] as? Double).map { Int32($0) } ?? 0
-                    let curPos = MouseService.shared.virtualCursorPosition
-                    AppLogger.log("[\(sessionId)] scroll(dx:\(dx), dy:\(dy)) at (\(Int(curPos.x)), \(Int(curPos.y)))")
-                    if isRecording { SettingsService.shared.appendToMacro("scroll(\(dx), \(dy))") }
-                    if let ctx = lastContext {
-                        await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: curPos.x, pixelY: curPos.y), dx: dx, dy: dy)
-                    }
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Scrolled dx:\(dx) dy:\(dy) at (\(Int(curPos.x)), \(Int(curPos.y)))."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "typeText":
-                    let text = toolCall.arguments["text"] as? String ?? ""
-                    AppLogger.log("[\(sessionId)] typeText(\"\(text.prefix(80))\")")
-                    if isRecording { SettingsService.shared.appendToMacro("typeText(\"\(text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\")") }
-                    await MouseService.shared.performType(text: text)
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Typed \"\(text)\"."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "keyPress":
-                    let key = toolCall.arguments["key"] as? String ?? ""
-                    AppLogger.log("[\(sessionId)] keyPress(\"\(key)\")")
-                    if isRecording { SettingsService.shared.appendToMacro("keyPress(\"\(key)\")") }
-                    await MouseService.shared.performKeyPress(key: key)
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Pressed \"\(key)\"."])
-                    if let (shot, ctx) = captureWithCursor(window: window), let b64 = toBase64(shot) {
-                        lastContext = ctx; lastScreenshot = shot
-                        messages.append(["role": "user", "content": [
-                            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                        ] as [[String: Any]]])
-                    }
-
-                case "sleep":
-                    let ms = toolCall.arguments["milliseconds"] as? Double ?? 0
-                    AppLogger.log("[\(sessionId)] sleep(\(Int(ms))ms)")
-                    if isRecording { SettingsService.shared.appendToMacro("sleep(\(Int(ms)))") }
-                    try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Slept for \(Int(ms))ms."])
-
-                case "take_screenshot":
-                    let cropX = (toolCall.arguments["crop_x"] as? Double).map { CGFloat($0) }
-                    let cropY = (toolCall.arguments["crop_y"] as? Double).map { CGFloat($0) }
-                    let cropW = (toolCall.arguments["crop_width"] as? Double).map { CGFloat($0) }
-                    let cropH = (toolCall.arguments["crop_height"] as? Double).map { CGFloat($0) }
-                    let cropRect: CGRect? = (cropX != nil && cropY != nil && cropW != nil && cropH != nil)
-                        ? CGRect(x: cropX!, y: cropY!, width: cropW!, height: cropH!) : nil
-                    if let r = cropRect {
-                        AppLogger.log("[\(sessionId)] take_screenshot(crop: \(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))")
-                        if isRecording { SettingsService.shared.appendToMacro("take_screenshot(\(Int(r.origin.x)), \(Int(r.origin.y)), \(Int(r.width)), \(Int(r.height)))") }
-                    } else {
-                        AppLogger.log("[\(sessionId)] take_screenshot")
-                        if isRecording { SettingsService.shared.appendToMacro("take_screenshot()") }
-                    }
-                    await MainActor.run { flashScreenshot() }
-                    messages.append(["role": "tool", "tool_call_id": toolCall.id,
-                                     "content": "Screenshot captured."])
-                    if let (shot, ctx) = captureWithCursor(window: window) {
-                        lastContext = ctx
-                        let finalShot = cropRect.flatMap { ScreenshotService.shared.crop(shot, to: $0) } ?? shot
-                        lastScreenshot = finalShot
-                        StorageService.shared.saveScreenshot(finalShot, sessionId: sessionId)
-                        if let b64 = toBase64(finalShot) {
-                            messages.append(["role": "user", "content": [
-                                ["type": "text", "text": "Current screenshot:"],
-                                ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                            ] as [[String: Any]]])
-                        }
-                    }
-
-                default:
-                    AppLogger.log("[\(sessionId)] Unknown tool: \(toolCall.name)")
-                }
-            }
-
-            if Task.isCancelled { break }
-        }
-
-        StorageService.shared.writeStepStatus("DONE", sessionId: sessionId, planId: planId, stepSeq: stepSeq)
-    }
-
-    private enum VerifyResult {
-        case verified
-        case resumeStep(targetSeq: Int?)
-        case resumePlan
-        case stop
-    }
-
-    private func verifyStep(
-        instruction: String,
-        expectation: String,
-        sessionId: String,
-        planId: String,
-        stepSeq: Int,
-        plan: String,
-        window: NSWindow?
-    ) async -> VerifyResult {
-        guard !expectation.isEmpty else { return .verified }
-        guard let (shot, _) = captureWithCursor(window: window),
-              let b64 = toBase64(shot) else { return .verified }
-
-        AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verifying: \(expectation)")
-
-        let messages: [[String: Any]] = [
-            [
-                "role": "system",
-                "content": """
-                You are a verification assistant. Given a screenshot and step details, determine the outcome.
-                Respond with JSON using one of three results:
-                  {"result": "verified"} — expectation is met, proceed to next step.
-                  {"result": "resumeStep", "reason": "..."} — this step failed and should be retried from the beginning.
-                  {"result": "resumeStep", "stepSeq": N, "reason": "..."} — resume from step N (a specific step sequence number from the plan). Use this when a prior step must be re-executed to fix corrupted state.
-                  {"result": "resumePlan", "reason": "..."} — a critical error occurred; the entire plan must be recreated and restarted.
-                  {"result": "stop", "reason": "..."} — execution should stop entirely.
-
-                When the current state indicates that earlier steps were not completed correctly (e.g. wrong accumulated value), identify the earliest step that needs to be re-run and set stepSeq to that step's sequence number from the plan below.
-
-                Full plan for reference:
-                \(plan)
-                """,
-            ],
-            [
-                "role": "user",
-                "content": [
-                    ["type": "text", "text": "Step instruction: \(instruction)\nExpectation: \(expectation)\n\nDoes the current screenshot match this expectation?"],
-                    ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]],
-                ] as [[String: Any]],
-            ],
-        ]
-
-        let verifySchema: [String: Any] = [
-            "type": "object",
-            "properties": [
-                "result": ["type": "string", "enum": ["verified", "resumeStep", "resumePlan", "stop"]],
-                "reason": ["anyOf": [["type": "string"], ["type": "null"]]],
-                "stepSeq": ["anyOf": [["type": "integer"], ["type": "null"]]],
-            ],
-            "required": ["result", "reason", "stepSeq"],
-            "additionalProperties": false,
-        ]
-        let result = await OpenAIClient.shared.chat(messages: messages, responseSchema: verifySchema)
-        StorageService.shared.saveVerification(
-            sessionId: sessionId,
-            planId: planId,
-            stepSeq: stepSeq,
-            messages: messages + [result.rawAssistantMessage],
-            response: result.rawAssistantMessage,
-            screenshot: shot
-        )
-        guard result.success, let text = result.contentText,
-              let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return .verified }
-
-        let resultStr = json["result"] as? String ?? "verified"
-        let reason = json["reason"] as? String ?? ""
-        let targetSeq = json["stepSeq"] as? Int
-
-        switch resultStr {
-        case "resumeStep":
-            let seqDesc = targetSeq.map { " → step\($0)" } ?? ""
-            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification RESUME STEP\(seqDesc)\(reason.isEmpty ? "" : ": \(reason)")")
-            return .resumeStep(targetSeq: targetSeq)
-        case "resumePlan":
-            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification RESUME PLAN\(reason.isEmpty ? "" : ": \(reason)")")
-            return .resumePlan
-        case "stop":
-            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification STOP\(reason.isEmpty ? "" : ": \(reason)")")
-            return .stop
-        default:
-            AppLogger.log("[plan:\(sessionId)/step:\(stepSeq)] Verification PASS")
-            return .verified
-        }
-    }
-
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -1017,6 +255,7 @@ struct ContentView: View {
             Button(action: {
                 isRecording.toggle()
                 if isRecording { SettingsService.shared.clearMacro() }
+                bridge.recordingChanged(isRecording)
             }) {
                 Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
                     .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
@@ -1025,22 +264,21 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
-                if isExecuting {
-                    stop()
+                if bridge.isExecuting {
+                    bridge.stopExecution()
                 } else {
                     let macro = SettingsService.shared.getMacro()
                     if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        isExecuting = true
-                        executeMain()
+                        bridge.runInstruction(recording: isRecording)
                     } else {
                         showMacroChoice = true
                     }
                 }
             }) {
-                Image(systemName: isExecuting ? "stop.fill" : "play.fill")
+                Image(systemName: bridge.isExecuting ? "stop.fill" : "play.fill")
             }
-            .help(isExecuting ? "Stop" : "Execute")
-            .animation(nil, value: isExecuting)
+            .help(bridge.isExecuting ? "Stop" : "Execute")
+            .animation(nil, value: bridge.isExecuting)
         }
     }
 
@@ -1097,24 +335,9 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
-    private func captureWithCursor(window: NSWindow?) -> (NSImage, ScreenshotContext)? {
-        guard let w = window else { return nil }
-        guard let (shot, ctx) = ScreenshotService.shared.captureWindowContentAreaWithContext(window: w) else { return nil }
-        let pos = MouseService.shared.virtualCursorPosition
-        let withCursor = ScreenshotService.shared.imageWithCursor(shot, at: pos)
-        return (withCursor, ctx)
-    }
-
-    private func toBase64(_ image: NSImage) -> String? {
-        guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return nil }
-        return png.base64EncodedString()
-    }
-
     private func updateWindowLock() {
         guard let window = NSApplication.shared.windows.first else { return }
-        let shouldLock = isLocked || isExecuting
+        let shouldLock = isLocked || bridge.isExecuting
         window.isMovable = !shouldLock
         if shouldLock {
             window.styleMask.remove(.resizable)
@@ -1131,7 +354,7 @@ struct ContentView: View {
     }
 
     private func updateClickThrough() {
-        AppDelegate.shared?.setClickThrough(isClickThrough && !isExecuting && !isTargeting && !isCropping)
+        AppDelegate.shared?.setClickThrough(isClickThrough && !bridge.isExecuting && !isTargeting && !isCropping)
     }
 }
 

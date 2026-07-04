@@ -1,6 +1,10 @@
 import AppKit
 import Foundation
 
+/// UI-side view of the shared project files. The Go core (pob-core) owns
+/// settings.json defaults, instruction.txt, macro.txt and the logs tree;
+/// this service only resolves the project root, opens files in the user's
+/// editor, persists the window frame and clears user files on request.
 class SettingsService {
     static let shared = SettingsService()
 
@@ -13,7 +17,7 @@ class SettingsService {
             return cwd
         }
         // Also accept a directory that looks like the project source tree
-        if fileManager.fileExists(atPath: cwd.appendingPathComponent("Sources").path) {
+        if fileManager.fileExists(atPath: cwd.appendingPathComponent("core").path) {
             return cwd
         }
         // Production: app launched from Finder/Applications — use Application Support
@@ -39,24 +43,7 @@ class SettingsService {
         projectRoot.appendingPathComponent("logs")
     }
 
-    private init() {
-        ensureFiles()
-    }
-
-    private let defaultSettings: [String: Any] = [
-        "openai_api_key": "",
-        "base_url": "https://api.openai.com/v1",
-        "model": "gpt-4o",
-        "mcp_server_port": 8032,
-        "start_mcp": true,
-        "max_steps": 12,
-        "max_resumes": 5,
-        "max_steplogs": 10,
-        "macro_default_delay": 1000,
-        "editor": "system",
-        "terminal": "system",
-        "stop_hook": "",
-    ]
+    private init() {}
 
     private func serializeJSON(_ object: Any) -> String? {
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
@@ -65,114 +52,12 @@ class SettingsService {
         return string
     }
 
-    private func ensureFiles() {
-        if !fileManager.fileExists(atPath: settingsFile.path) {
-            if let string = serializeJSON(defaultSettings) {
-                try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
-            }
-        } else {
-            // Add any missing keys to an existing settings file
-            if var json = (try? Data(contentsOf: settingsFile)).flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) {
-                var changed = false
-                for (key, value) in defaultSettings where json[key] == nil {
-                    json[key] = value
-                    changed = true
-                }
-                if changed, let string = serializeJSON(json) {
-                    try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
-                }
-            }
-        }
-        if !fileManager.fileExists(atPath: instructionFile.path) {
-            let defaultText = "Describe what you see in this screenshot and identify any UI elements."
-            try? defaultText.write(to: instructionFile, atomically: true, encoding: .utf8)
-        }
-        if !fileManager.fileExists(atPath: macroFile.path) {
-            try? "".write(to: macroFile, atomically: true, encoding: .utf8)
-        }
-        try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
-    }
-
-    func getAPIKey() -> String {
-        return loadJSON(key: "openai_api_key") as? String ?? ""
-    }
-
-    func getBaseURL() -> String {
-        let url = loadJSON(key: "base_url") as? String ?? ""
-        return url.isEmpty ? "https://api.openai.com/v1" : url
-    }
-
-    func getMCPPort() -> UInt16 {
-        if let n = loadJSON(key: "mcp_server_port") as? Int, n > 0 { return UInt16(n) }
-        if let n = loadJSON(key: "mcp_server_port") as? Double, n > 0 { return UInt16(n) }
-        return 8032
-    }
-
-    func getModel() -> String {
-        loadJSON(key: "model") as? String ?? "gpt-4o"
-    }
-
-    func getMaxSteps() -> Int {
-        if let value = loadJSON(key: "max_steps") as? Int {
-            return max(1, value)
-        }
-        if let value = loadJSON(key: "max_steps") as? Double {
-            return max(1, Int(value))
-        }
-        if let value = loadJSON(key: "max_steps") as? String,
-           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
-        {
-            return max(1, intValue)
-        }
-        return 12
-    }
-
-    func getMaxStepLogs() -> Int {
-        if let value = loadJSON(key: "max_steplogs") as? Int {
-            return max(1, value)
-        }
-        if let value = loadJSON(key: "max_steplogs") as? Double {
-            return max(1, Int(value))
-        }
-        if let value = loadJSON(key: "max_steplogs") as? String,
-           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
-        {
-            return max(1, intValue)
-        }
-        return 10
-    }
-
-    func getMaxResumes() -> Int {
-        if let value = loadJSON(key: "max_resumes") as? Int {
-            return max(1, value)
-        }
-        if let value = loadJSON(key: "max_resumes") as? Double {
-            return max(1, Int(value))
-        }
-        if let value = loadJSON(key: "max_resumes") as? String,
-           let intValue = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
-        {
-            return max(1, intValue)
-        }
-        return 5
-    }
-
     func getEditor() -> String {
         loadJSON(key: "editor") as? String ?? "system"
     }
 
     func getTerminal() -> String {
         loadJSON(key: "terminal") as? String ?? "system"
-    }
-
-    func getStopHook() -> String {
-        loadJSON(key: "stop_hook") as? String ?? ""
-    }
-
-    func getMacroDefaultDelay() -> Int {
-        if let value = loadJSON(key: "macro_default_delay") as? Int { return max(0, value) }
-        if let value = loadJSON(key: "macro_default_delay") as? Double { return max(0, Int(value)) }
-        return 1000
     }
 
     func getWindowFrame() -> NSRect? {
@@ -197,10 +82,6 @@ class SettingsService {
         if let string = serializeJSON(json) {
             try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
         }
-    }
-
-    func getInstruction() -> String {
-        (try? String(contentsOf: instructionFile, encoding: .utf8)) ?? "Describe what you see in this screenshot."
     }
 
     func openSettingsFile() {
@@ -232,15 +113,6 @@ class SettingsService {
         try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
         let appLog = projectRoot.appendingPathComponent("app.log")
         try? "".write(to: appLog, atomically: true, encoding: .utf8)
-    }
-
-    func appendToMacro(_ line: String) {
-        guard let data = (line + "\n").data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: macroFile) {
-            defer { try? handle.close() }
-            handle.seekToEndOfFile()
-            handle.write(data)
-        }
     }
 
     func openLogsFolder() {
@@ -279,12 +151,6 @@ class SettingsService {
             process.arguments = ["-t", url.path]
         }
         try? process.run()
-    }
-
-    func getSettingsDict() -> [String: Any] {
-        guard let data = try? Data(contentsOf: settingsFile),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
-        return json
     }
 
     private func loadJSON(key: String) -> Any? {

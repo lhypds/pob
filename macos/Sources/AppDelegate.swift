@@ -90,10 +90,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateIgnoresMouseEvents()
 
-        MCPServer.shared.start(port: SettingsService.shared.getMCPPort())
+        CoreBridge.shared.start()
     }
 
     func applicationWillTerminate(_: Notification) {
+        CoreBridge.shared.stop()
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
     }
