@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var mousePosition: CGPoint? = nil
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
+    @State private var toastMessage: String? = nil
+    @State private var toastToken = 0
     @ObservedObject private var mouseService = MouseService.shared
     @ObservedObject private var bridge = CoreBridge.shared
     @Environment(\.controlActiveState) private var controlActiveState
@@ -30,6 +32,7 @@ struct ContentView: View {
                         let text = "(\(Int(pt.x * scale)), \(Int(pt.y * scale)))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
+                        showToast("Copied \(text)")
                         isTargeting = false
                         mousePosition = nil
                     }
@@ -51,6 +54,7 @@ struct ContentView: View {
                         let text = "(\(Int(rect.minX * scale)), \(Int(rect.minY * scale)), \(Int(rect.width * scale)), \(Int(rect.height * scale)))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
+                        showToast("Copied \(text)")
                         isCropping = false
                         cropStart = nil
                         cropCurrent = nil
@@ -81,6 +85,20 @@ struct ContentView: View {
             Color.white
                 .opacity(screenshotFlashOpacity)
                 .allowsHitTesting(false)
+
+            if let toast = toastMessage {
+                Text(toast)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.75))
+                    .cornerRadius(6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 10)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
         }
         .onChange(of: mouseService.displayPosition) { newPos in
             withAnimation(.easeOut(duration: 0.1)) {
@@ -134,13 +152,23 @@ struct ContentView: View {
             Text("macro.txt has recorded actions.")
         }
         .confirmationDialog("Clear", isPresented: $showClearChoice) {
-            Button("Clear Instruction", role: .destructive) { SettingsService.shared.clearInstruction() }
-            Button("Clear Macro", role: .destructive) { SettingsService.shared.clearMacro() }
-            Button("Clear Logs", role: .destructive) { SettingsService.shared.clearLogs() }
+            Button("Clear Instruction", role: .destructive) {
+                SettingsService.shared.clearInstruction()
+                showToast("Instruction cleared")
+            }
+            Button("Clear Macro", role: .destructive) {
+                SettingsService.shared.clearMacro()
+                showToast("Macro cleared")
+            }
+            Button("Clear Logs", role: .destructive) {
+                SettingsService.shared.clearLogs()
+                showToast("Logs cleared")
+            }
             Button("Clear All", role: .destructive) {
                 SettingsService.shared.clearInstruction()
                 SettingsService.shared.clearMacro()
                 SettingsService.shared.clearLogs()
+                showToast("Instruction, macro and logs cleared")
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -256,6 +284,7 @@ struct ContentView: View {
                 isRecording.toggle()
                 if isRecording { SettingsService.shared.clearMacro() }
                 bridge.recordingChanged(isRecording)
+                showToast(isRecording ? "Recording started" : "Recording stopped")
             }) {
                 Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
                     .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
@@ -334,6 +363,21 @@ struct ContentView: View {
     }
 
     // MARK: - Helpers
+
+    /// Shows a transient top-centered message (black pill, white text) that
+    /// fades out after ~2 s — action feedback like "Logs cleared".
+    private func showToast(_ message: String) {
+        toastMessage = message
+        toastToken += 1
+        let token = toastToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if toastToken == token {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    toastMessage = nil
+                }
+            }
+        }
+    }
 
     private func updateWindowLock() {
         guard let window = NSApplication.shared.windows.first else { return }

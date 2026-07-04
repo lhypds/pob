@@ -106,6 +106,27 @@ void content_view_flash(void) {
     ensure_tick();
 }
 
+// ── transient toast message ─────────────────────────────────────────────────
+
+static gchar *toast_text = NULL;
+static guint toast_timeout = 0;
+
+static gboolean toast_expired(gpointer data) {
+    (void)data;
+    toast_timeout = 0;
+    g_clear_pointer(&toast_text, g_free);
+    if (view) gtk_widget_queue_draw(view);
+    return G_SOURCE_REMOVE;
+}
+
+void content_view_show_message(const char *text) {
+    g_clear_pointer(&toast_text, g_free);
+    toast_text = g_strdup(text);
+    if (toast_timeout) g_source_remove(toast_timeout);
+    toast_timeout = g_timeout_add(2000, toast_expired, NULL);
+    if (view) gtk_widget_queue_draw(view);
+}
+
 // ── drawing helpers ─────────────────────────────────────────────────────────
 
 static void rounded_rect(cairo_t *cr, double x, double y, double w, double h, double r) {
@@ -220,7 +241,8 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_restore(cr);
 
     // Self-diagnosis: transparency needs a compositor AND a 32-bit ARGB
-    // visual. Draw what is missing right in the window.
+    // visual. Draw what is missing as top-centered black pills with white
+    // text — the same message style as the macOS shell.
     {
         const char *hints[2];
         int n = 0;
@@ -230,18 +252,12 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         GdkWindow *gdkwin = gtk_widget_get_window(widget);
         if (gdkwin && gdk_visual_get_depth(gdk_window_get_visual(gdkwin)) != 32)
             hints[n++] = "No ARGB visual \xE2\x80\x94 the window has no alpha channel";
-        cairo_save(cr);
-        cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
-                               CAIRO_FONT_WEIGHT_NORMAL);
-        cairo_set_font_size(cr, 11);
-        for (int i = 0; i < n; i++) {
-            cairo_text_extents_t ext;
-            cairo_text_extents(cr, hints[i], &ext);
-            cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
-            cairo_move_to(cr, (W - ext.width) / 2, H - 12 - (n - 1 - i) * 16);
-            cairo_show_text(cr, hints[i]);
-        }
-        cairo_restore(cr);
+        for (int i = 0; i < n; i++)
+            draw_label(cr, W / 2, 20 + i * 24, hints[i]);
+
+        // Transient action feedback, stacked below the diagnostics.
+        if (toast_text)
+            draw_label(cr, W / 2, 20 + n * 24, toast_text);
     }
 
     // Crop selection rectangle + size label.
@@ -334,6 +350,9 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *ev, gpointer 
         gchar *text = g_strdup_printf("(%d, %d)", (int)(ev->x * scale),
                                       (int)(ev->y * scale));
         copy_to_clipboard(text);
+        gchar *msg = g_strdup_printf("Copied %s", text);
+        content_view_show_message(msg);
+        g_free(msg);
         g_free(text);
         has_mouse_pos = FALSE;
         app_set_targeting(FALSE);
@@ -387,6 +406,9 @@ static gboolean on_button_release(GtkWidget *widget, GdkEventButton *ev, gpointe
             "(%d, %d, %d, %d)", (int)(min_x * scale), (int)(min_y * scale),
             (int)(w * scale), (int)(h * scale));
         copy_to_clipboard(text);
+        gchar *msg = g_strdup_printf("Copied %s", text);
+        content_view_show_message(msg);
+        g_free(msg);
         g_free(text);
         app_set_cropping(FALSE);
     } else {

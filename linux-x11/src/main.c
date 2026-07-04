@@ -110,6 +110,10 @@ static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic",
 static const char *const ICONS_LOCKED[] = {"changes-prevent-symbolic", NULL};
 static const char *const ICONS_UNLOCKED[] = {"changes-allow-symbolic", NULL};
 static const char *const ICONS_TRASH[] = {"user-trash-symbolic", NULL};
+static const char *const ICONS_MINIMIZE[] = {"window-minimize-symbolic", "go-down-symbolic", NULL};
+static const char *const ICONS_MAXIMIZE[] = {"window-maximize-symbolic", "go-up-symbolic", NULL};
+static const char *const ICONS_RESTORE[] = {"window-restore-symbolic", "view-restore-symbolic", NULL};
+static const char *const ICONS_CLOSE[] = {"window-close-symbolic", NULL};
 
 static void set_clickthrough_icon(void) {
     GtkWidget *btn = g_state.clickthrough_btn;
@@ -276,13 +280,23 @@ enum {
 static void on_clear_response(GtkDialog *dialog, gint response, gpointer data) {
     (void)data;
     switch (response) {
-    case RESPONSE_CLEAR_INSTRUCTION: settings_clear_instruction(); break;
-    case RESPONSE_CLEAR_MACRO: settings_clear_macro(); break;
-    case RESPONSE_CLEAR_LOGS: settings_clear_logs(); break;
+    case RESPONSE_CLEAR_INSTRUCTION:
+        settings_clear_instruction();
+        content_view_show_message("Instruction cleared");
+        break;
+    case RESPONSE_CLEAR_MACRO:
+        settings_clear_macro();
+        content_view_show_message("Macro cleared");
+        break;
+    case RESPONSE_CLEAR_LOGS:
+        settings_clear_logs();
+        content_view_show_message("Logs cleared");
+        break;
     case RESPONSE_CLEAR_ALL:
         settings_clear_instruction();
         settings_clear_macro();
         settings_clear_logs();
+        content_view_show_message("Instruction, macro and logs cleared");
         break;
     default: break;
     }
@@ -379,6 +393,8 @@ static void on_record_clicked(GtkButton *b, gpointer d) {
     g_state.is_recording = !g_state.is_recording;
     if (g_state.is_recording) settings_clear_macro();
     core_bridge_recording_changed(g_state.is_recording);
+    content_view_show_message(g_state.is_recording ? "Recording started"
+                                                   : "Recording stopped");
     set_active_class(g_state.record_btn, "pob-recording", g_state.is_recording);
     gtk_widget_set_tooltip_text(g_state.record_btn,
                                 g_state.is_recording ? "Recording (click to stop)"
@@ -480,34 +496,47 @@ static GtkWidget *build_applog_button(void) {
     return btn;
 }
 
-// The window controls (min/max/close) are internal "titlebutton" widgets the
-// headerbar creates on its own; their compact size comes from the CSS in
-// install_css(), but valign has no CSS equivalent, so stop them stretching
-// here. They only exist once the window is mapped, so this runs from the
-// window's "map" signal.
-static void shrink_titlebutton(GtkWidget *w, gpointer data) {
-    int *count = data;
-    GtkStyleContext *ctx = gtk_widget_get_style_context(w);
-    if (GTK_IS_BUTTON(w) && gtk_style_context_has_class(ctx, "titlebutton")) {
-        gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-        (*count)++;
-    } else if (GTK_IS_CONTAINER(w)) {
-        gtk_container_forall(GTK_CONTAINER(w), shrink_titlebutton, data);
-    }
+// Custom window controls: GTK's own "titlebutton" widgets take their size
+// and glyphs from the desktop theme (PiXflat pads them to ~32px), so instead
+// the headerbar shows no theme controls and packs our own icon_button()s —
+// same compact style as the toolbar.
+static GtkWidget *maximize_btn;
+
+static void on_minimize_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    gtk_window_iconify(g_state.window);
 }
 
-static void on_window_map(GtkWidget *w, gpointer data) {
-    (void)w; (void)data;
-    int count = 0;
-    gtk_container_forall(GTK_CONTAINER(g_state.headerbar), shrink_titlebutton, &count);
-    app_logger_log("Compacted %d window control button(s)", count);
+static void on_maximize_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    if (gtk_window_is_maximized(g_state.window))
+        gtk_window_unmaximize(g_state.window);
+    else
+        gtk_window_maximize(g_state.window);
+}
+
+static void on_close_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    gtk_window_close(g_state.window);
+}
+
+// Keep the maximize button's icon in sync with the real window state (the
+// WM can maximize/restore without our button, e.g. by double-clicking).
+static gboolean on_window_state(GtkWidget *w, GdkEventWindowState *ev, gpointer d) {
+    (void)w; (void)d;
+    if (ev->changed_mask & GDK_WINDOW_STATE_MAXIMIZED) {
+        gboolean maxed = ev->new_window_state & GDK_WINDOW_STATE_MAXIMIZED;
+        set_button_icon(maximize_btn, maxed ? ICONS_RESTORE : ICONS_MAXIMIZE);
+        gtk_widget_set_tooltip_text(maximize_btn, maxed ? "Restore" : "Maximize");
+    }
+    return FALSE;
 }
 
 static void build_headerbar(void) {
     GtkWidget *hb = gtk_header_bar_new();
     g_state.headerbar = hb;
-    // Window controls (close/min/max) follow the DE's native Unix layout.
-    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb), TRUE);
+    // No theme-drawn window controls — compact replacements are packed below.
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb), FALSE);
     // Hide the title text, like macOS titleVisibility(.hidden).
     gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb), gtk_label_new(""));
 
@@ -527,6 +556,9 @@ static void build_headerbar(void) {
                      G_CALLBACK(on_clickthrough_realize), NULL);
     g_state.lock_btn = icon_button(ICONS_UNLOCKED, "Window Unlocked (click to lock)");
     GtkWidget *trash_btn = icon_button(ICONS_TRASH, "Clear");
+    GtkWidget *minimize_btn = icon_button(ICONS_MINIMIZE, "Minimize");
+    maximize_btn = icon_button(ICONS_MAXIMIZE, "Maximize");
+    GtkWidget *close_btn = icon_button(ICONS_CLOSE, "Close");
 
     g_signal_connect(settings_btn, "clicked", G_CALLBACK(on_settings_clicked), NULL);
     g_signal_connect(logs_btn, "clicked", G_CALLBACK(on_logs_clicked), NULL);
@@ -540,6 +572,11 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.clickthrough_btn, "clicked", G_CALLBACK(on_clickthrough_clicked), NULL);
     g_signal_connect(g_state.lock_btn, "clicked", G_CALLBACK(on_lock_clicked), NULL);
     g_signal_connect(trash_btn, "clicked", G_CALLBACK(on_trash_clicked), NULL);
+    g_signal_connect(minimize_btn, "clicked", G_CALLBACK(on_minimize_clicked), NULL);
+    g_signal_connect(maximize_btn, "clicked", G_CALLBACK(on_maximize_clicked), NULL);
+    g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_clicked), NULL);
+    g_signal_connect(g_state.window, "window-state-event",
+                     G_CALLBACK(on_window_state), NULL);
 
     // Same left-to-right order as the macOS toolbar: file group, then actions.
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), settings_btn);
@@ -554,6 +591,11 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.lock_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), trash_btn);
+    // pack_end packs right-to-left; close first keeps the usual order
+    // (minimize, maximize, close) reading left to right.
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), close_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), maximize_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), minimize_btn);
 
     gtk_widget_add_events(hb, GDK_BUTTON_PRESS_MASK);
     g_signal_connect(hb, "button-press-event",
@@ -614,15 +656,6 @@ static void install_css(void) {
         "window.pob-window headerbar button {\n"
         "  min-width: 22px; min-height: 22px; padding: 1px;\n"
         "  border-radius: 0;\n"
-        "}\n"
-        // Window controls (min/max/close): themes pad them (PiXflat:
-        // padding 4px 8px + 6px margins) and draw a 16px icon — compact
-        // them to match the 12px toolbar icons.
-        "window.pob-window headerbar button.titlebutton {\n"
-        "  min-width: 22px; min-height: 22px; padding: 1px; margin: 0;\n"
-        "}\n"
-        "window.pob-window headerbar button.titlebutton image {\n"
-        "  -gtk-icon-transform: scale(0.75);\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
     gtk_style_context_add_provider_for_screen(
@@ -717,7 +750,6 @@ static void on_activate(GtkApplication *app, gpointer data) {
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);
     g_signal_connect(win, "realize", G_CALLBACK(on_window_realize), NULL);
-    g_signal_connect(win, "map", G_CALLBACK(on_window_map), NULL);
 
     gtk_widget_show_all(win);
 
