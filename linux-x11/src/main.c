@@ -480,6 +480,28 @@ static GtkWidget *build_applog_button(void) {
     return btn;
 }
 
+// The window controls (min/max/close) are internal "titlebutton" widgets the
+// headerbar creates on its own; shrink their icons to POB_ICON_SIZE and stop
+// them stretching so they match the compact toolbar buttons. They only exist
+// once the window is mapped, so this runs from the window's "map" signal.
+static void shrink_titlebutton(GtkWidget *w, gpointer data) {
+    (void)data;
+    GtkStyleContext *ctx = gtk_widget_get_style_context(w);
+    if (GTK_IS_BUTTON(w) && gtk_style_context_has_class(ctx, "titlebutton")) {
+        gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
+        GtkWidget *img = gtk_bin_get_child(GTK_BIN(w));
+        if (GTK_IS_IMAGE(img))
+            gtk_image_set_pixel_size(GTK_IMAGE(img), POB_ICON_SIZE);
+    } else if (GTK_IS_CONTAINER(w)) {
+        gtk_container_forall(GTK_CONTAINER(w), shrink_titlebutton, NULL);
+    }
+}
+
+static void on_window_map(GtkWidget *w, gpointer data) {
+    (void)w; (void)data;
+    gtk_container_forall(GTK_CONTAINER(g_state.headerbar), shrink_titlebutton, NULL);
+}
+
 static void build_headerbar(void) {
     GtkWidget *hb = gtk_header_bar_new();
     g_state.headerbar = hb;
@@ -685,6 +707,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);
     g_signal_connect(win, "realize", G_CALLBACK(on_window_realize), NULL);
+    g_signal_connect(win, "map", G_CALLBACK(on_window_map), NULL);
 
     gtk_widget_show_all(win);
 
