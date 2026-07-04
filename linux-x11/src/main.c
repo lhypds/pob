@@ -547,6 +547,18 @@ static gboolean save_frame_now(gpointer data) {
     int x, y, w, h;
     gtk_window_get_position(g_state.window, &x, &y);
     gtk_window_get_size(g_state.window, &w, &h);
+    // The WM sends synthetic ConfigureNotify on focus changes; don't rewrite
+    // settings.json unless the frame actually moved or resized.
+    static int last_x, last_y, last_w, last_h;
+    static gboolean seeded = FALSE;
+    if (!seeded) {
+        seeded = TRUE;
+        if (!settings_get_window_frame(&last_x, &last_y, &last_w, &last_h))
+            last_x = last_y = last_w = last_h = G_MININT;
+    }
+    if (x == last_x && y == last_y && w == last_w && h == last_h)
+        return G_SOURCE_REMOVE;
+    last_x = x; last_y = y; last_w = w; last_h = h;
     settings_save_window_frame(x, y, w, h);
     return G_SOURCE_REMOVE;
 }
