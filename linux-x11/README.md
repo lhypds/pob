@@ -21,11 +21,19 @@ Requirements
 - A real X11 session (Xorg). On Wayland the app runs under XWayland but
   cannot see or control native Wayland windows — use an Xorg session.
 - A running compositor (GNOME/KDE/Xfce defaults are fine); without one the
-  overlay cannot be transparent — the content area shows as solid gray.
-  On Raspberry Pi OS (PIXEL/openbox has no compositor by default), enable
-  one with `sudo raspi-config` → Advanced Options → Compositor (xcompmgr),
-  or `sudo apt install picom` and run `picom -b`. Check `app.log` — the shell
-  logs a warning when no compositor or RGBA visual is available.
+  overlay cannot be transparent. On Raspberry Pi OS (PIXEL/openbox has no
+  compositor by default):
+
+  ```
+  sudo apt install xcompmgr && xcompmgr &          # simplest
+  # or:
+  sudo apt install picom && picom --backend xrender -b
+  ```
+
+  Make it permanent with `echo '@xcompmgr' >> ~/.config/lxsession/LXDE-pi/autostart`.
+  The app self-diagnoses: when transparency can't work, the content area
+  shows what is missing (compositor / ARGB visual), and `app.log` records
+  `Window realized: visual depth=…, composited=…`.
 - Build dependencies:
 
 ```
@@ -37,8 +45,45 @@ Arch:          sudo pacman -S base-devel gtk3 json-glib libx11 libxtst
 - Go (for the shared core).
 
 
-Build & run
------------
+Run from a release zip
+----------------------
+
+Download the `Pob-<version>-linux-<arch>.zip` matching your CPU
+(`uname -m`: `x86_64` → amd64, `aarch64` → arm64), then:
+
+```
+unzip Pob-<version>-linux-<arch>.zip
+cd Pob
+./pob
+```
+
+`pob` starts the bundled `pob-core` automatically. Runtime dependencies are
+just the GTK 3 libraries, preinstalled on mainstream desktops
+(`sudo apt install libgtk-3-0 libjson-glib-1.0-0 libxtst6` if missing).
+
+On first run the working files (`settings.json`, `instruction.txt`,
+`macro.txt`, `logs/`, `app.log`) are created in `~/.local/share/Pob/` —
+set `openai_api_key` in `settings.json` there. If you launch `pob` from a
+directory that already contains `settings.json` (e.g. the project root),
+that directory is used instead.
+
+
+Run from source
+---------------
+
+```
+git clone <repo> && cd pob
+./setup.sh              # select 2) Linux / X11 — records the choice in SYSTEM,
+                        # checks deps and builds core + shell
+vim settings.json       # set openai_api_key
+./start.sh              # build and run in the foreground
+./restart.sh            # rebuild and (re)start in the background (logs to app.log)
+./stop.sh
+```
+
+After `./setup.sh`, the root scripts dispatch to this folder automatically —
+the workflow is identical to macOS. The scripts here can also be run
+directly:
 
 ```
 ./linux-x11/setup.sh         # check deps, build core + shell
