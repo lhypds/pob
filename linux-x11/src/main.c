@@ -586,7 +586,7 @@ static void install_css(void) {
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
         // Compact toolbar buttons, closer to the macOS unified-compact look.
         "window.pob-window headerbar button {\n"
-        "  min-width: 16px; min-height: 16px; padding: 1px 3px;\n"
+        "  min-width: 22px; min-height: 22px; padding: 1px;\n"
         "  border-radius: 0;\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
