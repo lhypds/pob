@@ -302,6 +302,16 @@ static void show_clear_dialog(void) {
     b = gtk_dialog_add_button(d, "Clear All", RESPONSE_CLEAR_ALL);
     gtk_style_context_add_class(gtk_widget_get_style_context(b), "destructive-action");
     gtk_dialog_add_button(d, "Cancel", GTK_RESPONSE_CANCEL);
+
+    // Stack the buttons vertically, like the macOS confirmation dialog.
+    GtkWidget *action_area;
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    action_area = gtk_dialog_get_action_area(d);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(action_area),
+                                   GTK_ORIENTATION_VERTICAL);
+    gtk_button_box_set_layout(GTK_BUTTON_BOX(action_area), GTK_BUTTONBOX_EXPAND);
+
     g_signal_connect(dialog, "response", G_CALLBACK(on_clear_response), NULL);
     gtk_widget_show_all(dialog);
 }
@@ -564,7 +574,7 @@ static void install_css(void) {
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
         // Compact toolbar buttons, closer to the macOS unified-compact look.
         "window.pob-window headerbar button {\n"
-        "  min-width: 22px; min-height: 22px; padding: 2px 5px;\n"
+        "  min-width: 16px; min-height: 16px; padding: 1px 3px;\n"
         "  border-radius: 0;\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
