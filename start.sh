@@ -1,18 +1,22 @@
 #!/bin/bash
 
-# Run script for Pob project
-# Builds the Go core + macOS shell and runs the app in the foreground
+# Dispatches to the OS shell recorded in the SYSTEM file (see ./setup.sh).
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SYSTEM_FILE="$SCRIPT_DIR/SYSTEM"
 
-echo "🔨 Building core (Go)..."
-(cd "$SCRIPT_DIR/core" && go build -o bin/pob-core ./cmd/pob-core)
+if [ ! -f "$SYSTEM_FILE" ]; then
+    echo "❌ No SYSTEM file found — run ./setup.sh first."
+    exit 1
+fi
 
-echo "🔨 Building macOS shell (Swift)..."
-(cd "$SCRIPT_DIR/macos" && swift build)
+SYSTEM="$(tr -d '[:space:]' < "$SYSTEM_FILE")"
 
-echo "▶️  Launching Pob..."
-cd "$SCRIPT_DIR"
-"$SCRIPT_DIR/macos/.build/debug/Pob"
+if [ ! -f "$SCRIPT_DIR/$SYSTEM/start.sh" ]; then
+    echo "❌ Unknown SYSTEM '$SYSTEM' — run ./setup.sh again."
+    exit 1
+fi
+
+exec "$SCRIPT_DIR/$SYSTEM/start.sh" "$@"

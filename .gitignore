@@ -12,3 +12,8 @@ app.log
 macos_app/
 core/bin/
 *.zip
+linux-x11/build/
+linux-x11/bin/
+SYSTEM
+linux-x11/dist/
+*.tar.gz

@@ -1,58 +1,60 @@
 #!/bin/bash
 
-# Setup script for Pob project
-# Configures the development environment: Go core + macOS Swift shell
+# Pob setup dispatcher. Asks which OS shell to use, records the choice in
+# the SYSTEM file (macos | linux-x11), then runs that shell's setup.sh.
+# The other root scripts (build/start/stop/restart) read SYSTEM and dispatch
+# to the same folder.
+#
+# Usage:
+#   ./setup.sh              # interactive selection (default from uname)
+#   ./setup.sh macos        # non-interactive
+#   ./setup.sh linux-x11
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SYSTEM_FILE="$SCRIPT_DIR/SYSTEM"
 
-echo "🚀 Setting up Pob development environment..."
+# Default suggestion from the running kernel.
+case "$(uname -s)" in
+    Darwin) DEFAULT="macos" ;;
+    Linux)  DEFAULT="linux-x11" ;;
+    *)      DEFAULT="" ;;
+esac
 
-# Check for Swift
-if ! command -v swift &> /dev/null; then
-    echo "❌ Swift is not installed. Please install Xcode Command Line Tools:"
-    echo "   xcode-select --install"
+normalize() {
+    case "$1" in
+        1|macos|macOS|mac) echo "macos" ;;
+        2|linux|linux-x11|x11) echo "linux-x11" ;;
+        *) echo "" ;;
+    esac
+}
+
+SYSTEM="$(normalize "${1:-}")"
+
+if [ -z "$SYSTEM" ]; then
+    echo "Select your OS:"
+    echo "  1) macOS        (macos)"
+    echo "  2) Linux / X11  (linux-x11)"
+    if [ -n "$DEFAULT" ]; then
+        read -r -p "Choice [default: $DEFAULT]: " ANSWER
+    else
+        read -r -p "Choice: " ANSWER
+    fi
+    if [ -z "$ANSWER" ]; then
+        SYSTEM="$DEFAULT"
+    else
+        SYSTEM="$(normalize "$ANSWER")"
+    fi
+fi
+
+if [ -z "$SYSTEM" ] || [ ! -f "$SCRIPT_DIR/$SYSTEM/setup.sh" ]; then
+    echo "❌ Invalid choice. Use: ./setup.sh [macos|linux-x11]"
     exit 1
 fi
 
-echo "✅ Swift found: $(swift --version | head -1)"
-
-# Check for Go
-if ! command -v go &> /dev/null; then
-    echo "❌ Go is not installed. Install it with Homebrew:"
-    echo "   brew install go"
-    echo "   (or download from https://go.dev/dl/)"
-    exit 1
-fi
-
-echo "✅ Go found: $(go version)"
-
-# Verify project layout
-if [ ! -f "$SCRIPT_DIR/core/go.mod" ]; then
-    echo "❌ core/go.mod not found — is this the project root?"
-    exit 1
-fi
-
-if [ ! -f "$SCRIPT_DIR/macos/Package.swift" ]; then
-    echo "❌ macos/Package.swift not found — is this the project root?"
-    exit 1
-fi
-
-# Initialize settings.json from example when available
-if [ ! -f "$SCRIPT_DIR/settings.json" ] && [ -f "$SCRIPT_DIR/settings.json.example" ]; then
-    cp "$SCRIPT_DIR/settings.json.example" "$SCRIPT_DIR/settings.json"
-    echo "✅ Created settings.json from settings.json.example"
-fi
-
-# Download Go module dependencies (currently none — stdlib only) and build
-echo "🔨 Building core (Go)..."
-(cd "$SCRIPT_DIR/core" && go mod download && go build -o bin/pob-core ./cmd/pob-core)
-echo "✅ core build successful"
-
-echo "🔨 Building macOS shell (Swift)..."
-(cd "$SCRIPT_DIR/macos" && swift build)
-echo "✅ macOS shell build successful"
-
+echo "$SYSTEM" > "$SYSTEM_FILE"
+echo "✅ SYSTEM set to: $SYSTEM"
 echo ""
-echo "Done. Start the app with ./start.sh (foreground) or ./restart.sh (background)."
+
+exec "$SCRIPT_DIR/$SYSTEM/setup.sh"

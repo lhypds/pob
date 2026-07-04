@@ -37,6 +37,10 @@ core/    The brain (Go, zero dependencies). Agent loop (plan → execute →
 macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
          virtual cursor, mouse/keyboard event injection, and the permission
          surface (Screen Recording / Accessibility).
+
+linux-x11/  The same hands and eyes for Linux/Xorg (C + GTK 3). Identical UI
+            and features; screenshots via XGetImage, input via XTest.
+            See linux-x11/README.md.
 ```
 
 The shell spawns `pob-core` as a child process and the two talk over
@@ -238,20 +242,34 @@ Example:
 Development
 -----------
 
-Requirements: Xcode Command Line Tools (Swift) and Go (`brew install go`).
+Requirements: Go, plus the platform shell's toolchain — Xcode Command Line
+Tools (Swift) on macOS, or GTK 3 development libraries on Linux (see
+[linux-x11/README.md](linux-x11/README.md)).
 
 ```
-./setup.sh      # check toolchains, build core (Go) + macOS shell (Swift)
+./setup.sh      # select your OS (recorded in the SYSTEM file), then
+                # check toolchains and build core + that OS shell
 ./start.sh      # build and run in the foreground
 ./restart.sh    # rebuild and relaunch in the background (logs to app.log)
 ./stop.sh       # stop the app and the core process
+./build.sh      # release build (macOS: Pob.app, Linux: dist tarball)
 ```
+
+The root scripts are dispatchers: `setup.sh` writes your choice (`macos` or
+`linux-x11`) to the `SYSTEM` file, and the others read it and forward to the
+matching folder's script (`macos/*.sh` or `linux-x11/*.sh`), which can also
+be run directly.
 
 
 Release
 -------
 
-Use `build.sh` to build the app to `macos/macos_app/Pob.app` (the `pob-core`
-binary is embedded into the bundle).  
-Update `VERSION`.  
-Then use `release.sh` to release to GitHub.  
+Update `VERSION`, then run `release.sh` (on macOS, with Docker running).
+It builds both shells and publishes them to GitHub as two release assets:
+
+- `Pob-<version>-macos.zip` — the app bundle from `macos/build.sh`
+  (`pob-core` embedded)
+- `Pob-<version>-linux-<arch>.zip` — `pob` + `pob-core` side by side, built
+  by `linux-x11/build-docker.sh` (Go core cross-compiled on the host, GTK
+  shell compiled in a Debian container; `LINUX_ARCH=amd64|arm64`, default
+  amd64)
