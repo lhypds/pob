@@ -78,6 +78,8 @@ static GtkWidget *icon_button(const char *const icon_names[], const char *toolti
     GtkWidget *btn = gtk_button_new();
     set_button_icon(btn, icon_names);
     gtk_widget_set_tooltip_text(btn, tooltip);
+    // Natural (square) size, centered — don't stretch to the headerbar height.
+    gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     return btn;
 }
 
@@ -474,6 +476,7 @@ static GtkWidget *build_applog_button(void) {
     gtk_box_pack_start(GTK_BOX(box), l2, FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(btn), box);
     gtk_widget_set_tooltip_text(btn, "App Log");
+    gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     return btn;
 }
 
