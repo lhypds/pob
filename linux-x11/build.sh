@@ -30,6 +30,19 @@ if ! command -v zip &> /dev/null; then
     exit 1
 fi
 
+MISSING=""
+for pkg in gtk+-3.0 json-glib-1.0 x11 xtst; do
+    if ! pkg-config --exists "$pkg"; then
+        MISSING="$MISSING $pkg"
+    fi
+done
+if [ -n "$MISSING" ]; then
+    echo "❌ Missing development libraries:$MISSING"
+    echo "   Debian/Ubuntu/Raspberry Pi OS: sudo apt install libgtk-3-dev libjson-glib-dev libx11-dev libxtst-dev"
+    echo "   Fedora: sudo dnf install gtk3-devel json-glib-devel libX11-devel libXtst-devel"
+    exit 1
+fi
+
 # ── build core (Go) ──────────────────────────────────────────────────────────
 echo "Building pob-core (Go)…"
 (cd "$ROOT_DIR/core" && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core)
