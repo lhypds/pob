@@ -652,9 +652,14 @@ static void install_css(void) {
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
+        // Compact titlebar: kill the theme's headerbar min-height/padding
+        // and the 6px margins it puts on headerbar buttons.
+        "window.pob-window headerbar {\n"
+        "  min-height: 0; padding: 2px 4px;\n"
+        "}\n"
         // Compact toolbar buttons, closer to the macOS unified-compact look.
         "window.pob-window headerbar button {\n"
-        "  min-width: 22px; min-height: 22px; padding: 1px;\n"
+        "  min-width: 22px; min-height: 22px; padding: 1px; margin: 0;\n"
         "  border-radius: 0;\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
