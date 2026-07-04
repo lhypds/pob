@@ -655,7 +655,7 @@ static void install_css(void) {
         // Compact titlebar: kill the theme's headerbar min-height/padding
         // and the 6px margins it puts on headerbar buttons.
         "window.pob-window headerbar {\n"
-        "  min-height: 0; padding: 2px 4px;\n"
+        "  min-height: 0; padding: 4px 4px;\n"
         "}\n"
         // Compact toolbar buttons, closer to the macOS unified-compact look.
         "window.pob-window headerbar button {\n"
