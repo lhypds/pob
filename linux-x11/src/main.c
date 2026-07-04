@@ -481,25 +481,26 @@ static GtkWidget *build_applog_button(void) {
 }
 
 // The window controls (min/max/close) are internal "titlebutton" widgets the
-// headerbar creates on its own; shrink their icons to POB_ICON_SIZE and stop
-// them stretching so they match the compact toolbar buttons. They only exist
-// once the window is mapped, so this runs from the window's "map" signal.
+// headerbar creates on its own; their compact size comes from the CSS in
+// install_css(), but valign has no CSS equivalent, so stop them stretching
+// here. They only exist once the window is mapped, so this runs from the
+// window's "map" signal.
 static void shrink_titlebutton(GtkWidget *w, gpointer data) {
-    (void)data;
+    int *count = data;
     GtkStyleContext *ctx = gtk_widget_get_style_context(w);
     if (GTK_IS_BUTTON(w) && gtk_style_context_has_class(ctx, "titlebutton")) {
         gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-        GtkWidget *img = gtk_bin_get_child(GTK_BIN(w));
-        if (GTK_IS_IMAGE(img))
-            gtk_image_set_pixel_size(GTK_IMAGE(img), POB_ICON_SIZE);
+        (*count)++;
     } else if (GTK_IS_CONTAINER(w)) {
-        gtk_container_forall(GTK_CONTAINER(w), shrink_titlebutton, NULL);
+        gtk_container_forall(GTK_CONTAINER(w), shrink_titlebutton, data);
     }
 }
 
 static void on_window_map(GtkWidget *w, gpointer data) {
     (void)w; (void)data;
-    gtk_container_forall(GTK_CONTAINER(g_state.headerbar), shrink_titlebutton, NULL);
+    int count = 0;
+    gtk_container_forall(GTK_CONTAINER(g_state.headerbar), shrink_titlebutton, &count);
+    app_logger_log("Compacted %d window control button(s)", count);
 }
 
 static void build_headerbar(void) {
@@ -613,6 +614,15 @@ static void install_css(void) {
         "window.pob-window headerbar button {\n"
         "  min-width: 22px; min-height: 22px; padding: 1px;\n"
         "  border-radius: 0;\n"
+        "}\n"
+        // Window controls (min/max/close): themes pad them (PiXflat:
+        // padding 4px 8px + 6px margins) and draw a 16px icon — compact
+        // them to match the 12px toolbar icons.
+        "window.pob-window headerbar button.titlebutton {\n"
+        "  min-width: 22px; min-height: 22px; padding: 1px; margin: 0;\n"
+        "}\n"
+        "window.pob-window headerbar button.titlebutton image {\n"
+        "  -gtk-icon-transform: scale(0.75);\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
     gtk_style_context_add_provider_for_screen(
