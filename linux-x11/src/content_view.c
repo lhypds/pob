@@ -213,6 +213,23 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
                           POB_COLOR_GRAY_B, POB_COLOR_GRAY_A);
     cairo_paint(cr);
 
+    // Self-diagnosis: without a compositor X11 cannot do window
+    // transparency at all, so tell the user right in the window.
+    if (!gdk_screen_is_composited(gtk_widget_get_screen(widget))) {
+        const char *hint =
+            "No compositor \xE2\x80\x94 transparency unavailable (run: xcompmgr or picom)";
+        cairo_save(cr);
+        cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
+                               CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(cr, 11);
+        cairo_text_extents_t ext;
+        cairo_text_extents(cr, hint, &ext);
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
+        cairo_move_to(cr, (W - ext.width) / 2, H - 12);
+        cairo_show_text(cr, hint);
+        cairo_restore(cr);
+    }
+
     // Crop selection rectangle + size label.
     if (g_state.is_cropping && has_crop_rect) {
         double min_x = MIN(crop_start_x, crop_cur_x);
