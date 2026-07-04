@@ -552,14 +552,20 @@ static gboolean on_configure(GtkWidget *w, GdkEventConfigure *ev, gpointer d) {
 
 static void install_css(void) {
     GtkCssProvider *provider = gtk_css_provider_new();
+    // background-image must be cleared too — some themes (PiXflat on
+    // Raspberry Pi OS) fill windows with an opaque background-image that a
+    // background-color override alone doesn't remove.
     const char *css =
-        "window.pob-window { background-color: rgba(0, 0, 0, 0); }\n"
+        "window.pob-window, window.pob-window decoration {\n"
+        "  background-color: rgba(0, 0, 0, 0); background-image: none;\n"
+        "}\n"
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
         // Compact toolbar buttons, closer to the macOS unified-compact look.
         "window.pob-window headerbar button {\n"
         "  min-width: 22px; min-height: 22px; padding: 2px 5px;\n"
+        "  border-radius: 0;\n"
         "}\n";
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
     gtk_style_context_add_provider_for_screen(
@@ -586,9 +592,20 @@ static gboolean on_window_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 
 static void on_composited_changed(GdkScreen *screen, gpointer data) {
     (void)data;
-    if (!gdk_screen_is_composited(screen))
-        app_logger_log("Warning: compositor disappeared — the overlay will not be transparent");
+    app_logger_log("Compositor state changed: composited=%d",
+                   gdk_screen_is_composited(screen));
     gtk_widget_queue_draw(GTK_WIDGET(g_state.window));
+}
+
+// Logs the facts transparency depends on, so app.log answers "why is the
+// window opaque" without guesswork.
+static void on_window_realize(GtkWidget *w, gpointer data) {
+    (void)data;
+    GdkWindow *gw = gtk_widget_get_window(w);
+    int depth = gw ? gdk_visual_get_depth(gdk_window_get_visual(gw)) : 0;
+    app_logger_log("Window realized: visual depth=%d (32 = ARGB ok), composited=%d",
+                   depth,
+                   gdk_screen_is_composited(gtk_widget_get_screen(w)));
 }
 
 static void on_activate(GtkApplication *app, gpointer data) {
@@ -642,6 +659,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
 
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);
+    g_signal_connect(win, "realize", G_CALLBACK(on_window_realize), NULL);
 
     gtk_widget_show_all(win);
 

@@ -208,25 +208,39 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     double W = alloc.width, H = alloc.height;
     int scale = widget_scale();
 
-    // Translucent gray background (Color.gray.opacity(0.2)).
+    // Translucent gray background (Color.gray.opacity(0.2)). Painted with
+    // OPERATOR_SOURCE so the pixels become exactly 20%-alpha gray no matter
+    // what the theme painted underneath — some themes (e.g. PiXflat) fill
+    // the window with an opaque background-image that CSS overrides miss.
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_rgba(cr, POB_COLOR_GRAY_R, POB_COLOR_GRAY_G,
                           POB_COLOR_GRAY_B, POB_COLOR_GRAY_A);
     cairo_paint(cr);
+    cairo_restore(cr);
 
-    // Self-diagnosis: without a compositor X11 cannot do window
-    // transparency at all, so tell the user right in the window.
-    if (!gdk_screen_is_composited(gtk_widget_get_screen(widget))) {
-        const char *hint =
-            "No compositor \xE2\x80\x94 transparency unavailable (run: xcompmgr or picom)";
+    // Self-diagnosis: transparency needs a compositor AND a 32-bit ARGB
+    // visual. Draw what is missing right in the window.
+    {
+        const char *hints[2];
+        int n = 0;
+        if (!gdk_screen_is_composited(gtk_widget_get_screen(widget)))
+            hints[n++] = "No compositor \xE2\x80\x94 transparency unavailable "
+                         "(run: xcompmgr, or: picom --backend xrender -b)";
+        GdkWindow *gdkwin = gtk_widget_get_window(widget);
+        if (gdkwin && gdk_visual_get_depth(gdk_window_get_visual(gdkwin)) != 32)
+            hints[n++] = "No ARGB visual \xE2\x80\x94 the window has no alpha channel";
         cairo_save(cr);
         cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
                                CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 11);
-        cairo_text_extents_t ext;
-        cairo_text_extents(cr, hint, &ext);
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
-        cairo_move_to(cr, (W - ext.width) / 2, H - 12);
-        cairo_show_text(cr, hint);
+        for (int i = 0; i < n; i++) {
+            cairo_text_extents_t ext;
+            cairo_text_extents(cr, hints[i], &ext);
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
+            cairo_move_to(cr, (W - ext.width) / 2, H - 12 - (n - 1 - i) * 16);
+            cairo_show_text(cr, hints[i]);
+        }
         cairo_restore(cr);
     }
 
