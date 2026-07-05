@@ -1,0 +1,91 @@
+<Window x:Class="Pob.Views.ToolbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pob"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="True"
+        ResizeMode="NoResize"
+        Height="32">
+    <!-- Compact titlebar, same left-to-right order as the macOS toolbar:
+         file group, then actions; window controls packed right. -->
+    <Border x:Name="Bar"
+            Background="#F2F2F2"
+            BorderBrush="#33000000"
+            BorderThickness="0,0,0,1"
+            MouseLeftButtonDown="OnBarLeftButtonDown">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="About Pob" Click="OnAboutClicked"/>
+                <Separator/>
+                <MenuItem Header="Quit Pob" Click="OnQuitClicked"/>
+            </ContextMenu>
+        </Border.ContextMenu>
+        <DockPanel LastChildFill="False" Margin="4,0">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                <Button x:Name="SettingsBtn" Style="{StaticResource ToolButton}" ToolTip="Settings" Click="OnSettingsClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE713;"/>
+                </Button>
+                <Button x:Name="LogsBtn" Style="{StaticResource ToolButton}" ToolTip="Logs" Click="OnLogsClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8A5;"/>
+                </Button>
+                <Button x:Name="AppLogBtn" Style="{StaticResource ToolButton}" ToolTip="App Log" Click="OnAppLogClicked">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="app" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
+                        <TextBlock Text=".log" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="InstructionBtn" Style="{StaticResource ToolButton}" ToolTip="Instruction" Click="OnInstructionClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8E4;"/>
+                </Button>
+                <Button x:Name="MacroBtn" Style="{StaticResource ToolButton}" ToolTip="Macro" Click="OnMacroClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE756;"/>
+                </Button>
+                <Button x:Name="RecordBtn" Style="{StaticResource ToolButton}" ToolTip="Record Macro" Click="OnRecordClicked">
+                    <TextBlock x:Name="RecordIcon" Style="{StaticResource ToolIcon}" Text="&#xE7C8;"/>
+                </Button>
+                <Button x:Name="PlayBtn" Style="{StaticResource ToolButton}" ToolTip="Execute" Click="OnPlayClicked">
+                    <TextBlock x:Name="PlayIcon" Style="{StaticResource ToolIcon}" Text="&#xE768;"/>
+                </Button>
+                <Button x:Name="TargetBtn" Style="{StaticResource ToolButton}" ToolTip="Target" Click="OnTargetClicked">
+                    <TextBlock x:Name="TargetIcon" Style="{StaticResource ToolIcon}" Text="&#xE707;"/>
+                </Button>
+                <Button x:Name="CropBtn" Style="{StaticResource ToolButton}" ToolTip="Crop" Click="OnCropClicked">
+                    <TextBlock x:Name="CropIcon" Style="{StaticResource ToolIcon}" Text="&#xE7A8;"/>
+                </Button>
+                <Button x:Name="ClickThroughBtn" Style="{StaticResource ToolButton}"
+                        ToolTip="Click-Through Off (click to enable)" Click="OnClickThroughClicked">
+                    <!-- Plain hand when ON, slashed hand when OFF — the same pair
+                         as macOS (hand.raised / hand.raised.slash). -->
+                    <Grid Width="14" Height="14">
+                        <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE7C9;"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Line x:Name="ClickThroughSlash" X1="2" Y1="2" X2="12" Y2="12"
+                              Stroke="#FF404040" StrokeThickness="1.4"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Grid>
+                </Button>
+                <Button x:Name="LockBtn" Style="{StaticResource ToolButton}"
+                        ToolTip="Window Unlocked (click to lock)" Click="OnLockClicked">
+                    <TextBlock x:Name="LockIcon" Style="{StaticResource ToolIcon}" Text="&#xE785;"/>
+                </Button>
+                <Button x:Name="TrashBtn" Style="{StaticResource ToolButton}" ToolTip="Clear" Click="OnTrashClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE74D;"/>
+                </Button>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                <Button x:Name="MinimizeBtn" Style="{StaticResource ToolButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE921;"/>
+                </Button>
+                <Button x:Name="MaximizeBtn" Style="{StaticResource ToolButton}" ToolTip="Maximize" Click="OnMaximizeClicked">
+                    <TextBlock x:Name="MaximizeIcon" Style="{StaticResource ToolIcon}" Text="&#xE922;"/>
+                </Button>
+                <Button x:Name="CloseBtn" Style="{StaticResource ToolButton}" ToolTip="Close" Click="OnCloseClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8BB;"/>
+                </Button>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</Window>

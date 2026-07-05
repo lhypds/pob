@@ -17,3 +17,7 @@ linux-x11/bin/
 SYSTEM
 linux-x11/dist/
 *.tar.gz
+win/bin/
+win/obj/
+win/dist/
+win/publish*/
