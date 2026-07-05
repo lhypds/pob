@@ -3,13 +3,16 @@
 #
 # What gets built depends on the SYSTEM file (see ./setup.sh):
 #   macos      the macOS app bundle natively, plus the Linux/X11 shell via
-#              Docker (./linux-x11/build_docker.sh) for every architecture
-#              in LINUX_ARCHS — requires Docker installed and running.
+#              Docker (./linux-x11/build_docker.sh) and the Windows shell via
+#              Docker (./win/build_docker.sh) for every architecture in
+#              LINUX_ARCHS / WIN_ARCHS — requires Docker installed and running.
 #   linux-*    the Linux/X11 shell natively (./linux-x11/build.sh) for the
 #              host architecture only.
 #
 # Env:
 #   LINUX_ARCHS="amd64 arm64"   Linux target architectures (default: both;
+#                               macOS/Docker builds only)
+#   WIN_ARCHS="amd64 arm64"     Windows target architectures (default: both;
 #                               macOS/Docker builds only)
 
 set -euo pipefail
@@ -19,6 +22,7 @@ cd "$SCRIPT_DIR"
 VERSION="$(cat VERSION)"
 TAG="v$VERSION"
 LINUX_ARCHS="${LINUX_ARCHS:-amd64 arm64}"
+WIN_ARCHS="${WIN_ARCHS:-amd64 arm64}"
 
 SYSTEM="$( { tr -d '[:space:]' < SYSTEM; } 2>/dev/null || true)"
 if [[ -z "$SYSTEM" ]]; then
@@ -63,6 +67,19 @@ if [[ "$SYSTEM" == "macos" ]]; then
       exit 1
     fi
     ASSETS+=("$LINUX_ZIP")
+  done
+
+  # ── build Windows (via Docker, one zip per architecture) ───────────────────
+  for ARCH in $WIN_ARCHS; do
+    echo "==> Building Windows (windows/$ARCH, via Docker)…"
+    WIN_ARCHS="$ARCH" ./win/build_docker.sh
+
+    WIN_ZIP="Pob-${VERSION}-windows-${ARCH}.zip"
+    if [[ ! -f "$WIN_ZIP" ]]; then
+      echo "❌ Expected $WIN_ZIP was not produced — aborting."
+      exit 1
+    fi
+    ASSETS+=("$WIN_ZIP")
   done
 elif [[ "$SYSTEM" == linux-* ]]; then
   # ── build Linux (natively, host architecture) ──────────────────────────────
