@@ -290,8 +290,15 @@ struct ContentView: View {
                 if isRecording { SettingsService.shared.clearMacro() }
                 bridge.recordingChanged(isRecording)
                 if isRecording {
-                    // Outside a session, capture the user's own actions.
-                    if !bridge.isExecuting { UserMacroRecorder.shared.start() }
+                    // Outside a session, capture the user's own actions; enable
+                    // click-through so those actions reach the app below.
+                    if !bridge.isExecuting {
+                        UserMacroRecorder.shared.start()
+                        if !isClickThrough {
+                            isClickThrough = true
+                            updateClickThrough()
+                        }
+                    }
                 } else {
                     UserMacroRecorder.shared.stop()
                 }

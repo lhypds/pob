@@ -106,7 +106,9 @@ static const char *const ICONS_PLAY[] = {"media-playback-start-symbolic", NULL};
 static const char *const ICONS_STOP[] = {"media-playback-stop-symbolic", NULL};
 static const char *const ICONS_TARGET[] = {"find-location-symbolic", "edit-find-symbolic", NULL};
 static const char *const ICONS_CROP[] = {"image-crop-symbolic", "edit-select-all-symbolic", NULL};
-static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic", "input-mouse-symbolic", "input-touchpad-symbolic", NULL};
+// Plain hand only — never a mouse/touchpad stand-in; themes shipping neither
+// name get the drawn silhouette below instead.
+static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic", NULL};
 static const char *const ICONS_LOCKED[] = {"changes-prevent-symbolic", NULL};
 static const char *const ICONS_UNLOCKED[] = {"changes-allow-symbolic", NULL};
 static const char *const ICONS_TRASH[] = {"user-trash-symbolic", NULL};
@@ -115,34 +117,81 @@ static const char *const ICONS_MAXIMIZE[] = {"window-maximize-symbolic", "go-up-
 static const char *const ICONS_RESTORE[] = {"window-restore-symbolic", "view-restore-symbolic", NULL};
 static const char *const ICONS_CLOSE[] = {"window-close-symbolic", NULL};
 
+// Filled raised-hand silhouette (four fingers over a rounded palm plus a
+// thumb), drawn in the theme text color. Fallback for icon themes that ship
+// no hand glyph at all. Design space is 16 units, scaled to POB_ICON_SIZE.
+static void draw_hand_silhouette(cairo_t *cr, const GdkRGBA *color) {
+    gdk_cairo_set_source_rgba(cr, color);
+    cairo_save(cr);
+    cairo_scale(cr, POB_ICON_SIZE / 16.0, POB_ICON_SIZE / 16.0);
+
+    static const double finger_x[4] = {3.1, 5.7, 8.3, 10.9};
+    static const double finger_top[4] = {3.2, 1.4, 1.0, 2.4};
+    const double r = 1.15;
+    for (int i = 0; i < 4; i++) {
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, finger_x[i], finger_top[i] + r, r, G_PI, 2 * G_PI);
+        cairo_line_to(cr, finger_x[i] + r, 10.0);
+        cairo_line_to(cr, finger_x[i] - r, 10.0);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+
+    const double px0 = 1.95, px1 = 12.05, py1 = 15.0, pr = 2.4;
+    cairo_move_to(cr, px0, 8.0);
+    cairo_line_to(cr, px1, 8.0);
+    cairo_arc(cr, px1 - pr, py1 - pr, pr, 0, G_PI / 2);
+    cairo_arc(cr, px0 + pr, py1 - pr, pr, G_PI / 2, G_PI);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+
+    // Thumb: a tilted ellipse hugging the palm's right edge.
+    cairo_save(cr);
+    cairo_translate(cr, 13.1, 10.2);
+    cairo_rotate(cr, -0.55);
+    cairo_scale(cr, 1.0, 1.9);
+    cairo_arc(cr, 0, 0, 1.05, 0, 2 * G_PI);
+    cairo_restore(cr);
+    cairo_fill(cr);
+
+    cairo_restore(cr);
+}
+
 static void set_clickthrough_icon(void) {
     GtkWidget *btn = g_state.clickthrough_btn;
     int scale = gtk_widget_get_scale_factor(btn);
-    GtkIconTheme *theme = gtk_icon_theme_get_default();
-    GtkIconInfo *info = gtk_icon_theme_lookup_icon_for_scale(
-        theme, pick_icon(ICONS_HAND), POB_ICON_SIZE, scale,
-        GTK_ICON_LOOKUP_USE_BUILTIN);
+    GtkStyleContext *style = gtk_widget_get_style_context(btn);
+    GdkRGBA color;
+    gtk_style_context_get_color(style, gtk_widget_get_state_flags(btn), &color);
 
+    GtkIconTheme *theme = gtk_icon_theme_get_default();
     GdkPixbuf *pix = NULL;
-    if (info) {
-        pix = gtk_icon_info_load_symbolic_for_context(
-            info, gtk_widget_get_style_context(btn), NULL, NULL);
+    for (int i = 0; ICONS_HAND[i] && !pix; i++) {
+        if (!gtk_icon_theme_has_icon(theme, ICONS_HAND[i])) continue;
+        GtkIconInfo *info = gtk_icon_theme_lookup_icon_for_scale(
+            theme, ICONS_HAND[i], POB_ICON_SIZE, scale, GTK_ICON_LOOKUP_USE_BUILTIN);
+        if (!info) continue;
+        pix = gtk_icon_info_load_symbolic_for_context(info, style, NULL, NULL);
         g_object_unref(info);
     }
-    if (!pix) { // fallback: plain themed icon without the slash overlay
-        set_button_icon(btn, ICONS_HAND);
-        return;
-    }
 
-    cairo_surface_t *surf = gdk_cairo_surface_create_from_pixbuf(
-        pix, scale, gtk_widget_get_window(btn));
-    g_object_unref(pix);
+    cairo_surface_t *surf;
+    if (pix) {
+        surf = gdk_cairo_surface_create_from_pixbuf(pix, scale,
+                                                    gtk_widget_get_window(btn));
+        g_object_unref(pix);
+    } else {
+        surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+                                          POB_ICON_SIZE * scale,
+                                          POB_ICON_SIZE * scale);
+        cairo_surface_set_device_scale(surf, scale, scale);
+        cairo_t *cr = cairo_create(surf);
+        draw_hand_silhouette(cr, &color);
+        cairo_destroy(cr);
+    }
 
     if (!g_state.is_click_through) {
         // OFF: draw the diagonal "disabled" slash in the theme text color.
-        GdkRGBA color;
-        gtk_style_context_get_color(gtk_widget_get_style_context(btn),
-                                    gtk_widget_get_state_flags(btn), &color);
         cairo_t *cr = cairo_create(surf);
         gdk_cairo_set_source_rgba(cr, &color);
         cairo_set_line_width(cr, 1.4);
@@ -187,6 +236,17 @@ void app_update_click_through(void) {
 void app_update_window_lock(void) {
     gboolean locked = g_state.is_locked || g_state.is_executing;
     gtk_window_set_resizable(g_state.window, !locked);
+}
+
+// Sets click-through and syncs the toolbar button (icon, tooltip, shape).
+static void set_click_through(gboolean on) {
+    if (g_state.is_click_through == on) return;
+    g_state.is_click_through = on;
+    set_clickthrough_icon();
+    gtk_widget_set_tooltip_text(g_state.clickthrough_btn,
+                                on ? "Click-Through On (click to disable)"
+                                   : "Click-Through Off (click to enable)");
+    app_update_click_through();
 }
 
 void app_set_targeting(gboolean targeting) {
@@ -393,6 +453,10 @@ static void on_record_clicked(GtkButton *b, gpointer d) {
     g_state.is_recording = !g_state.is_recording;
     if (g_state.is_recording) settings_clear_macro();
     core_bridge_recording_changed(g_state.is_recording);
+    // Same behavior as macOS: starting to record outside a session enables
+    // click-through so interactions reach the app below the overlay.
+    if (g_state.is_recording && !g_state.is_executing)
+        set_click_through(TRUE);
     content_view_show_message(g_state.is_recording ? "Recording started"
                                                    : "Recording stopped");
     set_active_class(g_state.record_btn, "pob-recording", g_state.is_recording);
@@ -433,13 +497,7 @@ static void on_clickthrough_realize(GtkWidget *w, gpointer d) {
 
 static void on_clickthrough_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    g_state.is_click_through = !g_state.is_click_through;
-    set_clickthrough_icon();
-    gtk_widget_set_tooltip_text(g_state.clickthrough_btn,
-                                g_state.is_click_through
-                                    ? "Click-Through On (click to disable)"
-                                    : "Click-Through Off (click to enable)");
-    app_update_click_through();
+    set_click_through(!g_state.is_click_through);
 }
 
 static void on_lock_clicked(GtkButton *b, gpointer d) {

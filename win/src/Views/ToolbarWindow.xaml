@@ -41,7 +41,9 @@
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8E4;"/>
                 </Button>
                 <Button x:Name="MacroBtn" Style="{StaticResource ToolButton}" ToolTip="Macro" Click="OnMacroClicked">
-                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE756;"/>
+                    <!-- LightningBolt — closest MDL2 match to the macOS wand
+                         (wand.and.rays); MDL2 has no wand glyph. -->
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE945;"/>
                 </Button>
                 <Button x:Name="RecordBtn" Style="{StaticResource ToolButton}" ToolTip="Record Macro" Click="OnRecordClicked">
                     <TextBlock x:Name="RecordIcon" Style="{StaticResource ToolIcon}" Text="&#xE7C8;"/>
@@ -57,10 +59,11 @@
                 </Button>
                 <Button x:Name="ClickThroughBtn" Style="{StaticResource ToolButton}"
                         ToolTip="Click-Through Off (click to enable)" Click="OnClickThroughClicked">
-                    <!-- Plain hand when ON, slashed hand when OFF — the same pair
-                         as macOS (hand.raised / hand.raised.slash). -->
+                    <!-- Plain hand (Touch, no mouse pointer) when ON, slashed hand
+                         when OFF — the same pair as macOS (hand.raised /
+                         hand.raised.slash). -->
                     <Grid Width="14" Height="14">
-                        <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE7C9;"
+                        <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE815;"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         <Line x:Name="ClickThroughSlash" X1="2" Y1="2" X2="12" Y2="12"
                               Stroke="#FF404040" StrokeThickness="1.4"

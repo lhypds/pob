@@ -113,6 +113,14 @@ public partial class ToolbarWindow : Window
         AppState.IsRecording = !AppState.IsRecording;
         if (AppState.IsRecording) SettingsService.ClearMacro();
         CoreBridge.RecordingChanged(AppState.IsRecording);
+        // Same behavior as macOS: starting to record outside a session enables
+        // click-through so interactions reach the app below the overlay.
+        if (AppState.IsRecording && !AppState.IsExecuting && !AppState.IsClickThrough)
+        {
+            AppState.IsClickThrough = true;
+            SetClickThroughVisual(true);
+            AppState.UpdateClickThrough();
+        }
         Content2?.ShowMessage(AppState.IsRecording ? "Recording started" : "Recording stopped");
         SetRecordingVisual(AppState.IsRecording);
     }
