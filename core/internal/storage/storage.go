@@ -1,6 +1,6 @@
-// Package storage writes the session/plan/step/verification log tree under
-// <root>/logs/, byte-compatible with the layout produced by the old Swift
-// StorageService (see README "Logs" section).
+// Package storage writes the instance/session/plan/step/verification log
+// tree under <root>/logs/ (see README "Logs" section). Each process gets its
+// own instance directory so multiple app instances can run side by side.
 package storage
 
 import (
@@ -15,14 +15,42 @@ import (
 
 type Storage struct {
 	logsDir      string
+	instanceID   string
 	settingsDict func() map[string]any
 	instruction  func() string
 	macro        func() string
 }
 
+// New creates logs/<instance>/ for this process; every session it writes
+// lives under that directory.
 func New(logsDir string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
 	_ = os.MkdirAll(logsDir, 0o755)
-	return &Storage{logsDir: logsDir, settingsDict: settingsDict, instruction: instruction, macro: macro}
+	return &Storage{
+		logsDir:      logsDir,
+		instanceID:   newInstanceID(logsDir),
+		settingsDict: settingsDict,
+		instruction:  instruction,
+		macro:        macro,
+	}
+}
+
+// newInstanceID reserves a unixtime-named directory under logsDir. If another
+// instance grabbed the same second, it bumps until a free one is found.
+func newInstanceID(logsDir string) string {
+	id := time.Now().Unix()
+	for {
+		err := os.Mkdir(filepath.Join(logsDir, fmt.Sprintf("%d", id)), 0o755)
+		if err == nil || !os.IsExist(err) {
+			return fmt.Sprintf("%d", id)
+		}
+		id++
+	}
+}
+
+func (s *Storage) InstanceID() string { return s.instanceID }
+
+func (s *Storage) sessionDir(sessionID string) string {
+	return filepath.Join(s.logsDir, s.instanceID, sessionID)
 }
 
 // PrettyJSON marshals without HTML escaping, indented — the format used for
@@ -48,10 +76,10 @@ func writeJSON(path string, v any) {
 
 func unixNow() string { return fmt.Sprintf("%d", time.Now().Unix()) }
 
-// CreateSession creates logs/<unixtime>/ with an initial session.json.
+// CreateSession creates logs/<instance>/<unixtime>/ with an initial session.json.
 func (s *Storage) CreateSession() string {
 	sessionID := unixNow()
-	dir := filepath.Join(s.logsDir, sessionID)
+	dir := s.sessionDir(sessionID)
 	_ = os.MkdirAll(dir, 0o755)
 	writeJSON(filepath.Join(dir, "session.json"), map[string]any{
 		"start_time": time.Now().Unix(),
@@ -60,25 +88,25 @@ func (s *Storage) CreateSession() string {
 	return sessionID
 }
 
-// CreatePlan creates logs/<session>/<unixtime>/ and returns the plan ID.
+// CreatePlan creates logs/<instance>/<session>/<unixtime>/ and returns the plan ID.
 func (s *Storage) CreatePlan(sessionID string) string {
 	planID := unixNow()
-	_ = os.MkdirAll(filepath.Join(s.logsDir, sessionID, planID), 0o755)
+	_ = os.MkdirAll(filepath.Join(s.sessionDir(sessionID), planID), 0o755)
 	return planID
 }
 
 func (s *Storage) SaveInstruction(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.logsDir, sessionID, "instruction.txt"), []byte(s.instruction()), 0o644)
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "instruction.txt"), []byte(s.instruction()), 0o644)
 }
 
 func (s *Storage) SaveMacro(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.logsDir, sessionID, "macro.txt"), []byte(s.macro()), 0o644)
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.txt"), []byte(s.macro()), 0o644)
 }
 
 // SavePlan writes plan.json, messages.json, response.json, screenshot.png and
 // creates numbered step directories with step.json.
 func (s *Storage) SavePlan(plan string, messages []map[string]any, response map[string]any, sessionID, planID string, screenshotPNG []byte) {
-	planDir := filepath.Join(s.logsDir, sessionID, planID)
+	planDir := filepath.Join(s.sessionDir(sessionID), planID)
 	_ = os.MkdirAll(planDir, 0o755)
 	_ = os.WriteFile(filepath.Join(planDir, "plan.json"), []byte(plan), 0o644)
 	writeJSON(filepath.Join(planDir, "messages.json"), stripImages(messages))
@@ -111,7 +139,7 @@ func (s *Storage) SavePlan(plan string, messages []map[string]any, response map[
 }
 
 func (s *Storage) SaveVerification(sessionID, planID string, stepSeq int, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
-	dir := filepath.Join(s.logsDir, sessionID, planID, fmt.Sprintf("%d", stepSeq), "verification")
+	dir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq), "verification")
 	_ = os.MkdirAll(dir, 0o755)
 	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))
 	writeJSON(filepath.Join(dir, "response.json"), response)
@@ -121,14 +149,14 @@ func (s *Storage) SaveVerification(sessionID, planID string, stepSeq int, messag
 }
 
 func (s *Storage) WriteStepStatus(status, sessionID, planID string, stepSeq int) {
-	stepDir := filepath.Join(s.logsDir, sessionID, planID, fmt.Sprintf("%d", stepSeq))
+	stepDir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq))
 	_ = os.MkdirAll(stepDir, 0o755)
 	_ = os.WriteFile(filepath.Join(stepDir, "status.txt"), []byte(status), 0o644)
 }
 
-// SaveStepLog writes one conversation round under logs/<session>/<plan>/<step>/<unixtime>/.
+// SaveStepLog writes one conversation round under logs/<instance>/<session>/<plan>/<step>/<unixtime>/.
 func (s *Storage) SaveStepLog(sessionID, planID string, stepSeq int, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
-	dir := filepath.Join(s.logsDir, sessionID, planID, fmt.Sprintf("%d", stepSeq), unixNow())
+	dir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq), unixNow())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
@@ -140,13 +168,13 @@ func (s *Storage) SaveStepLog(sessionID, planID string, stepSeq int, messages []
 }
 
 func (s *Storage) SaveScreenshot(png []byte, sessionID string) {
-	dir := filepath.Join(s.logsDir, sessionID, "screenshots")
+	dir := filepath.Join(s.sessionDir(sessionID), "screenshots")
 	_ = os.MkdirAll(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, unixNow()+".png"), png, 0o644)
 }
 
 func (s *Storage) SaveSessionStartEndTimes(sessionID string, start, end time.Time) {
-	dest := filepath.Join(s.logsDir, sessionID, "session.json")
+	dest := filepath.Join(s.sessionDir(sessionID), "session.json")
 	entry := readJSONFile(dest)
 	entry["start_time"] = start.Unix()
 	entry["end_time"] = end.Unix()
@@ -156,7 +184,7 @@ func (s *Storage) SaveSessionStartEndTimes(sessionID string, start, end time.Tim
 // SaveSessionUsage sums the usage blocks of every response.json under the
 // session directory and writes the total into session.json.
 func (s *Storage) SaveSessionUsage(sessionID string) {
-	sessionDir := filepath.Join(s.logsDir, sessionID)
+	sessionDir := s.sessionDir(sessionID)
 
 	var promptTokens, completionTokens, totalTokens, reasoningTokens, cachedTokens int
 	_ = filepath.WalkDir(sessionDir, func(path string, d fs.DirEntry, err error) error {

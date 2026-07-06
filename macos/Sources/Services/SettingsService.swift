@@ -104,6 +104,32 @@ class SettingsService {
         try? "".write(to: macroFile, atomically: true, encoding: .utf8)
     }
 
+    /// Appends one action line to macro.txt (same format as the Go core's
+    /// AppendToMacro). Only called while no session is executing, so it never
+    /// races with the Go core's own appends.
+    func appendToMacro(_ line: String) {
+        var content = getMacro()
+        if !content.isEmpty, !content.hasSuffix("\n") { content += "\n" }
+        content += line + "\n"
+        try? content.write(to: macroFile, atomically: true, encoding: .utf8)
+    }
+
+    /// Removes the last non-empty line if it equals `expected`; used by the
+    /// recorder to upgrade a click() into a doubleClick(). Returns whether a
+    /// line was removed.
+    func removeLastMacroLine(ifMatches expected: String) -> Bool {
+        var lines = getMacro().components(separatedBy: "\n")
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.removeLast()
+        }
+        guard lines.last == expected else { return false }
+        lines.removeLast()
+        var content = lines.joined(separator: "\n")
+        if !content.isEmpty { content += "\n" }
+        try? content.write(to: macroFile, atomically: true, encoding: .utf8)
+        return true
+    }
+
     func clearInstruction() {
         try? "".write(to: instructionFile, atomically: true, encoding: .utf8)
     }

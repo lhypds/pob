@@ -84,27 +84,31 @@ Structure
 
 ```
 logs/  
-    +--- <session>/ (instruction)            session executed from instruction.  
-         +--- instruction.txt
-         +--- session.json                   session details, usage, etc.
-         +--- <plan>/
-              +--- plan.json
-              +--- messages.json
-              +--- response.json
-              +--- <step>/                   the sequence of plan steps (eg, 1, 2, 3...).
-                    +--- <log>               the step log.
-                    +--- step.json           the step details, instruction, expectation, etc.
-                    +--- verification/       verification results for the step
-                        +--- messages.json
-                        +--- response.json
-         +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.  
+    +--- <instance>/                              one directory per app launch (multi-instance support).
+         +--- <session>/ (instruction)            session executed from instruction.  
+              +--- instruction.txt
+              +--- session.json                   session details, usage, etc.
+              +--- <plan>/
+                   +--- plan.json
+                   +--- messages.json
+                   +--- response.json
+                   +--- <step>/                   the sequence of plan steps (eg, 1, 2, 3...).
+                         +--- <log>               the step log.
+                         +--- step.json           the step details, instruction, expectation, etc.
+                         +--- verification/       verification results for the step
+                             +--- messages.json
+                             +--- response.json
+              +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.  
 
-    +--- <session>/ (macro)                  session executed from macro.
-         +--- session.json                   session details, start time, end time, etc.
-         +--- macro.txt
-         +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
+         +--- <session>/ (macro)                  session executed from macro.
+              +--- session.json                   session details, start time, end time, etc.
+              +--- macro.txt
+              +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```
 
+`<instance>` is a unique instance ID named as a unixtime, created when the app starts. Each running
+app instance writes to its own directory, so multiple instances can run side by side without their
+logs colliding (if two instances start within the same second, the later one bumps its ID by one).  
 `<session>` is a unique session ID named as a unixtime.  
 `<plan>` is a unique plan ID named as a unixtime.  
 `<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  
@@ -152,7 +156,7 @@ These are the tools the AI can call during a session:
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
 | `keyPress(key)` | `key`: string | Press a special key. Supported: `return`, `tab`, `space`, `delete`, `escape`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
 | `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
-| `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<sessionId>/screenshots/<unixtime>.png`. |
+| `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<instanceId>/<sessionId>/screenshots/<unixtime>.png`. |
 
 All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).  
 These functions are also available in macros (see Macro below).  

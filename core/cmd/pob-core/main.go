@@ -61,7 +61,7 @@ func main() {
 		mcpserver.New(br).Start(cfg.MCPPort())
 	}
 
-	applog.Log("pob-core started")
+	applog.Logf("pob-core started (instance %s)", store.InstanceID())
 
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()

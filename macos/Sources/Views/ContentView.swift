@@ -108,6 +108,11 @@ struct ContentView: View {
         .onChange(of: bridge.isExecuting) { executing in
             if executing {
                 animatedCursorPos = CGPoint(x: 20, y: 20)
+                // During execution the Go core records the AI's actions itself.
+                UserMacroRecorder.shared.pauseForExecution()
+            } else if isRecording {
+                // Resume user recording where the AI's cursor ended up.
+                UserMacroRecorder.shared.start(from: MouseService.shared.virtualCursorPosition)
             }
             updateWindowLock()
             updateClickThrough()
@@ -284,6 +289,12 @@ struct ContentView: View {
                 isRecording.toggle()
                 if isRecording { SettingsService.shared.clearMacro() }
                 bridge.recordingChanged(isRecording)
+                if isRecording {
+                    // Outside a session, capture the user's own actions.
+                    if !bridge.isExecuting { UserMacroRecorder.shared.start() }
+                } else {
+                    UserMacroRecorder.shared.stop()
+                }
                 showToast(isRecording ? "Recording started" : "Recording stopped")
             }) {
                 Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
