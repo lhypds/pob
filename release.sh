@@ -131,3 +131,7 @@ echo "Released: $TAG"
 for Z in "${ASSETS[@]}"; do
   echo "  Asset:  $Z"
 done
+
+# ── cleanup ──────────────────────────────────────────────────────────────────
+echo "==> Cleaning up zip files…"
+rm -f Pob-*.zip
