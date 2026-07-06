@@ -23,7 +23,7 @@
                 <MenuItem Header="Quit Pob" Click="OnQuitClicked"/>
             </ContextMenu>
         </Border.ContextMenu>
-        <DockPanel LastChildFill="False" Margin="4,0">
+        <DockPanel LastChildFill="False" Margin="4,0,0,0">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                 <Button x:Name="SettingsBtn" Style="{StaticResource ToolButton}" ToolTip="Settings" Click="OnSettingsClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE713;"/>
@@ -75,15 +75,17 @@
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE74D;"/>
                 </Button>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                <Button x:Name="MinimizeBtn" Style="{StaticResource ToolButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
-                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE921;"/>
+            <!-- Window controls: native caption buttons — full-height, flush
+                 with the window's right edge, system chrome glyphs. -->
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                <Button x:Name="MinimizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
+                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE921;"/>
                 </Button>
-                <Button x:Name="MaximizeBtn" Style="{StaticResource ToolButton}" ToolTip="Maximize" Click="OnMaximizeClicked">
-                    <TextBlock x:Name="MaximizeIcon" Style="{StaticResource ToolIcon}" Text="&#xE922;"/>
+                <Button x:Name="MaximizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="OnMaximizeClicked">
+                    <TextBlock x:Name="MaximizeIcon" Style="{StaticResource CaptionIcon}" Text="&#xE922;"/>
                 </Button>
-                <Button x:Name="CloseBtn" Style="{StaticResource ToolButton}" ToolTip="Close" Click="OnCloseClicked">
-                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8BB;"/>
+                <Button x:Name="CloseBtn" Style="{StaticResource CaptionCloseButton}" ToolTip="Close" Click="OnCloseClicked">
+                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE8BB;"/>
                 </Button>
             </StackPanel>
         </DockPanel>
