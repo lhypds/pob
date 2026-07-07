@@ -22,12 +22,19 @@ type Storage struct {
 }
 
 // New creates logs/<instance>/ for this process; every session it writes
-// lives under that directory.
-func New(logsDir string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
+// lives under that directory. A non-empty instanceID reuses a directory the
+// shell already allocated (which also holds this instance's settings.json);
+// otherwise a fresh unixtime-named one is reserved.
+func New(logsDir, instanceID string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
 	_ = os.MkdirAll(logsDir, 0o755)
+	if instanceID == "" {
+		instanceID = newInstanceID(logsDir)
+	} else {
+		_ = os.MkdirAll(filepath.Join(logsDir, instanceID), 0o755)
+	}
 	return &Storage{
 		logsDir:      logsDir,
-		instanceID:   newInstanceID(logsDir),
+		instanceID:   instanceID,
 		settingsDict: settingsDict,
 		instruction:  instruction,
 		macro:        macro,

@@ -90,6 +90,8 @@ Structure
 logs/  
     +--- <instance>/                              one directory per app launch (multi-instance support).
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
+         +--- settings.json                       the per-instance settings file (copied from the root template).
+
          +--- <session>/ (instruction)            session executed from instruction.  
               +--- instruction.txt
               +--- session.json                   session details, usage, etc.
@@ -214,7 +216,13 @@ MCP tools:
 `settings.json`
 ---------------
 
-Settings are stored in `settings.json` in the project root.
+The `settings.json` in the project root is the shared template. When an
+instance starts it copies the template to its own `logs/<instance>/settings.json`,
+and both the shell and the Go core read and edit that per-instance copy from
+then on — so multiple instances can run with independent settings (the
+Settings menu opens the instance's copy). Edit the root file to change the
+defaults new instances start with. `instruction.txt` and `macro.txt` stay
+shared at the root.
 
 | Key | Default | Description |
 |-----|---------|-------------|

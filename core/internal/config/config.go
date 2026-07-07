@@ -3,6 +3,11 @@
 // defaults are created on first run and missing keys are backfilled into an
 // existing settings file. Values are re-read from disk on every access so
 // edits take effect without restarting.
+//
+// When an instance ID is given, the active settings file is
+// <root>/logs/<instance>/settings.json, seeded from the root settings.json
+// so every instance starts from the shared template but edits only its own
+// copy. instruction.txt and macro.txt stay shared at the root.
 package config
 
 import (
@@ -15,6 +20,9 @@ import (
 
 type Config struct {
 	Root string
+	// InstanceID is the logs/<instance> directory this process belongs to;
+	// empty means settings live at the root (legacy single-instance layout).
+	InstanceID string
 }
 
 var defaults = map[string]any{
@@ -32,18 +40,30 @@ var defaults = map[string]any{
 	"stop_hook":           "",
 }
 
-func New(root string) *Config {
-	c := &Config{Root: root}
+func New(root, instanceID string) *Config {
+	c := &Config{Root: root, InstanceID: instanceID}
 	c.ensureFiles()
 	return c
 }
 
-func (c *Config) settingsFile() string    { return filepath.Join(c.Root, "settings.json") }
+func (c *Config) rootSettingsFile() string { return filepath.Join(c.Root, "settings.json") }
+
+func (c *Config) settingsFile() string {
+	if c.InstanceID != "" {
+		return filepath.Join(c.LogsDir(), c.InstanceID, "settings.json")
+	}
+	return c.rootSettingsFile()
+}
+
 func (c *Config) instructionFile() string { return filepath.Join(c.Root, "instruction.txt") }
 func (c *Config) macroFile() string       { return filepath.Join(c.Root, "macro.txt") }
 func (c *Config) LogsDir() string         { return filepath.Join(c.Root, "logs") }
 
 func (c *Config) ensureFiles() {
+	if c.InstanceID != "" {
+		_ = os.MkdirAll(filepath.Join(c.LogsDir(), c.InstanceID), 0o755)
+		c.seedInstanceSettings()
+	}
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
 	} else {
@@ -68,6 +88,25 @@ func (c *Config) ensureFiles() {
 	_ = os.MkdirAll(c.LogsDir(), 0o755)
 }
 
+// seedInstanceSettings copies the root settings.json into the instance
+// directory the first time this instance starts, so it inherits the shared
+// template but subsequent edits stay local to the instance. A missing root
+// template is created from the defaults first so later instances seed from
+// the same file.
+func (c *Config) seedInstanceSettings() {
+	if _, err := os.Stat(c.rootSettingsFile()); os.IsNotExist(err) {
+		writeSettingsFile(c.rootSettingsFile(), defaults)
+	}
+	if _, err := os.Stat(c.settingsFile()); err == nil {
+		return
+	}
+	data, err := os.ReadFile(c.rootSettingsFile())
+	if err != nil {
+		return // no readable root template; defaults are written by ensureFiles
+	}
+	_ = os.WriteFile(c.settingsFile(), data, 0o644)
+}
+
 func (c *Config) readSettings() map[string]any {
 	data, err := os.ReadFile(c.settingsFile())
 	if err != nil {
@@ -81,11 +120,15 @@ func (c *Config) readSettings() map[string]any {
 }
 
 func (c *Config) writeSettings(settings map[string]any) {
+	writeSettingsFile(c.settingsFile(), settings)
+}
+
+func writeSettingsFile(path string, settings map[string]any) {
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(c.settingsFile(), data, 0o644)
+	_ = os.WriteFile(path, data, 0o644)
 }
 
 // SettingsDict returns the full settings map (stored into session.json).

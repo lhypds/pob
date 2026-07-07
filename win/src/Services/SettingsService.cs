@@ -38,13 +38,52 @@ public static class SettingsService
 
     private static string RootPath(string name) => Path.Combine(ProjectRoot, name);
 
+    // ── instance directory ──────────────────────────────────────────────────
+
+    private static string? _instanceId;
+
+    /// <summary>
+    /// logs/&lt;InstanceId&gt; directory reserved for this process; holds its
+    /// settings.json (seeded from the root settings.json) and the session logs
+    /// the Go core writes. Passed to pob-core via --instance.
+    /// </summary>
+    public static string InstanceId => _instanceId ??= AllocateInstance();
+
+    private static string AllocateInstance()
+    {
+        string logs = RootPath("logs");
+        Directory.CreateDirectory(logs);
+
+        // Reserve logs/<unixtime>/, bumping if another instance grabbed the
+        // same second (mirrors the Go core's newInstanceID).
+        long id = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        while (Directory.Exists(Path.Combine(logs, id.ToString()))) id++;
+        string dir = Path.Combine(logs, id.ToString());
+        Directory.CreateDirectory(dir);
+
+        // Seed this instance's settings.json from the root template.
+        string rootSettings = RootPath("settings.json");
+        string instanceSettings = Path.Combine(dir, "settings.json");
+        try
+        {
+            if (File.Exists(rootSettings) && !File.Exists(instanceSettings))
+                File.Copy(rootSettings, instanceSettings);
+        }
+        catch (IOException)
+        {
+        }
+        return id.ToString();
+    }
+
+    private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
+
     // ── settings.json helpers ───────────────────────────────────────────────
 
     private static JsonObject? LoadSettings()
     {
         try
         {
-            return JsonNode.Parse(File.ReadAllText(RootPath("settings.json"))) as JsonObject;
+            return JsonNode.Parse(File.ReadAllText(SettingsFilePath())) as JsonObject;
         }
         catch
         {
@@ -96,7 +135,7 @@ public static class SettingsService
         obj["window_height"] = (double)h;
         try
         {
-            File.WriteAllText(RootPath("settings.json"),
+            File.WriteAllText(SettingsFilePath(),
                 obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (IOException)
@@ -167,7 +206,7 @@ public static class SettingsService
 
     public static void OpenSettingsFile()
     {
-        string path = RootPath("settings.json");
+        string path = SettingsFilePath();
         EnsureFile(path);
         OpenWithEditor(path);
     }
@@ -220,6 +259,17 @@ public static class SettingsService
 
     public static void ClearLogs()
     {
+        // The live instance settings.json lives under logs/ — carry it over.
+        string settingsPath = SettingsFilePath();
+        string? settingsData = null;
+        try
+        {
+            settingsData = File.ReadAllText(settingsPath);
+        }
+        catch (IOException)
+        {
+        }
+
         string path = RootPath("logs");
         try
         {
@@ -228,7 +278,17 @@ public static class SettingsService
         catch (IOException)
         {
         }
-        Directory.CreateDirectory(path);
+        Directory.CreateDirectory(Path.Combine(path, InstanceId));
+        if (settingsData != null)
+        {
+            try
+            {
+                File.WriteAllText(settingsPath, settingsData);
+            }
+            catch (IOException)
+            {
+            }
+        }
         TryTruncate(RootPath("app.log"));
     }
 

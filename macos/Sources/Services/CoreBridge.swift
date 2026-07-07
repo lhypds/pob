@@ -42,7 +42,7 @@ final class CoreBridge: ObservableObject {
 
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["--root", root.path]
+        process.arguments = ["--root", root.path, "--instance", SettingsService.shared.instanceID]
         process.currentDirectoryURL = root
 
         let stdinPipe = Pipe()

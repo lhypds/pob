@@ -1,5 +1,6 @@
 #include "settings_service.h"
 
+#include <errno.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>
@@ -43,10 +44,55 @@ static gchar *root_path(const char *name) {
     return g_build_filename(settings_project_root(), name, NULL);
 }
 
+// ── instance directory ──────────────────────────────────────────────────────
+
+// Reserves logs/<unixtime>/ exclusively for this process (bumping if another
+// instance grabbed the same second, mirroring the Go core's newInstanceID)
+// and seeds it with a copy of the root settings.json so the instance reads
+// and edits its own settings. instruction.txt and macro.txt stay shared.
+const char *settings_instance_id(void) {
+    static gchar *instance_id = NULL;
+    if (instance_id) return instance_id;
+
+    gchar *logs = root_path("logs");
+    g_mkdir_with_parents(logs, 0755);
+
+    gint64 id = g_get_real_time() / G_USEC_PER_SEC;
+    for (;;) {
+        gchar *dir = g_strdup_printf("%s/%" G_GINT64_FORMAT, logs, id);
+        int rc = g_mkdir(dir, 0755);
+        g_free(dir);
+        if (rc == 0 || errno != EEXIST) break;
+        id++;
+    }
+    instance_id = g_strdup_printf("%" G_GINT64_FORMAT, id);
+
+    // Seed this instance's settings.json from the root template.
+    gchar *root_settings = root_path("settings.json");
+    gchar *instance_settings = g_build_filename(logs, instance_id, "settings.json", NULL);
+    gchar *contents = NULL;
+    gsize len = 0;
+    if (!g_file_test(instance_settings, G_FILE_TEST_EXISTS) &&
+        g_file_get_contents(root_settings, &contents, &len, NULL)) {
+        g_file_set_contents(instance_settings, contents, len, NULL);
+        g_free(contents);
+    }
+    g_free(instance_settings);
+    g_free(root_settings);
+    g_free(logs);
+    return instance_id;
+}
+
+// Path of this instance's settings.json (logs/<instance>/settings.json).
+static gchar *settings_file_path(void) {
+    return g_build_filename(settings_project_root(), "logs", settings_instance_id(),
+                            "settings.json", NULL);
+}
+
 // ── settings.json helpers ───────────────────────────────────────────────────
 
 static JsonObject *load_settings(JsonParser **parser_out) {
-    gchar *path = root_path("settings.json");
+    gchar *path = settings_file_path();
     JsonParser *parser = json_parser_new();
     JsonObject *obj = NULL;
     if (json_parser_load_from_file(parser, path, NULL)) {
@@ -97,7 +143,7 @@ gboolean settings_get_window_frame(int *x, int *y, int *w, int *h) {
 }
 
 void settings_save_window_frame(int x, int y, int w, int h) {
-    gchar *path = root_path("settings.json");
+    gchar *path = settings_file_path();
 
     // Preserve every existing key, only replace the frame values.
     JsonParser *parser = NULL;
@@ -185,7 +231,7 @@ static void ensure_file(const char *path) {
 }
 
 void settings_open_settings_file(void) {
-    gchar *path = root_path("settings.json");
+    gchar *path = settings_file_path();
     ensure_file(path);
     open_with_editor(path);
     g_free(path);
@@ -263,12 +309,27 @@ static void remove_tree(GFile *file) {
 }
 
 void settings_clear_logs(void) {
+    // The live instance settings.json lives under logs/ — carry it over.
+    gchar *settings_path = settings_file_path();
+    gchar *settings_data = NULL;
+    gsize settings_len = 0;
+    g_file_get_contents(settings_path, &settings_data, &settings_len, NULL);
+
     gchar *path = root_path("logs");
     GFile *dir = g_file_new_for_path(path);
     remove_tree(dir);
     g_object_unref(dir);
-    g_mkdir_with_parents(path, 0755);
+
+    gchar *instance_dir = g_build_filename(path, settings_instance_id(), NULL);
+    g_mkdir_with_parents(instance_dir, 0755);
+    g_free(instance_dir);
     g_free(path);
+
+    if (settings_data) {
+        g_file_set_contents(settings_path, settings_data, settings_len, NULL);
+        g_free(settings_data);
+    }
+    g_free(settings_path);
 
     gchar *applog = root_path("app.log");
     g_file_set_contents(applog, "", 0, NULL);

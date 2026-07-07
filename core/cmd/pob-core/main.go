@@ -23,6 +23,7 @@ import (
 
 func main() {
 	root := flag.String("root", "", "project root holding settings.json, instruction.txt, macro.txt and logs/")
+	instance := flag.String("instance", "", "logs/<instance> directory allocated by the shell; holds this instance's settings.json and session logs")
 	flag.Parse()
 	if *root == "" {
 		cwd, err := os.Getwd()
@@ -33,8 +34,8 @@ func main() {
 	}
 
 	applog.Init(*root)
-	cfg := config.New(*root)
-	store := storage.New(cfg.LogsDir(), cfg.SettingsDict, cfg.Instruction, cfg.Macro)
+	cfg := config.New(*root, *instance)
+	store := storage.New(cfg.LogsDir(), *instance, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
 
 	client := ipc.NewStdio()
 	br := bridge.New(client)

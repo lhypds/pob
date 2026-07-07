@@ -306,6 +306,8 @@ public static class CoreBridge
         };
         psi.ArgumentList.Add("--root");
         psi.ArgumentList.Add(root);
+        psi.ArgumentList.Add("--instance");
+        psi.ArgumentList.Add(SettingsService.InstanceId);
 
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         process.Exited += (_, _) =>

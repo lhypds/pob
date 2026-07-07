@@ -351,7 +351,8 @@ void core_bridge_start(void) {
         return;
     }
 
-    gchar *argv[] = {binary, "--root", (gchar *)root, NULL};
+    gchar *argv[] = {binary, "--root", (gchar *)root,
+                     "--instance", (gchar *)settings_instance_id(), NULL};
     gint child_stdin = -1, child_stdout = -1;
     GError *error = NULL;
     gboolean ok = g_spawn_async_with_pipes(

@@ -11,6 +11,11 @@
 // Absolute project root path (cached after first call, never freed).
 const char *settings_project_root(void);
 
+// logs/<instance> directory id reserved for this process (cached after first
+// call, never freed). Holds this instance's settings.json, seeded from the
+// root settings.json; passed to pob-core via --instance.
+const char *settings_instance_id(void);
+
 // Saved window frame from settings.json (window_x/y/width/height).
 // Returns FALSE when any key is missing.
 gboolean settings_get_window_frame(int *x, int *y, int *w, int *h);

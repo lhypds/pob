@@ -5,12 +5,26 @@ import Foundation
 /// settings.json defaults, instruction.txt, macro.txt and the logs tree;
 /// this service only resolves the project root, opens files in the user's
 /// editor, persists the window frame and clears user files on request.
+///
+/// Each process reserves its own logs/<instance>/ directory at startup and
+/// seeds it with a copy of the root settings.json, so instances read and edit
+/// their own settings side by side. instruction.txt and macro.txt stay shared
+/// at the root.
 class SettingsService {
     static let shared = SettingsService()
 
     private let fileManager = FileManager.default
 
+    /// logs/<instanceID> reserved for this process; holds its settings.json
+    /// and the session logs the Go core writes. Passed to pob-core via
+    /// --instance so both sides use the same directory.
+    let instanceID: String
+
     var projectRoot: URL {
+        Self.resolveProjectRoot(fileManager)
+    }
+
+    private static func resolveProjectRoot(_ fileManager: FileManager) -> URL {
         let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
         // Dev workflow: start.sh runs the binary from the project root, which has settings.json
         if fileManager.fileExists(atPath: cwd.appendingPathComponent("settings.json").path) {
@@ -27,8 +41,12 @@ class SettingsService {
         return dir
     }
 
+    var instanceDir: URL {
+        logsFolder.appendingPathComponent(instanceID)
+    }
+
     private var settingsFile: URL {
-        projectRoot.appendingPathComponent("settings.json")
+        instanceDir.appendingPathComponent("settings.json")
     }
 
     private var instructionFile: URL {
@@ -43,7 +61,37 @@ class SettingsService {
         projectRoot.appendingPathComponent("logs")
     }
 
-    private init() {}
+    private init() {
+        let fileManager = FileManager.default
+        let root = Self.resolveProjectRoot(fileManager)
+        let logs = root.appendingPathComponent("logs")
+        try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
+
+        // Reserve logs/<unixtime>/ exclusively; if another instance grabbed
+        // the same second, bump until a free one is found (mirrors the Go
+        // core's newInstanceID).
+        var id = Int(Date().timeIntervalSince1970)
+        while true {
+            do {
+                try fileManager.createDirectory(at: logs.appendingPathComponent(String(id)), withIntermediateDirectories: false)
+                break
+            } catch CocoaError.fileWriteFileExists {
+                id += 1
+            } catch {
+                break
+            }
+        }
+        instanceID = String(id)
+
+        // Seed this instance's settings.json from the root template.
+        let rootSettings = root.appendingPathComponent("settings.json")
+        let instanceSettings = logs.appendingPathComponent(instanceID).appendingPathComponent("settings.json")
+        if fileManager.fileExists(atPath: rootSettings.path),
+           !fileManager.fileExists(atPath: instanceSettings.path)
+        {
+            try? fileManager.copyItem(at: rootSettings, to: instanceSettings)
+        }
+    }
 
     private func serializeJSON(_ object: Any) -> String? {
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
@@ -135,8 +183,13 @@ class SettingsService {
     }
 
     func clearLogs() {
+        // The live instance settings.json lives under logs/ — carry it over.
+        let settingsData = try? Data(contentsOf: settingsFile)
         try? fileManager.removeItem(at: logsFolder)
-        try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: instanceDir, withIntermediateDirectories: true)
+        if let settingsData {
+            try? settingsData.write(to: settingsFile)
+        }
         let appLog = projectRoot.appendingPathComponent("app.log")
         try? "".write(to: appLog, atomically: true, encoding: .utf8)
     }
