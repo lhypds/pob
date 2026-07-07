@@ -92,6 +92,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    /// Dock-icon clicks and "open untitled" events must never let SwiftUI
+    /// open an extra window (each window is a full instance here) — surface
+    /// the existing windows instead.
+    func applicationShouldOpenUntitledFile(_: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ app: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            for window in app.windows where window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+        }
+        return false
+    }
+
     /// Right-click menu on the Dock icon.
     func applicationDockMenu(_: NSApplication) -> NSMenu? {
         let menu = NSMenu()

@@ -20,6 +20,7 @@ final class PobInstance: NSObject, ObservableObject {
 
     private(set) weak var window: NSWindow?
     private var clickThroughEnabled = false
+    private var windowObservers: [NSObjectProtocol] = []
 
     override init() {
         let settings = SettingsService()
@@ -34,6 +35,9 @@ final class PobInstance: NSObject, ObservableObject {
     }
 
     deinit {
+        for observer in windowObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         bridge.stop()
     }
 
@@ -67,6 +71,11 @@ final class PobInstance: NSObject, ObservableObject {
 
         window.level = .floating
         window.ignoresMouseEvents = false
+        // macOS remembers the app's window set at quit (per bundle id) and
+        // recreates every window on the next launch — each one a full
+        // instance here, so a run that quit with 3 windows would start with
+        // 3. Opt out: always start with exactly one window.
+        window.isRestorable = false
 
         if let savedFrame = settings.getWindowFrame() {
             window.setFrame(savedFrame, display: true)
@@ -85,8 +94,28 @@ final class PobInstance: NSObject, ObservableObject {
             window.setFrame(frame, display: true)
         }
 
-        window.delegate = self
-        window.makeKeyAndOrderFront(nil)
+        // Observe rather than replace window.delegate: the delegate belongs
+        // to SwiftUI's WindowGroup scene bookkeeping, and stealing it makes
+        // SwiftUI lose track of its windows and open spurious extra ones on
+        // app activation.
+        let nc = NotificationCenter.default
+        for observer in windowObservers {
+            nc.removeObserver(observer)
+        }
+        windowObservers = [
+            nc.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main) { [weak self] _ in
+                self?.saveWindowFrame()
+            },
+            nc.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
+                self?.saveWindowFrame()
+            },
+            // SwiftUI can keep the window's scene state (and thus this
+            // object) alive after close, so stop the Go core explicitly
+            // rather than relying on deinit.
+            nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                self?.shutdown()
+            },
+        ]
 
         window.standardWindowButton(.closeButton)?.isEnabled = true
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
@@ -131,22 +160,7 @@ final class PobInstance: NSObject, ObservableObject {
     }
 }
 
-extension PobInstance: NSWindowDelegate {
-    /// SwiftUI can keep the window's scene state (and thus this object)
-    /// alive after close, so stop the Go core explicitly here rather than
-    /// relying on deinit.
-    func windowWillClose(_: Notification) {
-        shutdown()
-    }
-
-    func windowDidMove(_: Notification) {
-        saveWindowFrame()
-    }
-
-    func windowDidEndLiveResize(_: Notification) {
-        saveWindowFrame()
-    }
-
+extension PobInstance {
     private func saveWindowFrame() {
         guard let window else { return }
         settings.saveWindowFrame(window.frame)

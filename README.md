@@ -214,8 +214,8 @@ MCP tools:
 | `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the Pob window content area and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
 
 
-`settings.json`
----------------
+Settings
+--------
 
 The `settings.json` in the project root is the shared template. When an
 instance starts it copies the template to its own `logs/<instance>/settings.json`,
@@ -247,13 +247,14 @@ Example:
 
 ```json
 {
-  "model": "gpt-4o",
+  "model": "gpt-5.5",
   "max_tokens": 2000,
   "max_steps": 12,
   "max_resumes": 5,
   "max_steplogs": 10,
   "editor": "vscode",
-  "stop_hook": "afplay /System/Library/Sounds/Morse.aiff"
+  "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
+  ...
 }
 ```
 
