@@ -110,6 +110,12 @@ final class CoreBridge: ObservableObject {
         notify(method: "recording.changed", params: ["recording": recording])
     }
 
+    /// Toolbar screenshot button: the Go core flashes, captures and saves the
+    /// shot, and records a take_screenshot() macro line while recording.
+    func takeScreenshot() {
+        notify(method: "screenshot.take", params: [:])
+    }
+
     /// Answers the pending max-step confirmation from the Go core.
     func resolveMaxStep(_ shouldContinue: Bool) {
         guard let id = maxStepRequestId else { return }

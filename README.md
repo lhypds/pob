@@ -89,6 +89,7 @@ Structure
 ```
 logs/  
     +--- <instance>/                              one directory per app launch (multi-instance support).
+         +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- <session>/ (instruction)            session executed from instruction.  
               +--- instruction.txt
               +--- session.json                   session details, usage, etc.
@@ -137,9 +138,10 @@ Toolbar buttons (left to right):
 | 7 | Execute / Stop | Run the instruction or macro; stop if already running |
 | 8 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
 | 9 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
-| 10 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
-| 11 | Lock | Lock the window to prevent moving or resizing |
-| 12 | Clear | Clear instruction, macro, logs, or all |
+| 10 | Screenshot | Capture the content area to `logs/<instance>/screenshots/`; while recording, also appends `take_screenshot()` to the macro |
+| 11 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
+| 12 | Lock | Lock the window to prevent moving or resizing |
+| 13 | Clear | Clear instruction, macro, logs, or all |
 
 * Target and Crop are helper functions for when you hard to describe the GUI element.  
 

@@ -56,6 +56,9 @@ func main() {
 		recording, _ := params["recording"].(bool)
 		runner.SetRecording(recording)
 	})
+	client.Handle("screenshot.take", func(params map[string]any) {
+		runner.TakeScreenshot()
+	})
 
 	if cfg.StartMCP() {
 		mcpserver.New(br).Start(cfg.MCPPort())

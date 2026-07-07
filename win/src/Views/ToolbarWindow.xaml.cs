@@ -153,6 +153,9 @@ public partial class ToolbarWindow : Window
     private void OnCropClicked(object sender, RoutedEventArgs e) =>
         AppState.SetCropping(!AppState.IsCropping);
 
+    private void OnScreenshotClicked(object sender, RoutedEventArgs e) =>
+        CoreBridge.TakeScreenshot();
+
     private void OnClickThroughClicked(object sender, RoutedEventArgs e)
     {
         AppState.IsClickThrough = !AppState.IsClickThrough;

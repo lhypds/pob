@@ -57,6 +57,9 @@
                 <Button x:Name="CropBtn" Style="{StaticResource ToolButton}" ToolTip="Crop" Click="OnCropClicked">
                     <TextBlock x:Name="CropIcon" Style="{StaticResource ToolIcon}" Text="&#xE7A8;"/>
                 </Button>
+                <Button x:Name="ScreenshotBtn" Style="{StaticResource ToolButton}" ToolTip="Screenshot" Click="OnScreenshotClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE722;"/>
+                </Button>
                 <Button x:Name="ClickThroughBtn" Style="{StaticResource ToolButton}"
                         ToolTip="Click-Through Off (click to enable)" Click="OnClickThroughClicked">
                     <!-- Plain hand (Touch, no mouse pointer) when ON, slashed hand

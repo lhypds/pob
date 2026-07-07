@@ -16,6 +16,7 @@ void core_bridge_run_instruction(gboolean recording);
 void core_bridge_run_macro(void);
 void core_bridge_stop_execution(void);
 void core_bridge_recording_changed(gboolean recording);
+void core_bridge_take_screenshot(void);
 
 // Answers the pending ui.confirmMaxStep request (no-op when none pending).
 void core_bridge_resolve_max_step(gboolean should_continue);

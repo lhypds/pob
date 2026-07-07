@@ -357,6 +357,17 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
+                // Flush pending recorded input first so the take_screenshot()
+                // line the core appends lands after the user's actions.
+                UserMacroRecorder.shared.flushPending()
+                bridge.takeScreenshot()
+            }) {
+                Image(systemName: "camera")
+            }
+            .help("Screenshot")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
                 isClickThrough.toggle()
                 updateClickThrough()
             }) {

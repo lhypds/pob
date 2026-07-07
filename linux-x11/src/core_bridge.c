@@ -160,6 +160,12 @@ void core_bridge_recording_changed(gboolean recording) {
     notify("recording.changed", add_recording, GINT_TO_POINTER(recording));
 }
 
+// Toolbar screenshot button: the Go core flashes, captures and saves the
+// shot, and records a take_screenshot() macro line while recording.
+void core_bridge_take_screenshot(void) {
+    notify("screenshot.take", add_nothing, NULL);
+}
+
 void core_bridge_resolve_max_step(gboolean should_continue) {
     if (!max_step_request_id) return;
     gchar *id = max_step_request_id;

@@ -59,6 +59,28 @@ func NewRunner(cfg *config.Config, store *storage.Storage, llmClient *llm.Client
 
 func (r *Runner) SetRecording(recording bool) { r.recording.Store(recording) }
 
+// TakeScreenshot handles the toolbar screenshot button: flash, capture and
+// save under logs/<instance>/screenshots/. While recording it also appends
+// take_screenshot() to the macro so replay repeats the capture. Ignored
+// during a session — the session owns the capture pipeline then.
+func (r *Runner) TakeScreenshot() {
+	r.mu.Lock()
+	busy := r.running
+	r.mu.Unlock()
+	if busy {
+		return
+	}
+	r.recordMacro("take_screenshot()")
+	r.br.FlashScreenshot()
+	shot, err := r.br.CaptureScreenshot(true, nil)
+	if err != nil {
+		applog.Log("Screenshot button: capture failed")
+		return
+	}
+	r.store.SaveUserScreenshot(shot)
+	applog.Log("Screenshot saved")
+}
+
 // Stop cancels the running session, if any.
 func (r *Runner) Stop() {
 	r.mu.Lock()

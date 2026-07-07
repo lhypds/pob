@@ -173,6 +173,14 @@ func (s *Storage) SaveScreenshot(png []byte, sessionID string) {
 	_ = os.WriteFile(filepath.Join(dir, unixNow()+".png"), png, 0o644)
 }
 
+// SaveUserScreenshot writes a toolbar-button capture (outside any session) to
+// logs/<instance>/screenshots/<unixtime>.png.
+func (s *Storage) SaveUserScreenshot(png []byte) {
+	dir := filepath.Join(s.logsDir, s.instanceID, "screenshots")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, unixNow()+".png"), png, 0o644)
+}
+
 func (s *Storage) SaveSessionStartEndTimes(sessionID string, start, end time.Time) {
 	dest := filepath.Join(s.sessionDir(sessionID), "session.json")
 	entry := readJSONFile(dest)

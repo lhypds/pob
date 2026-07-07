@@ -117,6 +117,13 @@ public static class CoreBridge
         Notify("recording.changed", new Dictionary<string, object?> { ["recording"] = recording });
     }
 
+    // Toolbar screenshot button: the Go core flashes, captures and saves the
+    // shot, and records a take_screenshot() macro line while recording.
+    public static void TakeScreenshot()
+    {
+        Notify("screenshot.take", new Dictionary<string, object?>());
+    }
+
     public static void ResolveMaxStep(bool shouldContinue)
     {
         if (_maxStepRequestId == null) return;

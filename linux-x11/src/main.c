@@ -106,6 +106,7 @@ static const char *const ICONS_PLAY[] = {"media-playback-start-symbolic", NULL};
 static const char *const ICONS_STOP[] = {"media-playback-stop-symbolic", NULL};
 static const char *const ICONS_TARGET[] = {"find-location-symbolic", "edit-find-symbolic", NULL};
 static const char *const ICONS_CROP[] = {"image-crop-symbolic", "edit-select-all-symbolic", NULL};
+static const char *const ICONS_SCREENSHOT[] = {"camera-photo-symbolic", "camera-web-symbolic", NULL};
 // Plain hand only — never a mouse/touchpad stand-in; themes shipping neither
 // name get the drawn silhouette below instead.
 static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic", NULL};
@@ -490,6 +491,11 @@ static void on_crop_clicked(GtkButton *b, gpointer d) {
     app_set_cropping(!g_state.is_cropping);
 }
 
+static void on_screenshot_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    core_bridge_take_screenshot();
+}
+
 static void on_clickthrough_realize(GtkWidget *w, gpointer d) {
     (void)w; (void)d;
     set_clickthrough_icon();
@@ -607,6 +613,7 @@ static void build_headerbar(void) {
     g_state.play_btn = icon_button(ICONS_PLAY, "Execute");
     g_state.target_btn = icon_button(ICONS_TARGET, "Target");
     g_state.crop_btn = icon_button(ICONS_CROP, "Crop");
+    GtkWidget *screenshot_btn = icon_button(ICONS_SCREENSHOT, "Screenshot");
     g_state.clickthrough_btn = icon_button(ICONS_HAND, "Click-Through Off (click to enable)");
     set_clickthrough_icon(); // initial OFF state shows the slashed hand
     // Re-render once realized so the slash picks up the final theme color.
@@ -627,6 +634,7 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.play_btn, "clicked", G_CALLBACK(on_play_clicked), NULL);
     g_signal_connect(g_state.target_btn, "clicked", G_CALLBACK(on_target_clicked), NULL);
     g_signal_connect(g_state.crop_btn, "clicked", G_CALLBACK(on_crop_clicked), NULL);
+    g_signal_connect(screenshot_btn, "clicked", G_CALLBACK(on_screenshot_clicked), NULL);
     g_signal_connect(g_state.clickthrough_btn, "clicked", G_CALLBACK(on_clickthrough_clicked), NULL);
     g_signal_connect(g_state.lock_btn, "clicked", G_CALLBACK(on_lock_clicked), NULL);
     g_signal_connect(trash_btn, "clicked", G_CALLBACK(on_trash_clicked), NULL);
@@ -646,6 +654,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.play_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.target_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.crop_btn);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), screenshot_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.lock_btn);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), trash_btn);

@@ -83,6 +83,15 @@ final class UserMacroRecorder {
         AppLogger.log("User recording stopped")
     }
 
+    /// Flushes pending scroll/text buffers so lines appended by other writers
+    /// (e.g. the core's take_screenshot() on the toolbar screenshot button)
+    /// land after the actions the user already performed.
+    func flushPending() {
+        guard isActive else { return }
+        flushScroll()
+        flushText()
+    }
+
     /// Stops recording because a session is starting, first rewinding the
     /// virtual cursor to (20, 20) — the position after the cursor reset every
     /// session begins with — so action deltas the AI records next chain
