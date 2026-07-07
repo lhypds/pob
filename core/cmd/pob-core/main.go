@@ -10,6 +10,8 @@ package main
 import (
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"pob/core/internal/agent"
 	"pob/core/internal/applog"
@@ -66,7 +68,18 @@ func main() {
 	}
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())
+	store.WriteInstanceStart()
+
+	// Record the end time when killed directly (e.g. stop.sh straggler cleanup).
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		store.WriteInstanceEnd()
+		os.Exit(0)
+	}()
 
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()
+	store.WriteInstanceEnd()
 }

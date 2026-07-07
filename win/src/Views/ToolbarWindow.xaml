@@ -18,6 +18,8 @@
             MouseLeftButtonDown="OnBarLeftButtonDown">
         <Border.ContextMenu>
             <ContextMenu>
+                <MenuItem Header="New Instance" Click="OnNewInstanceClicked"/>
+                <Separator/>
                 <MenuItem Header="About Pob" Click="OnAboutClicked"/>
                 <Separator/>
                 <MenuItem Header="Quit Pob" Click="OnQuitClicked"/>

@@ -524,15 +524,30 @@ static void on_trash_clicked(GtkButton *b, gpointer d) {
 
 // ── headerbar (toolbar + context menu + drag lock) ──────────────────────────
 
+// Launches another copy of this executable from the project root; it
+// reserves its own logs/<instance>/ directory and settings.json copy.
+static void on_new_instance(void) {
+    gchar *self = g_file_read_link("/proc/self/exe", NULL);
+    if (!self) return;
+    gchar *argv[] = {self, NULL};
+    g_spawn_async(settings_project_root(), argv, NULL, G_SPAWN_DEFAULT,
+                  NULL, NULL, NULL, NULL);
+    g_free(self);
+}
+
 static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
     (void)w; (void)d;
     if (ev->button == 3) {
         GtkWidget *menu = gtk_menu_new();
+        GtkWidget *new_instance = gtk_menu_item_new_with_label("New Instance");
         GtkWidget *about = gtk_menu_item_new_with_label("About Pob");
         GtkWidget *quit = gtk_menu_item_new_with_label("Quit Pob");
+        g_signal_connect_swapped(new_instance, "activate", G_CALLBACK(on_new_instance), NULL);
         g_signal_connect_swapped(about, "activate", G_CALLBACK(show_about_dialog), NULL);
         g_signal_connect_swapped(quit, "activate", G_CALLBACK(g_application_quit),
                                  G_APPLICATION(g_state.app));
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), new_instance);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), about);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit);

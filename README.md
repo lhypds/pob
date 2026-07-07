@@ -90,7 +90,8 @@ Structure
 logs/  
     +--- <instance>/                              one directory per app launch (multi-instance support).
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
-         +--- settings.json                       the per-instance settings file (copied from the root template).
+         +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
+         +--- instance.json                       instance start/end times, etc.
 
          +--- <session>/ (instruction)            session executed from instruction.  
               +--- instruction.txt

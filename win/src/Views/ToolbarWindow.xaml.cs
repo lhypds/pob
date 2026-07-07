@@ -191,6 +191,28 @@ public partial class ToolbarWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 
+    /// <summary>
+    /// Launches another copy of this executable from the project root; it
+    /// reserves its own logs/&lt;instance&gt;/ directory and settings.json copy.
+    /// </summary>
+    private void OnNewInstanceClicked(object sender, RoutedEventArgs e)
+    {
+        string? exe = Environment.ProcessPath;
+        if (exe == null) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe)
+            {
+                WorkingDirectory = SettingsService.ProjectRoot,
+                UseShellExecute = false,
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Failed to start new instance: {ex.Message}");
+        }
+    }
+
     private void OnAboutClicked(object sender, RoutedEventArgs e) => Dialogs.ShowAbout(this);
 
     private void OnQuitClicked(object sender, RoutedEventArgs e) => Application.Current.Shutdown();

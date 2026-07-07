@@ -41,7 +41,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_: Notification) {
-        NSApplication.shared.setActivationPolicy(.regular)
+        // Only the first instance shows a Dock icon; instances started while
+        // another Pob is already running become accessory apps so the Dock
+        // doesn't fill up with duplicate icons. Their windows float above
+        // everything anyway, and menu key equivalents (⌘N, ⌘Q) still work.
+        let selfExecutable = Bundle.main.executableURL?.resolvingSymlinksInPath()
+        let isSecondaryInstance = NSWorkspace.shared.runningApplications.contains {
+            $0.processIdentifier != ProcessInfo.processInfo.processIdentifier &&
+                $0.executableURL?.resolvingSymlinksInPath() == selfExecutable
+        }
+        NSApplication.shared.setActivationPolicy(isSecondaryInstance ? .accessory : .regular)
 
         if let window = NSApplication.shared.windows.first {
             self.window = window
@@ -139,6 +148,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
 
+        let newInstanceMenuItem = NSMenuItem(title: "New Instance", action: #selector(newInstance), keyEquivalent: "n")
+        newInstanceMenuItem.target = self
+        appMenu.addItem(newInstanceMenuItem)
+
+        appMenu.addItem(.separator())
+
         let aboutMenuItem = NSMenuItem(title: "About Pob", action: #selector(showAbout), keyEquivalent: "")
         aboutMenuItem.target = self
         appMenu.addItem(aboutMenuItem)
@@ -153,6 +168,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appMenuItem)
 
         NSApplication.shared.mainMenu = mainMenu
+    }
+
+    /// Without this, closing the window of an accessory (no Dock icon)
+    /// instance would leave an invisible process running with no way to
+    /// reach it.
+    func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
+        true
+    }
+
+    /// Launches another copy of this executable from the project root; it
+    /// reserves its own logs/<instance>/ directory and settings.json copy.
+    @objc private func newInstance() {
+        guard let executable = Bundle.main.executableURL else { return }
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = SettingsService.shared.projectRoot
+        do {
+            try process.run()
+        } catch {
+            AppLogger.log("Failed to start new instance: \(error)")
+        }
     }
 
     @objc private func showAbout() {

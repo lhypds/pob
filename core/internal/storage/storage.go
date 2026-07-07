@@ -56,6 +56,26 @@ func newInstanceID(logsDir string) string {
 
 func (s *Storage) InstanceID() string { return s.instanceID }
 
+func (s *Storage) instanceFile() string {
+	return filepath.Join(s.logsDir, s.instanceID, "instance.json")
+}
+
+// WriteInstanceStart creates logs/<instance>/instance.json recording when
+// this instance started.
+func (s *Storage) WriteInstanceStart() {
+	writeJSON(s.instanceFile(), map[string]any{
+		"start_time": time.Now().Unix(),
+	})
+}
+
+// WriteInstanceEnd records the end time into instance.json, preserving the
+// recorded start time.
+func (s *Storage) WriteInstanceEnd() {
+	entry := readJSONFile(s.instanceFile())
+	entry["end_time"] = time.Now().Unix()
+	writeJSON(s.instanceFile(), entry)
+}
+
 func (s *Storage) sessionDir(sessionID string) string {
 	return filepath.Join(s.logsDir, s.instanceID, sessionID)
 }
