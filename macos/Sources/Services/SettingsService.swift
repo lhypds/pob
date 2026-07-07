@@ -18,6 +18,11 @@ class SettingsService {
     /// --instance so both sides use the same directory.
     let instanceID: String
 
+    /// Exclusive flock on logs/<instanceID>/.lock, held for the instance's
+    /// lifetime so clearLogs (from this or another process) can tell the
+    /// directory belongs to a running instance.
+    private var lockFD: Int32 = -1
+
     /// Shared project root (same for every instance in this process).
     static var projectRoot: URL {
         resolveProjectRoot(FileManager.default)
@@ -85,6 +90,7 @@ class SettingsService {
             }
         }
         instanceID = String(id)
+        acquireInstanceLock()
 
         // Seed this instance's settings.json from the root template.
         let rootSettings = root.appendingPathComponent("settings.json")
@@ -93,6 +99,14 @@ class SettingsService {
            !fileManager.fileExists(atPath: instanceSettings.path)
         {
             try? fileManager.copyItem(at: rootSettings, to: instanceSettings)
+        }
+    }
+
+    deinit {
+        // Instances share this process (one per window) — release the lock
+        // when the window closes so the directory becomes clearable.
+        if lockFD >= 0 {
+            close(lockFD)
         }
     }
 
@@ -186,15 +200,52 @@ class SettingsService {
     }
 
     func clearLogs() {
-        // The live instance settings.json lives under logs/ — carry it over.
+        // Delete only directories of instances that are no longer running —
+        // every live instance (this or another process) holds a flock on its
+        // logs/<instance>/.lock, so a held lock means "in use, skip".
+        if let children = try? fileManager.contentsOfDirectory(at: logsFolder, includingPropertiesForKeys: nil) {
+            for child in children where child.lastPathComponent != instanceID {
+                if isInstanceRunning(child) { continue }
+                try? fileManager.removeItem(at: child)
+            }
+        }
+
+        // Wipe this instance's own logs, carrying over its live settings.json.
+        // The .lock goes down with the directory, so re-acquire it after.
         let settingsData = try? Data(contentsOf: settingsFile)
-        try? fileManager.removeItem(at: logsFolder)
+        if lockFD >= 0 {
+            close(lockFD)
+            lockFD = -1
+        }
+        try? fileManager.removeItem(at: instanceDir)
         try? fileManager.createDirectory(at: instanceDir, withIntermediateDirectories: true)
+        acquireInstanceLock()
         if let settingsData {
             try? settingsData.write(to: settingsFile)
         }
         let appLog = projectRoot.appendingPathComponent("app.log")
         try? "".write(to: appLog, atomically: true, encoding: .utf8)
+    }
+
+    private func acquireInstanceLock() {
+        let lockPath = logsFolder.appendingPathComponent(instanceID).appendingPathComponent(".lock").path
+        lockFD = open(lockPath, O_CREAT | O_RDWR, 0o644)
+        if lockFD >= 0 {
+            flock(lockFD, LOCK_EX)
+        }
+    }
+
+    /// True when a live instance still holds the directory's .lock. Entries
+    /// without a lock file (stale instances, stray files) count as not running.
+    private func isInstanceRunning(_ dir: URL) -> Bool {
+        let fd = open(dir.appendingPathComponent(".lock").path, O_RDWR)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            flock(fd, LOCK_UN)
+            return false
+        }
+        return true
     }
 
     func openLogsFolder() {

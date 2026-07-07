@@ -92,6 +92,7 @@ logs/
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
          +--- instance.json                       instance start/end times, etc.
+         +--- .lock                               held locked while the instance runs; Clear Logs skips locked (running) instances.
 
          +--- <session>/ (instruction)            session executed from instruction.  
               +--- instruction.txt

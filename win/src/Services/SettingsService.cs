@@ -49,6 +49,13 @@ public static class SettingsService
     /// </summary>
     public static string InstanceId => _instanceId ??= AllocateInstance();
 
+    /// <summary>
+    /// Exclusive handle on logs/&lt;InstanceId&gt;/.lock, held for the process
+    /// lifetime so ClearLogs (from this or another process) can tell the
+    /// directory belongs to a running instance.
+    /// </summary>
+    private static FileStream? _instanceLock;
+
     private static string AllocateInstance()
     {
         string logs = RootPath("logs");
@@ -60,6 +67,7 @@ public static class SettingsService
         while (Directory.Exists(Path.Combine(logs, id.ToString()))) id++;
         string dir = Path.Combine(logs, id.ToString());
         Directory.CreateDirectory(dir);
+        AcquireInstanceLock(dir);
 
         // Seed this instance's settings.json from the root template.
         string rootSettings = RootPath("settings.json");
@@ -259,7 +267,36 @@ public static class SettingsService
 
     public static void ClearLogs()
     {
-        // The live instance settings.json lives under logs/ — carry it over.
+        string path = RootPath("logs");
+
+        // Delete only directories of instances that are no longer running —
+        // every live instance holds an exclusive handle on its
+        // logs/<instance>/.lock, so a held lock means "in use, skip".
+        string[] entries;
+        try
+        {
+            entries = Directory.GetFileSystemEntries(path);
+        }
+        catch (IOException)
+        {
+            entries = [];
+        }
+        foreach (string entry in entries)
+        {
+            if (Path.GetFileName(entry) == InstanceId) continue;
+            if (IsInstanceRunning(entry)) continue;
+            try
+            {
+                if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
+                else File.Delete(entry);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        // Wipe this instance's own logs, carrying over its live settings.json.
+        // The .lock goes down with the directory, so re-acquire it after.
         string settingsPath = SettingsFilePath();
         string? settingsData = null;
         try
@@ -270,15 +307,18 @@ public static class SettingsService
         {
         }
 
-        string path = RootPath("logs");
+        string instanceDir = Path.Combine(path, InstanceId);
+        _instanceLock?.Dispose();
+        _instanceLock = null;
         try
         {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            if (Directory.Exists(instanceDir)) Directory.Delete(instanceDir, recursive: true);
         }
         catch (IOException)
         {
         }
-        Directory.CreateDirectory(Path.Combine(path, InstanceId));
+        Directory.CreateDirectory(instanceDir);
+        AcquireInstanceLock(instanceDir);
         if (settingsData != null)
         {
             try
@@ -290,6 +330,38 @@ public static class SettingsService
             }
         }
         TryTruncate(RootPath("app.log"));
+    }
+
+    private static void AcquireInstanceLock(string instanceDir)
+    {
+        try
+        {
+            _instanceLock = new FileStream(Path.Combine(instanceDir, ".lock"),
+                FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// True when a live instance still holds the directory's .lock. Entries
+    /// without a lock file (stale instances, stray files) count as not running.
+    /// </summary>
+    private static bool IsInstanceRunning(string dir)
+    {
+        string lockPath = Path.Combine(dir, ".lock");
+        if (!File.Exists(lockPath)) return false;
+        try
+        {
+            using var probe = new FileStream(lockPath,
+                FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
     }
 
     private static void TryTruncate(string path)

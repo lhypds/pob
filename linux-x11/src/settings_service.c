@@ -1,10 +1,13 @@
 #include "settings_service.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 // ── project root ────────────────────────────────────────────────────────────
 
@@ -46,6 +49,35 @@ static gchar *root_path(const char *name) {
 
 // ── instance directory ──────────────────────────────────────────────────────
 
+// Exclusive flock on logs/<instance>/.lock, held for the process lifetime so
+// settings_clear_logs (from this or another process) can tell the directory
+// belongs to a running instance.
+static int instance_lock_fd = -1;
+
+static void acquire_instance_lock(void) {
+    gchar *lock_path = g_build_filename(settings_project_root(), "logs",
+                                        settings_instance_id(), ".lock", NULL);
+    instance_lock_fd = open(lock_path, O_CREAT | O_RDWR, 0644);
+    if (instance_lock_fd >= 0) flock(instance_lock_fd, LOCK_EX);
+    g_free(lock_path);
+}
+
+// TRUE when a live instance still holds the directory's .lock. Entries
+// without a lock file (stale instances, stray files) count as not running.
+static gboolean instance_is_running(const char *dir_path) {
+    gchar *lock_path = g_build_filename(dir_path, ".lock", NULL);
+    int fd = open(lock_path, O_RDWR);
+    g_free(lock_path);
+    if (fd < 0) return FALSE;
+    if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
+        flock(fd, LOCK_UN);
+        close(fd);
+        return FALSE;
+    }
+    close(fd);
+    return TRUE;
+}
+
 // Reserves logs/<unixtime>/ exclusively for this process (bumping if another
 // instance grabbed the same second, mirroring the Go core's newInstanceID)
 // and seeds it with a copy of the root settings.json so the instance reads
@@ -66,6 +98,7 @@ const char *settings_instance_id(void) {
         id++;
     }
     instance_id = g_strdup_printf("%" G_GINT64_FORMAT, id);
+    acquire_instance_lock();
 
     // Seed this instance's settings.json from the root template.
     gchar *root_settings = root_path("settings.json");
@@ -309,21 +342,46 @@ static void remove_tree(GFile *file) {
 }
 
 void settings_clear_logs(void) {
-    // The live instance settings.json lives under logs/ — carry it over.
+    gchar *path = root_path("logs");
+
+    // Delete only directories of instances that are no longer running —
+    // every live instance holds a flock on its logs/<instance>/.lock, so a
+    // held lock means "in use, skip".
+    GDir *dir = g_dir_open(path, 0, NULL);
+    if (dir) {
+        const gchar *name;
+        while ((name = g_dir_read_name(dir))) {
+            if (g_strcmp0(name, settings_instance_id()) == 0) continue;
+            gchar *child_path = g_build_filename(path, name, NULL);
+            if (!instance_is_running(child_path)) {
+                GFile *child = g_file_new_for_path(child_path);
+                remove_tree(child);
+                g_object_unref(child);
+            }
+            g_free(child_path);
+        }
+        g_dir_close(dir);
+    }
+
+    // Wipe this instance's own logs, carrying over its live settings.json.
+    // The .lock goes down with the directory, so re-acquire it after.
     gchar *settings_path = settings_file_path();
     gchar *settings_data = NULL;
     gsize settings_len = 0;
     g_file_get_contents(settings_path, &settings_data, &settings_len, NULL);
 
-    gchar *path = root_path("logs");
-    GFile *dir = g_file_new_for_path(path);
-    remove_tree(dir);
-    g_object_unref(dir);
-
+    if (instance_lock_fd >= 0) {
+        close(instance_lock_fd);
+        instance_lock_fd = -1;
+    }
     gchar *instance_dir = g_build_filename(path, settings_instance_id(), NULL);
+    GFile *own = g_file_new_for_path(instance_dir);
+    remove_tree(own);
+    g_object_unref(own);
     g_mkdir_with_parents(instance_dir, 0755);
     g_free(instance_dir);
     g_free(path);
+    acquire_instance_lock();
 
     if (settings_data) {
         g_file_set_contents(settings_path, settings_data, settings_len, NULL);
