@@ -2,9 +2,9 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
+/// One per instance/window: holds that window's virtual cursor and posts the
+/// (system-wide) mouse and keyboard events for its sessions.
 class MouseService: ObservableObject {
-    static let shared = MouseService()
-
     /// Virtual cursor in screenshot pixel coordinates (origin: top-left).
     /// Never touches the real system mouse pointer.
     var virtualCursorPosition: CGPoint = .zero
@@ -12,7 +12,9 @@ class MouseService: ObservableObject {
     /// Published so the UI can overlay the cursor and animate its movement.
     @Published var displayPosition: CGPoint = .zero
 
-    private init() {}
+    /// The overlay window this cursor belongs to; made click-through while
+    /// automation events are posted. Set by PobInstance.attach.
+    weak var window: NSWindow?
 
     func moveCursor(to point: CGPoint) {
         virtualCursorPosition = point
@@ -171,7 +173,7 @@ class MouseService: ObservableObject {
     /// in place, so automation events reach the app below without moving the user's pointer.
     private func passThrough(_ body: () async -> Void) async {
         await MainActor.run {
-            NSApplication.shared.windows.first?.ignoresMouseEvents = true
+            self.window?.ignoresMouseEvents = true
         }
         // Let the window server process the hit-test change before posting events.
         try? await Task.sleep(nanoseconds: 100_000_000)
@@ -187,7 +189,7 @@ class MouseService: ObservableObject {
         CGAssociateMouseAndMouseCursorPosition(1)
 
         await MainActor.run {
-            NSApplication.shared.windows.first?.ignoresMouseEvents = false
+            self.window?.ignoresMouseEvents = false
         }
     }
 

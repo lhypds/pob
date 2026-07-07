@@ -6,19 +6,22 @@ import Foundation
 /// this service only resolves the project root, opens files in the user's
 /// editor, persists the window frame and clears user files on request.
 ///
-/// Each process reserves its own logs/<instance>/ directory at startup and
-/// seeds it with a copy of the root settings.json, so instances read and edit
-/// their own settings side by side. instruction.txt and macro.txt stay shared
-/// at the root.
+/// Each instance (one per window) reserves its own logs/<instance>/ directory
+/// at creation and seeds it with a copy of the root settings.json, so
+/// instances read and edit their own settings side by side. instruction.txt
+/// and macro.txt stay shared at the root.
 class SettingsService {
-    static let shared = SettingsService()
-
     private let fileManager = FileManager.default
 
-    /// logs/<instanceID> reserved for this process; holds its settings.json
+    /// logs/<instanceID> reserved for this instance; holds its settings.json
     /// and the session logs the Go core writes. Passed to pob-core via
     /// --instance so both sides use the same directory.
     let instanceID: String
+
+    /// Shared project root (same for every instance in this process).
+    static var projectRoot: URL {
+        resolveProjectRoot(FileManager.default)
+    }
 
     var projectRoot: URL {
         Self.resolveProjectRoot(fileManager)
@@ -61,7 +64,7 @@ class SettingsService {
         projectRoot.appendingPathComponent("logs")
     }
 
-    private init() {
+    init() {
         let fileManager = FileManager.default
         let root = Self.resolveProjectRoot(fileManager)
         let logs = root.appendingPathComponent("logs")

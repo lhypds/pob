@@ -1,7 +1,49 @@
 import AppKit
 import SwiftUI
 
+/// Root view of every window in the WindowGroup. Owns one PobInstance for
+/// the window's lifetime (the VSCode model: one process, one instance per
+/// window) and attaches it to the hosting NSWindow once that exists.
 struct ContentView: View {
+    @StateObject private var instance = PobInstance()
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        InstanceContentView(instance: instance, bridge: instance.bridge, mouseService: instance.mouse)
+            .background(WindowAccessor { window in
+                instance.attach(window: window)
+            })
+            .onAppear {
+                // Give the AppKit menu a way to open WindowGroup windows.
+                AppDelegate.openNewInstanceWindow = { openWindow(id: "instance") }
+            }
+    }
+}
+
+/// Grabs the NSWindow hosting this SwiftUI hierarchy once it exists.
+private struct WindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window { onWindow(window) }
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context _: Context) {
+        DispatchQueue.main.async {
+            if let window = view.window { onWindow(window) }
+        }
+    }
+}
+
+struct InstanceContentView: View {
+    let instance: PobInstance
+    @ObservedObject var bridge: CoreBridge
+    @ObservedObject var mouseService: MouseService
+
     @State private var isTargeting = false
     @State private var isCropping = false
     @State private var cropStart: CGPoint? = nil
@@ -16,8 +58,6 @@ struct ContentView: View {
     @State private var screenshotFlashOpacity: Double = 0
     @State private var toastMessage: String? = nil
     @State private var toastToken = 0
-    @ObservedObject private var mouseService = MouseService.shared
-    @ObservedObject private var bridge = CoreBridge.shared
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -28,7 +68,7 @@ struct ContentView: View {
                 MouseTrackingOverlay(
                     onPositionChange: { pos in mousePosition = pos },
                     onTap: { pt in
-                        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                        let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
                         let text = "(\(Int(pt.x * scale)), \(Int(pt.y * scale)))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
@@ -50,7 +90,7 @@ struct ContentView: View {
                         cropCurrent = current
                     },
                     onDragEnd: { rect in
-                        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                        let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
                         let text = "(\(Int(rect.minX * scale)), \(Int(rect.minY * scale)), \(Int(rect.width * scale)), \(Int(rect.height * scale)))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
@@ -109,10 +149,10 @@ struct ContentView: View {
             if executing {
                 animatedCursorPos = CGPoint(x: 20, y: 20)
                 // During execution the Go core records the AI's actions itself.
-                UserMacroRecorder.shared.pauseForExecution()
+                instance.recorder.pauseForExecution()
             } else if isRecording {
                 // Resume user recording where the AI's cursor ended up.
-                UserMacroRecorder.shared.start(from: MouseService.shared.virtualCursorPosition)
+                instance.recorder.start(from: mouseService.virtualCursorPosition)
             }
             updateWindowLock()
             updateClickThrough()
@@ -137,7 +177,7 @@ struct ContentView: View {
         .toolbar { toolbarContent }
         .onTapGesture {
             NSApplication.shared.activate(ignoringOtherApps: true)
-            NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
+            instance.window?.makeKeyAndOrderFront(nil)
         }
         .alert("Warning", isPresented: $bridge.showMaxStepWarning) {
             Button("Continue") {
@@ -158,21 +198,21 @@ struct ContentView: View {
         }
         .confirmationDialog("Clear", isPresented: $showClearChoice) {
             Button("Clear Instruction", role: .destructive) {
-                SettingsService.shared.clearInstruction()
+                instance.settings.clearInstruction()
                 showToast("Instruction cleared")
             }
             Button("Clear Macro", role: .destructive) {
-                SettingsService.shared.clearMacro()
+                instance.settings.clearMacro()
                 showToast("Macro cleared")
             }
             Button("Clear Logs", role: .destructive) {
-                SettingsService.shared.clearLogs()
+                instance.settings.clearLogs()
                 showToast("Logs cleared")
             }
             Button("Clear All", role: .destructive) {
-                SettingsService.shared.clearInstruction()
-                SettingsService.shared.clearMacro()
-                SettingsService.shared.clearLogs()
+                instance.settings.clearInstruction()
+                instance.settings.clearMacro()
+                instance.settings.clearLogs()
                 showToast("Instruction, macro and logs cleared")
             }
             Button("Cancel", role: .cancel) {}
@@ -181,7 +221,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private func positionLabel(at pos: CGPoint) -> some View {
-        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         GeometryReader { geo in
             let estimatedWidth: CGFloat = 100
             let margin: CGFloat = 6
@@ -202,7 +242,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private func cropSelectionView(start: CGPoint, current: CGPoint) -> some View {
-        let scale = NSApplication.shared.windows.first?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         let minX = min(start.x, current.x)
         let minY = min(start.y, current.y)
         let w = abs(current.x - start.x)
@@ -258,28 +298,28 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarFileItems: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
-            Button(action: { SettingsService.shared.openSettingsFile() }) {
+            Button(action: { instance.settings.openSettingsFile() }) {
                 Image(systemName: "gearshape")
             }
             .help("Settings")
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { SettingsService.shared.openLogsFolder() }) {
+            Button(action: { instance.settings.openLogsFolder() }) {
                 Image(systemName: "doc.text")
             }
             .help("Logs")
         }
         ToolbarItem(placement: .automatic) {
-            AppLogButton { SettingsService.shared.openAppLog() }
+            AppLogButton { instance.settings.openAppLog() }
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { SettingsService.shared.openInstructionFile() }) {
+            Button(action: { instance.settings.openInstructionFile() }) {
                 Image(systemName: "text.alignleft")
             }
             .help("Instruction")
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { SettingsService.shared.openMacroFile() }) {
+            Button(action: { instance.settings.openMacroFile() }) {
                 Image(systemName: "wand.and.rays")
             }
             .help("Macro")
@@ -287,20 +327,20 @@ struct ContentView: View {
         ToolbarItem(placement: .automatic) {
             Button(action: {
                 isRecording.toggle()
-                if isRecording { SettingsService.shared.clearMacro() }
+                if isRecording { instance.settings.clearMacro() }
                 bridge.recordingChanged(isRecording)
                 if isRecording {
                     // Outside a session, capture the user's own actions; enable
                     // click-through so those actions reach the app below.
                     if !bridge.isExecuting {
-                        UserMacroRecorder.shared.start()
+                        instance.recorder.start()
                         if !isClickThrough {
                             isClickThrough = true
                             updateClickThrough()
                         }
                     }
                 } else {
-                    UserMacroRecorder.shared.stop()
+                    instance.recorder.stop()
                 }
                 showToast(isRecording ? "Recording started" : "Recording stopped")
             }) {
@@ -314,7 +354,7 @@ struct ContentView: View {
                 if bridge.isExecuting {
                     bridge.stopExecution()
                 } else {
-                    let macro = SettingsService.shared.getMacro()
+                    let macro = instance.settings.getMacro()
                     if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         bridge.runInstruction(recording: isRecording)
                     } else {
@@ -359,7 +399,7 @@ struct ContentView: View {
             Button(action: {
                 // Flush pending recorded input first so the take_screenshot()
                 // line the core appends lands after the user's actions.
-                UserMacroRecorder.shared.flushPending()
+                instance.recorder.flushPending()
                 bridge.takeScreenshot()
             }) {
                 Image(systemName: "camera")
@@ -409,7 +449,7 @@ struct ContentView: View {
     }
 
     private func updateWindowLock() {
-        guard let window = NSApplication.shared.windows.first else { return }
+        guard let window = instance.window else { return }
         let shouldLock = isLocked || bridge.isExecuting
         window.isMovable = !shouldLock
         if shouldLock {
@@ -427,7 +467,7 @@ struct ContentView: View {
     }
 
     private func updateClickThrough() {
-        AppDelegate.shared?.setClickThrough(isClickThrough && !bridge.isExecuting && !isTargeting && !isCropping)
+        instance.setClickThrough(isClickThrough && !bridge.isExecuting && !isTargeting && !isCropping)
     }
 }
 

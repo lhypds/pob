@@ -13,7 +13,12 @@ import AppKit
 /// the net displacement of the virtual cursor is emitted right before each
 /// click/drag/scroll, matching how replay chains relative moves.
 final class UserMacroRecorder {
-    static let shared = UserMacroRecorder()
+    /// This instance's settings — macro.txt itself is shared at the root, but
+    /// access goes through the owning instance.
+    private let settings: SettingsService
+    /// The overlay window whose content area defines the pixel coordinate
+    /// space; set by PobInstance.attach.
+    weak var window: NSWindow?
 
     private(set) var isActive = false
 
@@ -40,7 +45,9 @@ final class UserMacroRecorder {
     /// Last line written, used to merge click() + click() into doubleClick().
     private var lastLine: String?
 
-    private init() {}
+    init(settings: SettingsService) {
+        self.settings = settings
+    }
 
     // MARK: - Lifecycle
 
@@ -126,7 +133,7 @@ final class UserMacroRecorder {
                 virtualPos.y += dy.rounded()
             } else if event.clickCount == 2 {
                 // Second click of a double-click: upgrade the click just recorded.
-                if lastLine == "click()", SettingsService.shared.removeLastMacroLine(ifMatches: "click()") {
+                if lastLine == "click()", settings.removeLastMacroLine(ifMatches: "click()") {
                     appendLine("doubleClick()")
                 } else {
                     emitMove(to: down)
@@ -257,7 +264,7 @@ final class UserMacroRecorder {
     /// Current mouse position converted to screenshot pixel coordinates
     /// (top-left of the window content area, same space the replay uses).
     private func currentPixel() -> CGPoint? {
-        guard let window = NSApplication.shared.windows.first,
+        guard let window,
               let screen = window.screen ?? NSScreen.main else { return nil }
         let contentRect = window.convertToScreen(window.contentLayoutRect)
         let scale = screen.backingScaleFactor
@@ -279,7 +286,7 @@ final class UserMacroRecorder {
     }
 
     private func appendLine(_ line: String) {
-        SettingsService.shared.appendToMacro(line)
+        settings.appendToMacro(line)
         lastLine = line
         AppLogger.log("Recorded: \(line)")
     }

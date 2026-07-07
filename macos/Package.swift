@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "Pob",
     platforms: [
-        .macOS(.v12),
+        // v13 for SwiftUI's openWindow (New Instance opens a window in-process).
+        .macOS(.v13),
     ],
     dependencies: [],
     targets: [

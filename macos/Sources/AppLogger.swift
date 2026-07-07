@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppLogger {
-    private static let logFile: URL = SettingsService.shared.projectRoot.appendingPathComponent("app.log")
+    private static let logFile: URL = SettingsService.projectRoot.appendingPathComponent("app.log")
     private static let queue = DispatchQueue(label: "app.logger", qos: .utility)
     private static let formatter: ISO8601DateFormatter = ISO8601DateFormatter()
 

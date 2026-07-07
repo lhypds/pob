@@ -7,8 +7,6 @@ import Combine
 /// (screenshot, mouse, keyboard, UI dialogs) and forwards user commands
 /// (run / stop / recording) the other way.
 final class CoreBridge: ObservableObject {
-    static let shared = CoreBridge()
-
     /// True while the Go core is executing a session; drives the cursor
     /// overlay, window lock and click-through logic in the UI.
     @Published var isExecuting = false
@@ -16,6 +14,13 @@ final class CoreBridge: ObservableObject {
     @Published var showMaxStepWarning = false
     /// Incremented whenever the Go core requests the screenshot flash effect.
     @Published var flashTick = 0
+
+    /// This instance's settings (project root + instance id for the spawn).
+    private let settings: SettingsService
+    /// This instance's virtual cursor, moved and queried by the Go core.
+    private let mouse: MouseService
+    /// The overlay window this instance captures; set by PobInstance.attach.
+    weak var window: NSWindow?
 
     private var process: Process?
     private var stdinHandle: FileHandle?
@@ -28,12 +33,15 @@ final class CoreBridge: ObservableObject {
     /// Pending ui.confirmMaxStep request id, answered via resolveMaxStep.
     private var maxStepRequestId: Any?
 
-    private init() {}
+    init(settings: SettingsService, mouse: MouseService) {
+        self.settings = settings
+        self.mouse = mouse
+    }
 
     // MARK: - Process lifecycle
 
     func start() {
-        let root = SettingsService.shared.projectRoot
+        let root = settings.projectRoot
 
         guard let binary = locateCoreBinary(projectRoot: root) else {
             AppLogger.log("CoreBridge: pob-core binary not found — run ./setup.sh")
@@ -42,7 +50,7 @@ final class CoreBridge: ObservableObject {
 
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["--root", root.path, "--instance", SettingsService.shared.instanceID]
+        process.arguments = ["--root", root.path, "--instance", settings.instanceID]
         process.currentDirectoryURL = root
 
         let stdinPipe = Pipe()
@@ -174,27 +182,27 @@ final class CoreBridge: ObservableObject {
 
         case "cursor.reset":
             guard let id else { return }
-            MouseService.shared.resetCursor()
+            mouse.resetCursor()
             respondPosition(id: id)
 
         case "cursor.move":
             guard let id else { return }
             let dx = CGFloat(params["dx"] as? Double ?? 0)
             let dy = CGFloat(params["dy"] as? Double ?? 0)
-            MouseService.shared.moveCursorBy(dx: dx, dy: dy)
+            self.mouse.moveCursorBy(dx: dx, dy: dy)
             respondPosition(id: id)
 
         case "mouse.click":
             guard let id else { return }
-            performAtCursor(id: id) { await MouseService.shared.performClick(at: $0) }
+            performAtCursor(id: id) { await self.mouse.performClick(at: $0) }
 
         case "mouse.rightClick":
             guard let id else { return }
-            performAtCursor(id: id) { await MouseService.shared.performRightClick(at: $0) }
+            performAtCursor(id: id) { await self.mouse.performRightClick(at: $0) }
 
         case "mouse.doubleClick":
             guard let id else { return }
-            performAtCursor(id: id) { await MouseService.shared.performDoubleClick(at: $0) }
+            performAtCursor(id: id) { await self.mouse.performDoubleClick(at: $0) }
 
         case "mouse.drag":
             guard let id else { return }
@@ -208,7 +216,7 @@ final class CoreBridge: ObservableObject {
             guard let id else { return }
             let text = params["text"] as? String ?? ""
             Task {
-                await MouseService.shared.performType(text: text)
+                await self.mouse.performType(text: text)
                 self.respond(id: id, result: [:])
             }
 
@@ -216,7 +224,7 @@ final class CoreBridge: ObservableObject {
             guard let id else { return }
             let key = params["key"] as? String ?? ""
             Task {
-                await MouseService.shared.performKeyPress(key: key)
+                await self.mouse.performKeyPress(key: key)
                 self.respond(id: id, result: [:])
             }
 
@@ -237,14 +245,14 @@ final class CoreBridge: ObservableObject {
     // MARK: - Handlers
 
     private func respondPosition(id: Any) {
-        let pos = MouseService.shared.virtualCursorPosition
+        let pos = self.mouse.virtualCursorPosition
         respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
     }
 
     /// Runs a mouse action at the virtual cursor position, converting to
     /// screen coordinates via the most recent screenshot context.
     private func performAtCursor(id: Any, action: @escaping (CGPoint) async -> Void) {
-        let pos = MouseService.shared.virtualCursorPosition
+        let pos = self.mouse.virtualCursorPosition
         Task {
             if let ctx = self.lastContext {
                 await action(ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
@@ -256,20 +264,20 @@ final class CoreBridge: ObservableObject {
     private func handleDrag(id: Any, params: [String: Any]) {
         let dx = CGFloat(params["dx"] as? Double ?? 0)
         let dy = CGFloat(params["dy"] as? Double ?? 0)
-        let startPos = MouseService.shared.virtualCursorPosition
+        let startPos = self.mouse.virtualCursorPosition
         let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
         Task {
             if let ctx = self.lastContext {
                 let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
                 let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
-                await MouseService.shared.performDrag(from: from, to: to) { t in
-                    MouseService.shared.moveCursor(to: CGPoint(
+                await self.mouse.performDrag(from: from, to: to) { t in
+                    self.mouse.moveCursor(to: CGPoint(
                         x: startPos.x + (endPos.x - startPos.x) * t,
                         y: startPos.y + (endPos.y - startPos.y) * t
                     ))
                 }
             }
-            MouseService.shared.moveCursor(to: endPos)
+            self.mouse.moveCursor(to: endPos)
             self.respond(id: id, result: ["x": Double(endPos.x), "y": Double(endPos.y)])
         }
     }
@@ -277,10 +285,10 @@ final class CoreBridge: ObservableObject {
     private func handleScroll(id: Any, params: [String: Any]) {
         let dx = Int32(params["dx"] as? Double ?? 0)
         let dy = Int32(params["dy"] as? Double ?? 0)
-        let pos = MouseService.shared.virtualCursorPosition
+        let pos = self.mouse.virtualCursorPosition
         Task {
             if let ctx = self.lastContext {
-                await MouseService.shared.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
+                await self.mouse.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
             }
             self.respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
         }
@@ -297,7 +305,7 @@ final class CoreBridge: ObservableObject {
         }
 
         DispatchQueue.main.async {
-            guard let window = NSApplication.shared.windows.first,
+            guard let window = self.window,
                   let (shot, ctx) = ScreenshotService.shared.captureWindowContentAreaWithContext(window: window)
             else {
                 self.respondError(id: id, message: "Screenshot capture failed")
@@ -307,7 +315,7 @@ final class CoreBridge: ObservableObject {
 
             var image = shot
             if withCursor {
-                image = ScreenshotService.shared.imageWithCursor(shot, at: MouseService.shared.virtualCursorPosition)
+                image = ScreenshotService.shared.imageWithCursor(shot, at: self.mouse.virtualCursorPosition)
             }
             if let rect = cropRect, let cropped = ScreenshotService.shared.crop(image, to: rect) {
                 image = cropped

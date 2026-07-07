@@ -2,146 +2,64 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    weak static var shared: AppDelegate?
+    /// Set by ContentView with the SwiftUI openWindow action, so the AppKit
+    /// menu can open a new WindowGroup window (a new instance) in-process —
+    /// the VSCode model: one app, one window per instance.
+    static var openNewInstanceWindow: (() -> Void)?
 
-    var window: NSWindow?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
-    private var clickThroughEnabled = false
-
-    override init() {
-        super.init()
-        AppDelegate.shared = self
-    }
-
-    /// Called by ContentView whenever isExecuting or isTargeting changes.
-    func setClickThrough(_ enabled: Bool) {
-        clickThroughEnabled = enabled
-        updateIgnoresMouseEvents()
-    }
-
-    /// Central function — always called for every mouseMoved event AND on any state change.
-    /// When click-through is disabled (targeting / executing) it ACTIVELY sets ignoresMouseEvents = false
-    /// on every call, so no stale monitor callback can re-enable it.
-    private func updateIgnoresMouseEvents() {
-        // Always use the live first window; avoids stale reference after SwiftUI window recreation.
-        guard let window = NSApplication.shared.windows.first else { return }
-
-        guard clickThroughEnabled else {
-            window.ignoresMouseEvents = false
-            return
-        }
-
-        let mouse = NSEvent.mouseLocation
-        let wf = window.frame
-        // Top 50 pt covers the compact unified toolbar + traffic-light buttons.
-        let inToolbar = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
-            mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
-        window.ignoresMouseEvents = !inToolbar
-    }
 
     func applicationDidFinishLaunching(_: Notification) {
-        // Only the first instance shows a Dock icon; instances started while
-        // another Pob is already running become accessory apps so the Dock
-        // doesn't fill up with duplicate icons. Their windows float above
-        // everything anyway, and menu key equivalents (⌘N, ⌘Q) still work.
-        let selfExecutable = Bundle.main.executableURL?.resolvingSymlinksInPath()
-        let isSecondaryInstance = NSWorkspace.shared.runningApplications.contains {
-            $0.processIdentifier != ProcessInfo.processInfo.processIdentifier &&
-                $0.executableURL?.resolvingSymlinksInPath() == selfExecutable
-        }
-        NSApplication.shared.setActivationPolicy(isSecondaryInstance ? .accessory : .regular)
-
-        if let window = NSApplication.shared.windows.first {
-            self.window = window
-
-            window.isOpaque = false
-            window.backgroundColor = NSColor.clear
-            window.titlebarAppearsTransparent = false
-            window.titleVisibility = .hidden
-            window.title = "Pob \(loadVersion())"
-            window.toolbarStyle = .unifiedCompact
-
-            window.styleMask.insert(.resizable)
-            window.styleMask.insert(.miniaturizable)
-            window.styleMask.insert(.closable)
-
-            window.level = .floating
-            window.ignoresMouseEvents = false
-
-            if let savedFrame = SettingsService.shared.getWindowFrame() {
-                window.setFrame(savedFrame, display: true)
-            } else {
-                window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
-                window.center()
-            }
-
-            window.delegate = self
-            window.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
-
-            window.standardWindowButton(.closeButton)?.isEnabled = true
-            window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
-            window.standardWindowButton(.zoomButton)?.isEnabled = true
-        }
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
 
         createMenu()
 
         // Monitors run for the full app lifetime — no start/stop needed.
-        // updateIgnoresMouseEvents handles both click-through and non-click-through cases.
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            self?.updateIgnoresMouseEvents()
+        // Each instance handles its own click-through / non-click-through case.
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { _ in
+            PobInstance.updateAllIgnoresMouseEvents()
         }
-        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-            self?.updateIgnoresMouseEvents()
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { event in
+            PobInstance.updateAllIgnoresMouseEvents()
             return event
         }
-
-        updateIgnoresMouseEvents()
-
-        CoreBridge.shared.start()
     }
 
     func applicationWillTerminate(_: Notification) {
-        CoreBridge.shared.stop()
+        for instance in PobInstance.all {
+            instance.shutdown()
+        }
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
     }
 
-    private func loadVersion() -> String {
-        let fallback = "0.0.0"
-
-        let fileManager = FileManager.default
-        let currentDirectoryPath = fileManager.currentDirectoryPath
-        let currentDirectoryVersionPath = URL(fileURLWithPath: currentDirectoryPath).appendingPathComponent("VERSION")
-
-        if let value = try? String(contentsOf: currentDirectoryVersionPath, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
-        {
-            return value
-        }
-
+    static func loadVersion() -> String {
         let executableURL = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let repositoryRootFromBinary = executableURL
+        // .build/debug/Pob → macos/ (packaged: next to the bundle), one more
+        // up is the repository root where VERSION actually lives in dev.
+        let binaryParent3 = executableURL
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let executableRelativeVersionPath = repositoryRootFromBinary.appendingPathComponent("VERSION")
 
-        if let value = try? String(contentsOf: executableRelativeVersionPath, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
-        {
-            return value
+        let candidates = [
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("VERSION"),
+            binaryParent3.appendingPathComponent("VERSION"),
+            binaryParent3.deletingLastPathComponent().appendingPathComponent("VERSION"),
+        ]
+
+        for candidate in candidates {
+            if let value = try? String(contentsOf: candidate, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !value.isEmpty
+            {
+                return value
+            }
         }
 
-        return fallback
-    }
-
-    private func saveWindowFrame() {
-        guard let window = window else { return }
-        SettingsService.shared.saveWindowFrame(window.frame)
+        return "0.0.0"
     }
 
     private func createMenu() {
@@ -170,25 +88,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.mainMenu = mainMenu
     }
 
-    /// Without this, closing the window of an accessory (no Dock icon)
-    /// instance would leave an invisible process running with no way to
-    /// reach it.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         true
     }
 
-    /// Launches another copy of this executable from the project root; it
-    /// reserves its own logs/<instance>/ directory and settings.json copy.
+    /// Right-click menu on the Dock icon.
+    func applicationDockMenu(_: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let newInstanceItem = NSMenuItem(title: "New Instance", action: #selector(newInstance), keyEquivalent: "")
+        newInstanceItem.target = self
+        menu.addItem(newInstanceItem)
+        return menu
+    }
+
+    /// Opens a new window in this process; its ContentView creates a fresh
+    /// PobInstance with its own logs/<instance>/ directory, settings copy and
+    /// pob-core child.
     @objc private func newInstance() {
-        guard let executable = Bundle.main.executableURL else { return }
-        let process = Process()
-        process.executableURL = executable
-        process.currentDirectoryURL = SettingsService.shared.projectRoot
-        do {
-            try process.run()
-        } catch {
-            AppLogger.log("Failed to start new instance: \(error)")
-        }
+        AppDelegate.openNewInstanceWindow?()
     }
 
     @objc private func showAbout() {
@@ -214,7 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         fullNameLabel.frame = NSRect(x: 20, y: 60, width: 240, height: 18)
         container.addSubview(fullNameLabel)
 
-        let versionLabel = NSTextField(labelWithString: "Version \(loadVersion())")
+        let versionLabel = NSTextField(labelWithString: "Version \(Self.loadVersion())")
         versionLabel.font = NSFont.systemFont(ofSize: 13)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.frame = NSRect(x: 20, y: 38, width: 240, height: 18)
@@ -229,15 +146,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = container
         panel.center()
         panel.makeKeyAndOrderFront(nil)
-    }
-}
-
-extension AppDelegate: NSWindowDelegate {
-    func windowDidMove(_: Notification) {
-        saveWindowFrame()
-    }
-
-    func windowDidEndLiveResize(_: Notification) {
-        saveWindowFrame()
     }
 }
