@@ -41,6 +41,10 @@ macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
 linux-x11/  The same hands and eyes for Linux/Xorg (C + GTK 3). Identical UI
             and features; screenshots via XGetImage, input via XTest.
             See linux-x11/README.md.
+
+win/     The same hands and eyes for Windows (C# / WPF). Identical UI and
+         features; screenshots via GDI, input via SendInput.
+         See win/README.md.
 ```
 
 The shell spawns `pob-core` as a child process and the two talk over
@@ -51,7 +55,7 @@ stdin/stdout with line-delimited JSON-RPC:
   `keyboard.type`, `ui.confirmMaxStep`, … and `session.state` notifications
 
 All coordinates crossing the boundary are screenshot pixels; the shell owns
-the conversion to real screen positions. Porting to Windows/Linux means
+the conversion to real screen positions. Porting to a new platform means
 reimplementing only the shell — the brain is shared.
 
 
