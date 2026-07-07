@@ -87,7 +87,10 @@ class MouseService: ObservableObject {
         }
     }
 
-    func performDrag(from: CGPoint, to: CGPoint) async {
+    /// `onProgress` is called with the interpolation fraction after each drag
+    /// step, so the overlay cursor can track the real pointer instead of
+    /// sitting at the start position until the drag completes.
+    func performDrag(from: CGPoint, to: CGPoint, onProgress: ((CGFloat) -> Void)? = nil) async {
         await passThrough {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                   mouseCursorPosition: from, mouseButton: .left)
@@ -104,6 +107,7 @@ class MouseService: ObservableObject {
                 {
                     drag.post(tap: .cghidEventTap)
                 }
+                onProgress?(t)
                 try? await Task.sleep(nanoseconds: 16_000_000)
             }
             if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,

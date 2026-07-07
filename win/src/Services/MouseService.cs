@@ -206,6 +206,9 @@ public static class MouseService
             {
                 double t = (double)i / steps;
                 NativeMethods.SetCursorPos(rx + (int)((ex - rx) * t), ry + (int)((ey - ry) * t));
+                // Keep the overlay arrow tracking the real pointer so the two
+                // don't show as separate cursors during the drag.
+                PostDisplayPos(px + (endX - px) * t, py + (endY - py) * t);
                 Thread.Sleep(16);
             }
             ButtonEvent(right: false, press: false);

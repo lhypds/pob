@@ -256,7 +256,12 @@ final class CoreBridge: ObservableObject {
             if let ctx = self.lastContext {
                 let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
                 let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
-                await MouseService.shared.performDrag(from: from, to: to)
+                await MouseService.shared.performDrag(from: from, to: to) { t in
+                    MouseService.shared.moveCursor(to: CGPoint(
+                        x: startPos.x + (endPos.x - startPos.x) * t,
+                        y: startPos.y + (endPos.y - startPos.y) * t
+                    ))
+                }
             }
             MouseService.shared.moveCursor(to: endPos)
             self.respond(id: id, result: ["x": Double(endPos.x), "y": Double(endPos.y)])

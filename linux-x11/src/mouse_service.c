@@ -176,6 +176,9 @@ static void do_drag(Display *dpy, double dx, double dy) {
         for (int i = 1; i <= steps; i++) {
             double t = (double)i / steps;
             move_pointer(dpy, rx + (int)((ex - rx) * t), ry + (int)((ey - ry) * t));
+            // Keep the overlay arrow tracking the real pointer so the two
+            // don't show as separate cursors during the drag.
+            post_display_pos(px + (end_x - px) * t, py + (end_y - py) * t);
             g_usleep(16 * 1000);
         }
         fake_button(dpy, Button1, False);
