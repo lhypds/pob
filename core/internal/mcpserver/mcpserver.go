@@ -188,35 +188,165 @@ func (s *Server) processRPC(method string, id any, params map[string]any) map[st
 		return rpcResult(id, map[string]any{})
 
 	case "tools/list":
-		return rpcResult(id, map[string]any{
-			"tools": []any{map[string]any{
-				"name": "take_screenshot",
-				"description": "Capture a screenshot of the Pob window and return it as a PNG image. " +
-					"All crop parameters are optional. When all four are provided, only that region is " +
-					"captured. Coordinates are in screen points (logical pixels), origin at top-left.",
-				"inputSchema": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"crop_x":      map[string]any{"type": "integer", "description": "Left edge in screen points."},
-						"crop_y":      map[string]any{"type": "integer", "description": "Top edge in screen points."},
-						"crop_width":  map[string]any{"type": "integer", "description": "Width in screen points."},
-						"crop_height": map[string]any{"type": "integer", "description": "Height in screen points."},
-					},
-				},
-			}},
-		})
+		return rpcResult(id, map[string]any{"tools": toolDefinitions()})
 
 	case "tools/call":
 		name, _ := params["name"].(string)
 		arguments, _ := params["arguments"].(map[string]any)
-		if name == "take_screenshot" {
-			return s.takeScreenshot(id, arguments)
-		}
-		return rpcError(id, -32601, "Unknown tool: "+name)
+		return s.callTool(id, name, arguments)
 
 	default:
 		return rpcError(id, -32601, "Method not found: "+method)
 	}
+}
+
+func toolDefinitions() []any {
+	tool := func(name, description string, properties map[string]any, required []string) map[string]any {
+		if properties == nil {
+			properties = map[string]any{}
+		}
+		schema := map[string]any{"type": "object", "properties": properties}
+		if required != nil {
+			schema["required"] = required
+		}
+		return map[string]any{"name": name, "description": description, "inputSchema": schema}
+	}
+	num := func(description string) map[string]any {
+		return map[string]any{"type": "number", "description": description}
+	}
+	str := func(description string) map[string]any {
+		return map[string]any{"type": "string", "description": description}
+	}
+
+	return []any{
+		tool("take_screenshot",
+			"Capture a screenshot of the Pob window and return it as a PNG image. "+
+				"All crop parameters are optional. When all four are provided, only that region is "+
+				"captured. Coordinates are in screenshot pixels, origin at top-left. Set with_cursor "+
+				"to true to draw the virtual cursor into the image.",
+			map[string]any{
+				"crop_x":      map[string]any{"type": "integer", "description": "Left edge in screenshot pixels."},
+				"crop_y":      map[string]any{"type": "integer", "description": "Top edge in screenshot pixels."},
+				"crop_width":  map[string]any{"type": "integer", "description": "Width in screenshot pixels."},
+				"crop_height": map[string]any{"type": "integer", "description": "Height in screenshot pixels."},
+				"with_cursor": map[string]any{"type": "boolean", "description": "Draw the virtual cursor into the image. Default false."},
+			}, nil),
+		tool("reset_cursor",
+			"Reset the virtual cursor to its home position and return the new position. "+
+				"Use this to get to a known state before a sequence of relative moves.",
+			nil, nil),
+		tool("move_cursor",
+			"Move the virtual cursor by a relative pixel offset in screenshot space "+
+				"(origin = top-left, x increases right, y increases down) and return the new position. "+
+				"Take a screenshot with with_cursor=true to see where the cursor is.",
+			map[string]any{
+				"dx": num("Horizontal offset in screenshot pixels. Positive = right, negative = left."),
+				"dy": num("Vertical offset in screenshot pixels. Positive = down, negative = up."),
+			}, []string{"dx", "dy"}),
+		tool("click",
+			"Left-click at the current virtual cursor position.",
+			nil, nil),
+		tool("right_click",
+			"Right-click at the current virtual cursor position.",
+			nil, nil),
+		tool("double_click",
+			"Double-click at the current virtual cursor position.",
+			nil, nil),
+		tool("drag",
+			"Drag from the current virtual cursor position by (dx, dy) screenshot pixels. "+
+				"The cursor ends at the new position.",
+			map[string]any{
+				"dx": num("Horizontal drag offset in screenshot pixels. Positive = right."),
+				"dy": num("Vertical drag offset in screenshot pixels. Positive = down."),
+			}, []string{"dx", "dy"}),
+		tool("scroll",
+			"Scroll at the current virtual cursor position. dy > 0 = scroll down, dy < 0 = scroll up, "+
+				"dx > 0 = scroll right.",
+			map[string]any{
+				"dx": num("Horizontal scroll amount in pixels."),
+				"dy": num("Vertical scroll amount in pixels. Positive = down."),
+			}, []string{"dx", "dy"}),
+		tool("type_text",
+			"Type text at the current keyboard focus.",
+			map[string]any{
+				"text": str("The text to type."),
+			}, []string{"text"}),
+		tool("key_press",
+			"Press a special key. Supported: return, tab, space, delete, escape, left, right, up, down, "+
+				"home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
+			map[string]any{
+				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\"."),
+			}, []string{"key"}),
+	}
+}
+
+func (s *Server) callTool(id any, name string, arguments map[string]any) map[string]any {
+	numArg := func(key string) float64 {
+		v, _ := arguments[key].(float64)
+		return v
+	}
+	position := func(pos bridge.Point, err error, action string) map[string]any {
+		if err != nil {
+			return rpcError(id, -32603, action+" failed: "+err.Error())
+		}
+		return textResult(id, fmt.Sprintf("%s. Cursor at (%d, %d).", action, pos.X, pos.Y))
+	}
+
+	switch name {
+	case "take_screenshot":
+		return s.takeScreenshot(id, arguments)
+
+	case "reset_cursor":
+		pos, err := s.br.ResetCursor()
+		return position(pos, err, "Cursor reset")
+
+	case "move_cursor":
+		pos, err := s.br.MoveCursor(numArg("dx"), numArg("dy"))
+		return position(pos, err, "Cursor moved")
+
+	case "click":
+		pos, err := s.br.Click()
+		return position(pos, err, "Clicked")
+
+	case "right_click":
+		pos, err := s.br.RightClick()
+		return position(pos, err, "Right-clicked")
+
+	case "double_click":
+		pos, err := s.br.DoubleClick()
+		return position(pos, err, "Double-clicked")
+
+	case "drag":
+		pos, err := s.br.Drag(numArg("dx"), numArg("dy"))
+		return position(pos, err, "Dragged")
+
+	case "scroll":
+		pos, err := s.br.Scroll(int(numArg("dx")), int(numArg("dy")))
+		return position(pos, err, "Scrolled")
+
+	case "type_text":
+		text, _ := arguments["text"].(string)
+		if err := s.br.TypeText(text); err != nil {
+			return rpcError(id, -32603, "Type failed: "+err.Error())
+		}
+		return textResult(id, fmt.Sprintf("Typed %d characters.", len([]rune(text))))
+
+	case "key_press":
+		key, _ := arguments["key"].(string)
+		if err := s.br.KeyPress(key); err != nil {
+			return rpcError(id, -32603, "Key press failed: "+err.Error())
+		}
+		return textResult(id, "Pressed "+key+".")
+
+	default:
+		return rpcError(id, -32601, "Unknown tool: "+name)
+	}
+}
+
+func textResult(id any, text string) map[string]any {
+	return rpcResult(id, map[string]any{
+		"content": []any{map[string]any{"type": "text", "text": text}},
+	})
 }
 
 func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any {
@@ -229,7 +359,8 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 		crop = &bridge.CropRect{X: x, Y: y, W: cw, H: ch}
 	}
 
-	png, err := s.br.CaptureScreenshot(false, crop)
+	withCursor, _ := arguments["with_cursor"].(bool)
+	png, err := s.br.CaptureScreenshot(withCursor, crop)
 	if err != nil {
 		return rpcError(id, -32603, "Screenshot capture failed")
 	}
