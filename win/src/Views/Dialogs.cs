@@ -189,7 +189,7 @@ public static class Dialogs
         });
         panel.Children.Add(new TextBlock
         {
-            Text = "Perception and Operation Bridge",
+            Text = "Perception & Operation Bridge",
             Foreground = dim,
             Margin = new Thickness(0, 0, 0, 4),
         });

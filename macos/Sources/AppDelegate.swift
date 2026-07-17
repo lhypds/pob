@@ -141,7 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         nameLabel.frame = NSRect(x: 20, y: 82, width: 240, height: 22)
         container.addSubview(nameLabel)
 
-        let fullNameLabel = NSTextField(labelWithString: "Perception and Operation Bridge")
+        let fullNameLabel = NSTextField(labelWithString: "Perception & Operation Bridge")
         fullNameLabel.font = NSFont.systemFont(ofSize: 12)
         fullNameLabel.textColor = .secondaryLabelColor
         fullNameLabel.frame = NSRect(x: 20, y: 60, width: 240, height: 18)
