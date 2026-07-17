@@ -39,7 +39,7 @@ Download `Pob-<version>-windows-<arch>.zip` (`amd64` for Intel/AMD,
 
 `Pob.exe` starts the bundled `pob-core.exe` automatically. On first run the
 working files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`,
-`app.log`) are created in `%LOCALAPPDATA%\Pob\` — set `openai_api_key` in
+`app.log`) are created in `%USERPROFILE%\.pob\` — set `openai_api_key` in
 `settings.json` there. If you launch `Pob.exe` from a directory that already
 contains `settings.json` (e.g. the project root), that directory is used
 instead.

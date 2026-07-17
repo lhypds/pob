@@ -29,7 +29,7 @@ Usage: pob [flags] [command] [args]
 
 Flags:
   --root <dir>       Project root (default: $POB_ROOT, else searched upward from
-                     the current directory for settings.json + logs/)
+                     the current directory for settings.json + logs/, else ~/.pob)
   --instance <id>    Target instance (default: the only running one)
   --session <id>     Target session; with no command, shows its details
 
@@ -185,7 +185,14 @@ func resolveRoot(flagValue string) string {
 		}
 		dir = parent
 	}
-	fail("no Pob project found here — run from the project directory, set $POB_ROOT, or pass --root")
+	// Packaged apps keep their project files in ~/.pob (created on first
+	// launch) — fall back to it when no project is found upward from cwd.
+	if home, err := os.UserHomeDir(); err == nil {
+		if dotPob := filepath.Join(home, ".pob"); isProjectRoot(dotPob) {
+			return dotPob
+		}
+	}
+	fail("no Pob project found — run from the project directory, set $POB_ROOT, or pass --root (the app creates ~/.pob on first launch)")
 	return ""
 }
 

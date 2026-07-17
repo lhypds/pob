@@ -28,10 +28,10 @@ public static class SettingsService
         // Also accept a directory that looks like the project source tree.
         if (Directory.Exists(Path.Combine(cwd, "core"))) return cwd;
 
-        // Production: launched from a shortcut — use %LOCALAPPDATA%\Pob
-        // (the Windows equivalent of ~/Library/Application Support).
+        // Production: launched from a shortcut — project files live in
+        // %USERPROFILE%\.pob, the same default the pob CLI falls back to.
         string root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pob");
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pob");
         Directory.CreateDirectory(root);
         return root;
     }

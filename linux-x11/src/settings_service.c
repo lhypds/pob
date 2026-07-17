@@ -36,9 +36,9 @@ const char *settings_project_root(void) {
     }
     g_free(cwd);
 
-    // Production: launched from a desktop entry — use the XDG data dir
-    // (the Linux equivalent of ~/Library/Application Support).
-    root = g_build_filename(g_get_user_data_dir(), "Pob", NULL);
+    // Production: launched from a desktop entry — project files live in
+    // ~/.pob, the same default the pob CLI falls back to.
+    root = g_build_filename(g_get_home_dir(), ".pob", NULL);
     g_mkdir_with_parents(root, 0755);
     return root;
 }

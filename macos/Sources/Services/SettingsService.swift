@@ -42,9 +42,9 @@ class SettingsService {
         if fileManager.fileExists(atPath: cwd.appendingPathComponent("core").path) {
             return cwd
         }
-        // Production: app launched from Finder/Applications — use Application Support
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("Pob")
+        // Production: app launched from Finder/Applications — project files
+        // live in ~/.pob, the same default the pob CLI falls back to.
+        let dir = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".pob")
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
