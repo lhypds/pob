@@ -119,7 +119,7 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 func (s *Server) mcpInfo() map[string]any {
 	port := s.mcp.Port()
 	if port == 0 {
-		port = s.cfg.MCPPort()
+		port = mcpserver.DefaultPort
 	}
 	return map[string]any{
 		"running": s.mcp.Running(),
@@ -150,7 +150,15 @@ func (s *Server) handleMCPStart(w http.ResponseWriter, r *http.Request) {
 	if !requirePost(w, r) {
 		return
 	}
-	if err := s.mcp.Start(s.cfg.MCPPort()); err != nil {
+	var body struct {
+		Port int `json:"port"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	port := body.Port
+	if port <= 0 {
+		port = mcpserver.DefaultPort
+	}
+	if err := s.mcp.Start(port); err != nil {
 		writeError(w, http.StatusConflict, fmt.Sprintf("MCP server failed to start: %v", err))
 		return
 	}

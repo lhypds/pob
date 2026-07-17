@@ -26,10 +26,13 @@ APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 CONTENTS="$APP_BUNDLE/Contents"
 BINARY_SRC="$MACOS_DIR/.build/$CONFIG/$APP_NAME"
 CORE_BINARY="$ROOT_DIR/core/bin/pob-core"
+CLI_BINARY="$ROOT_DIR/core/bin/pob"
 
 # ── build core (Go) ──────────────────────────────────────────────────────────
-echo "Building pob-core (Go)…"
-(cd "$ROOT_DIR/core" && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core)
+echo "Building pob-core and pob CLI (Go)…"
+(cd "$ROOT_DIR/core" \
+  && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core \
+  && go build -trimpath -ldflags="-s -w" -o bin/pob ./cmd/pob)
 
 # ── build shell (Swift) ──────────────────────────────────────────────────────
 echo "Building macOS shell ($CONFIG)…"
@@ -42,6 +45,10 @@ mkdir -p "$CONTENTS/MacOS"
 
 cp "$BINARY_SRC" "$CONTENTS/MacOS/$APP_NAME"
 cp "$CORE_BINARY" "$CONTENTS/MacOS/pob-core"
+# The CLI goes to Helpers/, not MacOS/: the filesystem is case-insensitive,
+# so MacOS/pob would overwrite the Pob app executable.
+mkdir -p "$CONTENTS/Helpers"
+cp "$CLI_BINARY" "$CONTENTS/Helpers/pob"
 
 # ── app icon ─────────────────────────────────────────────────────────────────
 echo "Generating app icon…"
@@ -121,11 +128,15 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 
 echo "Signing with: $IDENTITY"
-# Sign the embedded Go core first, then the bundle.
+# Sign the embedded Go binaries first, then the bundle.
 codesign --force --options runtime \
   --entitlements "$ENTITLEMENTS" \
   --sign "$IDENTITY" \
   "$CONTENTS/MacOS/pob-core"
+codesign --force --options runtime \
+  --entitlements "$ENTITLEMENTS" \
+  --sign "$IDENTITY" \
+  "$CONTENTS/Helpers/pob"
 codesign --force --deep --options runtime \
   --entitlements "$ENTITLEMENTS" \
   --sign "$IDENTITY" \

@@ -29,8 +29,6 @@ var defaults = map[string]any{
 	"openai_api_key":      "",
 	"base_url":            "https://api.openai.com/v1",
 	"model":               "gpt-4o",
-	"mcp_server_port":     8032,
-	"start_mcp":           true,
 	"max_steps":           12,
 	"max_resumes":         5,
 	"max_steplogs":        10,
@@ -162,18 +160,10 @@ func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.opena
 func (c *Config) Model() string    { return c.str("model", "gpt-4o") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
 
-func (c *Config) MCPPort() int           { return c.intVal("mcp_server_port", 8032, 1) }
 func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }
 func (c *Config) MaxStepLogs() int       { return c.intVal("max_steplogs", 10, 1) }
 func (c *Config) MaxResumes() int        { return c.intVal("max_resumes", 5, 1) }
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
-
-func (c *Config) StartMCP() bool {
-	if v, ok := c.readSettings()["start_mcp"].(bool); ok {
-		return v
-	}
-	return true
-}
 
 func (c *Config) Instruction() string {
 	data, err := os.ReadFile(c.instructionFile())

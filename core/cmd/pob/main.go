@@ -11,7 +11,7 @@
 //	pob --instance X --session Y     show one session's details
 //	pob start                        run instruction.txt on the running instance
 //	pob run "open the settings"      replace instruction.txt, then run it
-//	pob mcp start                    start the MCP server and print its info
+//	pob --instance X mcp start       start the MCP server and print its info
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -44,8 +45,10 @@ Commands:
   stop               Stop the running session
   screenshot         Capture a screenshot; prints the saved file path
   mcp status         Show MCP server info (URL, tools, client config)
-  mcp start          Start the MCP server and print its info
-  mcp stop           Stop the MCP server
+  mcp start [port]   Start the MCP server and print its info (requires --instance;
+                     port defaults to 8032). Also registers the server in the
+                     user settings of installed agent CLIs (claude, gemini).
+  mcp stop           Stop the MCP server and remove those registrations
   version            Print the Pob version
   help               Show this help
 
@@ -54,7 +57,7 @@ Examples:
   pob run "click the Save button and close the dialog"
   pob --instance 1752712345 start
   pob --instance 1752712345 --session 1752712400
-  pob mcp start
+  pob --instance 1752712345 mcp start
 `
 
 func fail(format string, args ...any) {
@@ -135,7 +138,20 @@ func main() {
 		if len(args) > 1 {
 			sub = args[1]
 		}
-		cmdMCP(resolveRunningInstance(root, *instanceFlag), sub)
+		port := 0
+		if sub == "start" && len(args) > 2 {
+			n, err := strconv.Atoi(args[2])
+			if err != nil || n < 1 || n > 65535 {
+				fail("bad port %q — expected a number between 1 and 65535", args[2])
+			}
+			port = n
+		}
+		// Starting MCP binds the instance to the shared MCP port, so the
+		// choice must be explicit — no defaulting to "the only running one".
+		if sub == "start" && *instanceFlag == "" {
+			fail("mcp start needs an explicit target: pob --instance <id> mcp start (see `pob list`)")
+		}
+		cmdMCP(resolveRunningInstance(root, *instanceFlag), sub, port)
 
 	default:
 		fail("unknown command %q — run `pob help`", command)

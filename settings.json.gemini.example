@@ -2,13 +2,11 @@
   "openai_api_key": "",
   "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
   "model": "gemini-2.5-flash",
-  "mcp_server_port": 8032,
   "max_steps": 50,
   "max_resumes": 5,
   "max_steplogs": 10,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",
-  "stop_hook": "",
-  "start_mcp": true
+  "stop_hook": ""
 }

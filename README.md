@@ -194,10 +194,22 @@ Use the record button (⏺) in the toolbar to record actions during an AI sessio
 MCP Server
 ----------
 
-The MCP server is built into `pob-core` and starts automatically with the app
-when `start_mcp: true` (SSE transport, port `8032` by default).
+The MCP server is built into `pob-core` (SSE transport). It does not start
+with the app — start it from the CLI, targeting an explicit instance. The
+port defaults to `8032`; pass a different one after `start` when running
+several instances:
 
-Register with Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```
+pob --instance <id> mcp start [port]
+```
+
+`mcp start` also registers the server (as `pob`) in the user settings of any
+installed agent CLIs — Claude Code (`claude`) and Gemini CLI (`gemini`) — and
+`mcp stop` removes those registrations again, so no manual setup is needed
+there.
+
+For other clients, register the printed URL manually. Claude Desktop
+(`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
@@ -219,9 +231,14 @@ MCP tools:
 CLI
 ---
 
-The `pob` command controls and inspects instances from the terminal. The dev
-scripts build it to `core/bin/pob` next to `pob-core` (add that folder to your
-`PATH`, or call it by path).
+The `pob` command controls and inspects instances from the terminal.
+
+On macOS the packaged app ships the CLI inside the bundle
+(`Pob.app/Contents/Helpers/pob`) — use **Pob → Install 'pob' Command…** in the
+app menu to symlink it at `/usr/local/bin/pob` (asks for an admin password
+when needed; the same menu item uninstalls it again). The dev scripts also
+build it to `core/bin/pob` next to `pob-core` (add that folder to your `PATH`,
+or call it by path).
 
 Every running instance serves a small control API on an ephemeral localhost
 port, advertised in `logs/<instance>/control.json`; the CLI scans `logs/` to
@@ -250,8 +267,8 @@ Flags:
 | `stop` | Stop the running session |
 | `screenshot` | Capture a screenshot; prints the saved file path |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
-| `mcp start` | Start the MCP server and print its info |
-| `mcp stop` | Stop the MCP server |
+| `mcp start [port]` | Start the MCP server and print its info (requires `--instance`; port defaults to `8032`). Registers the server in the user settings of installed agent CLIs (`claude`, `gemini`) |
+| `mcp stop` | Stop the MCP server and remove those registrations |
 | `version` | Print the Pob version |
 
 Examples:
@@ -261,7 +278,7 @@ pob                                      # what's running?
 pob run "click Save and close the dialog"
 pob --instance 1752712345 start          # run instruction.txt on that instance
 pob --instance 1752712345 --session 1752712400   # session detail: plans, steps, usage
-pob mcp start                            # start MCP and print the connection info
+pob --instance 1752712345 mcp start      # start MCP and print the connection info
 ```
 
 
@@ -288,7 +305,6 @@ shared at the root.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
-| `start_mcp` | `true` | Automatically start the MCP server (SSE on `http://127.0.0.1:8032`) when Pob launches |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |

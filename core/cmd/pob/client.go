@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -227,7 +228,7 @@ func cmdScreenshot(inst *Instance) {
 	fmt.Println(result["path"])
 }
 
-func cmdMCP(inst *Instance, sub string) {
+func cmdMCP(inst *Instance, sub string, port int) {
 	switch sub {
 	case "", "status", "info":
 		info, err := inst.get("/mcp", 3*time.Second)
@@ -237,17 +238,25 @@ func cmdMCP(inst *Instance, sub string) {
 		printMCPInfo(info)
 
 	case "start":
-		info, err := inst.post("/mcp/start", nil, 5*time.Second)
+		var body any
+		if port > 0 {
+			body = map[string]any{"port": port}
+		}
+		info, err := inst.post("/mcp/start", body, 5*time.Second)
 		if err != nil {
 			fail("mcp start failed: %v", err)
 		}
 		printMCPInfo(info)
+		if url, _ := info["url"].(string); url != "" {
+			registerWithAgentCLIs(url)
+		}
 
 	case "stop":
 		if _, err := inst.post("/mcp/stop", nil, 5*time.Second); err != nil {
 			fail("mcp stop failed: %v", err)
 		}
 		fmt.Println("MCP server stopped.")
+		unregisterFromAgentCLIs()
 
 	default:
 		fail("unknown mcp subcommand %q — use start, stop or status", sub)
@@ -267,7 +276,7 @@ func printMCPInfo(info map[string]any) {
 		fmt.Printf("Tools:      %s\n", strings.Join(names, ", "))
 	}
 	if !running {
-		fmt.Println("\nStart it with: pob mcp start")
+		fmt.Println("\nStart it with: pob --instance <id> mcp start")
 		return
 	}
 	fmt.Println("\nMCP client config (e.g. Claude Desktop's claude_desktop_config.json):")
@@ -278,6 +287,53 @@ func printMCPInfo(info map[string]any) {
   }
 }
 `, url)
+}
+
+// agentCLIs are the coding-agent CLIs whose user-scope MCP settings track
+// the pob server: `mcp start` registers it, `mcp stop` removes it. Both
+// CLIs share the same `mcp add/remove` sub-command syntax, so registration
+// goes through their own tooling and the settings file format stays their
+// problem. A CLI missing from PATH is skipped.
+var agentCLIs = []struct{ bin, name string }{
+	{"claude", "Claude Code"},
+	{"gemini", "Gemini CLI"},
+}
+
+// registerWithAgentCLIs adds the running MCP server to each installed agent
+// CLI's user-scope settings, so their sessions can use the pob tools without
+// manual setup. `pob mcp status` still prints the config for manual setup of
+// other clients.
+func registerWithAgentCLIs(url string) {
+	for _, cli := range agentCLIs {
+		path, err := exec.LookPath(cli.bin)
+		if err != nil {
+			continue
+		}
+		// `mcp add` refuses duplicate names, so drop any previous
+		// registration (possibly pointing at another port) first.
+		_ = exec.Command(path, "mcp", "remove", "-s", "user", "pob").Run()
+		out, err := exec.Command(path, "mcp", "add", "-s", "user", "--transport", "sse", "pob", url).CombinedOutput()
+		if err != nil {
+			fmt.Printf("%s registration failed: %v\n%s", cli.name, err, out)
+			continue
+		}
+		fmt.Printf("Registered in %s settings (user scope) as \"pob\".\n", cli.name)
+	}
+}
+
+// unregisterFromAgentCLIs removes the pob entries written by
+// registerWithAgentCLIs; silent for CLIs that are missing or have nothing
+// registered.
+func unregisterFromAgentCLIs() {
+	for _, cli := range agentCLIs {
+		path, err := exec.LookPath(cli.bin)
+		if err != nil {
+			continue
+		}
+		if exec.Command(path, "mcp", "remove", "-s", "user", "pob").Run() == nil {
+			fmt.Printf("Removed \"pob\" from %s settings.\n", cli.name)
+		}
+	}
 }
 
 func yesNo(b bool) string {

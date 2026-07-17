@@ -30,6 +30,9 @@ type Server struct {
 	port     int
 }
 
+// DefaultPort is used when `pob mcp start` is not given an explicit port.
+const DefaultPort = 8032
+
 func New(br *bridge.Bridge) *Server {
 	return &Server{br: br, sessions: map[string]chan []byte{}}
 }

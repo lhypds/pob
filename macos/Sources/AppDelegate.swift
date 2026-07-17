@@ -1,7 +1,7 @@
 import Cocoa
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Set by ContentView with the SwiftUI openWindow action, so the AppKit
     /// menu can open a new WindowGroup window (a new instance) in-process —
     /// the VSCode model: one app, one window per instance.
@@ -72,6 +72,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         appMenu.addItem(.separator())
 
+        // Title is state-dependent (Install/Uninstall) — kept current by
+        // validateMenuItem(_:) each time the menu opens.
+        let cliMenuItem = NSMenuItem(title: "Install 'pob' Command…", action: #selector(toggleCLIInstall), keyEquivalent: "")
+        cliMenuItem.target = self
+        appMenu.addItem(cliMenuItem)
+
+        appMenu.addItem(.separator())
+
         let aboutMenuItem = NSMenuItem(title: "About Pob", action: #selector(showAbout), keyEquivalent: "")
         aboutMenuItem.target = self
         appMenu.addItem(aboutMenuItem)
@@ -122,6 +130,135 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// pob-core child.
     @objc private func newInstance() {
         AppDelegate.openNewInstanceWindow?()
+    }
+
+    // MARK: - "pob" command-line tool
+
+    /// Where "Install 'pob' Command…" symlinks the bundled CLI.
+    private static let cliLinkPath = "/usr/local/bin/pob"
+
+    private enum CLIToolError: LocalizedError {
+        case cancelled
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .cancelled: return "Cancelled."
+            case let .failed(message): return message
+            }
+        }
+    }
+
+    /// The pob CLI shipped with the app: Contents/Helpers/pob in the packaged
+    /// bundle (Helpers, not MacOS — the case-insensitive filesystem would
+    /// collide "pob" with the "Pob" app executable), core/bin/pob in the
+    /// repository for dev builds (swift build).
+    private func bundledCLIURL() -> URL? {
+        let fm = FileManager.default
+        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/pob")
+        if fm.isExecutableFile(atPath: helper.path) {
+            return helper
+        }
+        var dir = URL(fileURLWithPath: CommandLine.arguments[0])
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+        for _ in 0 ..< 6 {
+            let candidate = dir.appendingPathComponent("core/bin/pob")
+            if fm.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+            dir = dir.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    /// Installed means the symlink exists and points at this build's CLI —
+    /// a dangling or foreign link reads as "not installed" so the menu
+    /// offers Install again as the repair path.
+    private func cliIsInstalled(source: URL) -> Bool {
+        guard let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: Self.cliLinkPath) else {
+            return false
+        }
+        return dest == source.path
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(toggleCLIInstall) else { return true }
+        guard let source = bundledCLIURL() else {
+            menuItem.title = "Install 'pob' Command…"
+            return false
+        }
+        menuItem.title = cliIsInstalled(source: source)
+            ? "Uninstall 'pob' Command"
+            : "Install 'pob' Command…"
+        return true
+    }
+
+    @objc private func toggleCLIInstall() {
+        guard let source = bundledCLIURL() else { return }
+        do {
+            if cliIsInstalled(source: source) {
+                try removeCLILink()
+                showCLIAlert("The 'pob' command was removed from \(Self.cliLinkPath).")
+            } else {
+                try installCLILink(source: source)
+                showCLIAlert("""
+                The 'pob' command is now available in the terminal — try `pob help`.
+
+                \(Self.cliLinkPath) → \(source.path)
+                """)
+            }
+        } catch CLIToolError.cancelled {
+            // User dismissed the password prompt.
+        } catch {
+            showCLIAlert(error.localizedDescription, isError: true)
+        }
+    }
+
+    private func installCLILink(source: URL) throws {
+        let fm = FileManager.default
+        let dir = (Self.cliLinkPath as NSString).deletingLastPathComponent
+        if fm.isWritableFile(atPath: dir) {
+            try? fm.removeItem(atPath: Self.cliLinkPath)
+            try fm.createSymbolicLink(atPath: Self.cliLinkPath, withDestinationPath: source.path)
+        } else {
+            try runPrivileged("mkdir -p '\(dir)' && ln -sfn '\(source.path)' '\(Self.cliLinkPath)'")
+        }
+    }
+
+    private func removeCLILink() throws {
+        let fm = FileManager.default
+        if fm.isWritableFile(atPath: (Self.cliLinkPath as NSString).deletingLastPathComponent) {
+            try fm.removeItem(atPath: Self.cliLinkPath)
+        } else {
+            try runPrivileged("rm -f '\(Self.cliLinkPath)'")
+        }
+    }
+
+    /// Runs a shell command behind macOS's admin-password prompt —
+    /// /usr/local/bin is root-owned on most systems.
+    private func runPrivileged(_ command: String) throws {
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        guard let script = NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges") else {
+            throw CLIToolError.failed("Could not build the install script.")
+        }
+        var errorInfo: NSDictionary?
+        script.executeAndReturnError(&errorInfo)
+        guard let errorInfo else { return }
+        if errorInfo[NSAppleScript.errorNumber] as? Int == -128 {
+            throw CLIToolError.cancelled
+        }
+        throw CLIToolError.failed(errorInfo[NSAppleScript.errorMessage] as? String ?? "Unknown error.")
+    }
+
+    private func showCLIAlert(_ message: String, isError: Bool = false) {
+        let alert = NSAlert()
+        alert.messageText = "Pob Command-Line Tool"
+        alert.informativeText = message
+        alert.alertStyle = isError ? .warning : .informational
+        alert.runModal()
     }
 
     @objc private func showAbout() {

@@ -64,10 +64,9 @@ func main() {
 		runner.TakeScreenshot()
 	})
 
+	// The MCP server never starts with the app — it is started on demand via
+	// `pob mcp --instance <id> start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
-	if cfg.StartMCP() {
-		_ = mcp.Start(cfg.MCPPort())
-	}
 
 	// The control server lets the `pob` CLI drive this instance; it always
 	// runs, on an ephemeral port advertised in logs/<instance>/control.json.
