@@ -21,22 +21,29 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"pob/core/internal/config"
 )
 
+// version is stamped by the build scripts via -ldflags "-X main.version=…".
+var version = "dev"
+
 const usage = `pob — control and inspect Pob from the command line
+
+All project files (settings.json, instruction.txt, macro.txt, logs/) live in
+~/.pob, created on first use and shared with the Pob app.
 
 Usage: pob [flags] [command] [args]
 
 Flags:
-  --root <dir>       Project root (default: $POB_ROOT, else searched upward from
-                     the current directory for settings.json + logs/, else ~/.pob)
   --instance <id>    Target instance (default: the only running one)
   --session <id>     Target session; with no command, shows its details
 
 Commands:
-  (none)             List instances; with --instance show that instance;
+  (none)             List running instances; with --instance show that instance;
                      with --session show that session
-  list               List instances (aliases: ls, instances)
+  list [--all]       List running instances; --all includes stopped ones
+                     (aliases: ls, instances)
   status             Live status of the target instance
   sessions           List the target instance's sessions
   start              Execute instruction.txt (the toolbar Execute button)
@@ -66,7 +73,6 @@ func fail(format string, args ...any) {
 }
 
 func main() {
-	rootFlag := flag.String("root", "", "project root holding settings.json and logs/")
 	instanceFlag := flag.String("instance", "", "target instance ID")
 	sessionFlag := flag.String("session", "", "target session ID")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
@@ -83,16 +89,11 @@ func main() {
 		return
 	}
 	if command == "version" {
-		root := resolveRoot(*rootFlag)
-		data, err := os.ReadFile(filepath.Join(root, "VERSION"))
-		if err != nil {
-			fail("cannot read VERSION: %v", err)
-		}
-		fmt.Println(strings.TrimSpace(string(data)))
+		fmt.Println(version)
 		return
 	}
 
-	root := resolveRoot(*rootFlag)
+	root := projectRoot()
 
 	switch command {
 	case "":
@@ -102,11 +103,12 @@ func main() {
 		case *instanceFlag != "":
 			showInstance(root, *instanceFlag)
 		default:
-			listInstances(root)
+			listInstances(root, false)
 		}
 
 	case "list", "ls", "instances":
-		listInstances(root)
+		all := len(args) > 1 && (args[1] == "--all" || args[1] == "-a" || args[1] == "all")
+		listInstances(root, all)
 
 	case "sessions":
 		listSessionsCmd(root, resolveAnyInstance(root, *instanceFlag))
@@ -158,50 +160,17 @@ func main() {
 	}
 }
 
-// resolveRoot finds the project root: --root flag, $POB_ROOT, else walk up
-// from the current directory looking for settings.json next to logs/.
-func resolveRoot(flagValue string) string {
-	if flagValue != "" {
-		abs, err := filepath.Abs(flagValue)
-		if err != nil {
-			fail("bad --root: %v", err)
-		}
-		return abs
-	}
-	if env := os.Getenv("POB_ROOT"); env != "" {
-		return env
-	}
-	dir, err := os.Getwd()
+// projectRoot returns ~/.pob — the single project root shared by every Pob
+// component — created and seeded with the standard first-run files
+// (settings.json, instruction.txt, macro.txt, logs/) on first use.
+func projectRoot() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		fail("cannot determine working directory: %v", err)
+		fail("cannot determine home directory: %v", err)
 	}
-	for {
-		if isProjectRoot(dir) {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	// Packaged apps keep their project files in ~/.pob (created on first
-	// launch) — fall back to it when no project is found upward from cwd.
-	if home, err := os.UserHomeDir(); err == nil {
-		if dotPob := filepath.Join(home, ".pob"); isProjectRoot(dotPob) {
-			return dotPob
-		}
-	}
-	fail("no Pob project found — run from the project directory, set $POB_ROOT, or pass --root (the app creates ~/.pob on first launch)")
-	return ""
-}
-
-func isProjectRoot(dir string) bool {
-	if _, err := os.Stat(filepath.Join(dir, "settings.json")); err != nil {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(dir, "logs"))
-	return err == nil && info.IsDir()
+	root := filepath.Join(home, ".pob")
+	config.New(root, "")
+	return root
 }
 
 // resolveRunningInstance returns the live instance to control: the one named

@@ -63,9 +63,7 @@ just the GTK 3 libraries, preinstalled on mainstream desktops
 
 On first run the working files (`settings.json`, `instruction.txt`,
 `macro.txt`, `logs/`, `app.log`) are created in `~/.pob/` —
-set `openai_api_key` in `settings.json` there. If you launch `pob` from a
-directory that already contains `settings.json` (e.g. the project root),
-that directory is used instead.
+set `openai_api_key` in `settings.json` there.
 
 
 Run from source
@@ -98,9 +96,8 @@ directly:
 Both build scripts produce `linux-x11/dist/Pob/` (`pob` + `pob-core` side by
 side) and `Pob-<version>-linux-<arch>.zip` at the project root.
 
-Run from the project root so the shell picks up `settings.json`,
-`instruction.txt`, `macro.txt` and `logs/` there (same rule as macOS). When
-launched elsewhere it falls back to `~/.pob`.
+Project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
+always live in `~/.pob` (same rule as macOS).
 
 
 Source layout

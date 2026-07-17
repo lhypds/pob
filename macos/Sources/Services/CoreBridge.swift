@@ -43,7 +43,7 @@ final class CoreBridge: ObservableObject {
     func start() {
         let root = settings.projectRoot
 
-        guard let binary = locateCoreBinary(projectRoot: root) else {
+        guard let binary = locateCoreBinary() else {
             AppLogger.log("CoreBridge: pob-core binary not found — run ./setup.sh")
             return
         }
@@ -86,16 +86,23 @@ final class CoreBridge: ObservableObject {
         stdinHandle = nil
     }
 
-    private func locateCoreBinary(projectRoot: URL) -> URL? {
+    private func locateCoreBinary() -> URL? {
         let fm = FileManager.default
         // Packaged app: pob-core sits next to the main executable in the bundle.
         if let executable = Bundle.main.executableURL {
             let bundled = executable.deletingLastPathComponent().appendingPathComponent("pob-core")
             if fm.isExecutableFile(atPath: bundled.path) { return bundled }
         }
-        // Dev workflow: built by restart.sh into core/bin/.
-        let dev = projectRoot.appendingPathComponent("core/bin/pob-core")
-        if fm.isExecutableFile(atPath: dev.path) { return dev }
+        // Dev workflow (swift build): walk up from the executable towards the
+        // repository root and use core/bin/pob-core built by the dev scripts.
+        var dir = URL(fileURLWithPath: CommandLine.arguments[0])
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+        for _ in 0 ..< 6 {
+            let candidate = dir.appendingPathComponent("core/bin/pob-core")
+            if fm.isExecutableFile(atPath: candidate.path) { return candidate }
+            dir = dir.deletingLastPathComponent()
+        }
         return nil
     }
 

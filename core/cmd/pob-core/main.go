@@ -11,6 +11,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"pob/core/internal/agent"
@@ -29,11 +30,11 @@ func main() {
 	instance := flag.String("instance", "", "logs/<instance> directory allocated by the shell; holds this instance's settings.json and session logs")
 	flag.Parse()
 	if *root == "" {
-		cwd, err := os.Getwd()
+		home, err := os.UserHomeDir()
 		if err != nil {
 			os.Exit(1)
 		}
-		*root = cwd
+		*root = filepath.Join(home, ".pob")
 	}
 
 	applog.Init(*root)

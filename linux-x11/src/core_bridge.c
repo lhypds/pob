@@ -326,20 +326,34 @@ static void on_child_exit(GPid pid, gint status, gpointer data) {
 // ── lifecycle ───────────────────────────────────────────────────────────────
 
 // Packaged install: pob-core sits next to the shell binary.
-// Dev workflow: built by restart.sh into <root>/core/bin/.
+// Dev workflow: walk up from the shell binary towards the repository root
+// and use <root>/core/bin/pob-core built by the dev scripts.
 static gchar *locate_core_binary(void) {
     gchar *self = g_file_read_link("/proc/self/exe", NULL);
-    if (self) {
-        gchar *dir = g_path_get_dirname(self);
-        gchar *bundled = g_build_filename(dir, "pob-core", NULL);
+    if (!self) return NULL;
+
+    gchar *dir = g_path_get_dirname(self);
+    g_free(self);
+
+    gchar *bundled = g_build_filename(dir, "pob-core", NULL);
+    if (g_file_test(bundled, G_FILE_TEST_IS_EXECUTABLE)) {
         g_free(dir);
-        g_free(self);
-        if (g_file_test(bundled, G_FILE_TEST_IS_EXECUTABLE)) return bundled;
-        g_free(bundled);
+        return bundled;
     }
-    gchar *dev = g_build_filename(settings_project_root(), "core", "bin", "pob-core", NULL);
-    if (g_file_test(dev, G_FILE_TEST_IS_EXECUTABLE)) return dev;
-    g_free(dev);
+    g_free(bundled);
+
+    for (int i = 0; i < 6; i++) {
+        gchar *candidate = g_build_filename(dir, "core", "bin", "pob-core", NULL);
+        if (g_file_test(candidate, G_FILE_TEST_IS_EXECUTABLE)) {
+            g_free(dir);
+            return candidate;
+        }
+        g_free(candidate);
+        gchar *parent = g_path_get_dirname(dir);
+        g_free(dir);
+        dir = parent;
+    }
+    g_free(dir);
     return NULL;
 }
 

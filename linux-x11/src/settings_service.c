@@ -15,29 +15,7 @@ const char *settings_project_root(void) {
     static gchar *root = NULL;
     if (root) return root;
 
-    gchar *cwd = g_get_current_dir();
-
-    // Dev workflow: launched from the project root, which has settings.json.
-    gchar *settings = g_build_filename(cwd, "settings.json", NULL);
-    gboolean has_settings = g_file_test(settings, G_FILE_TEST_EXISTS);
-    g_free(settings);
-    if (has_settings) {
-        root = cwd;
-        return root;
-    }
-
-    // Also accept a directory that looks like the project source tree.
-    gchar *core = g_build_filename(cwd, "core", NULL);
-    gboolean has_core = g_file_test(core, G_FILE_TEST_IS_DIR);
-    g_free(core);
-    if (has_core) {
-        root = cwd;
-        return root;
-    }
-    g_free(cwd);
-
-    // Production: launched from a desktop entry — project files live in
-    // ~/.pob, the same default the pob CLI falls back to.
+    // All Pob components share ~/.pob — the same root the pob CLI uses.
     root = g_build_filename(g_get_home_dir(), ".pob", NULL);
     g_mkdir_with_parents(root, 0755);
     return root;

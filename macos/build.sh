@@ -32,7 +32,7 @@ CLI_BINARY="$ROOT_DIR/core/bin/pob"
 echo "Building pob-core and pob CLI (Go)…"
 (cd "$ROOT_DIR/core" \
   && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core \
-  && go build -trimpath -ldflags="-s -w" -o bin/pob ./cmd/pob)
+  && go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o bin/pob ./cmd/pob)
 
 # ── build shell (Swift) ──────────────────────────────────────────────────────
 echo "Building macOS shell ($CONFIG)…"

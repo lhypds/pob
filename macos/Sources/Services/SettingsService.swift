@@ -33,17 +33,7 @@ class SettingsService {
     }
 
     private static func resolveProjectRoot(_ fileManager: FileManager) -> URL {
-        let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        // Dev workflow: start.sh runs the binary from the project root, which has settings.json
-        if fileManager.fileExists(atPath: cwd.appendingPathComponent("settings.json").path) {
-            return cwd
-        }
-        // Also accept a directory that looks like the project source tree
-        if fileManager.fileExists(atPath: cwd.appendingPathComponent("core").path) {
-            return cwd
-        }
-        // Production: app launched from Finder/Applications — project files
-        // live in ~/.pob, the same default the pob CLI falls back to.
+        // All Pob components share ~/.pob — the same root the pob CLI uses.
         let dir = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".pob")
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

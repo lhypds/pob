@@ -20,16 +20,7 @@ public static class SettingsService
 
     private static string ComputeRoot()
     {
-        string cwd = Directory.GetCurrentDirectory();
-
-        // Dev workflow: launched from the project root, which has settings.json.
-        if (File.Exists(Path.Combine(cwd, "settings.json"))) return cwd;
-
-        // Also accept a directory that looks like the project source tree.
-        if (Directory.Exists(Path.Combine(cwd, "core"))) return cwd;
-
-        // Production: launched from a shortcut — project files live in
-        // %USERPROFILE%\.pob, the same default the pob CLI falls back to.
+        // All Pob components share ~/.pob — the same root the pob CLI uses.
         string root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pob");
         Directory.CreateDirectory(root);

@@ -48,7 +48,8 @@ fi
 
 # Download Go module dependencies (currently none — stdlib only) and build
 echo "🔨 Building core (Go)..."
-(cd "$ROOT_DIR/core" && go mod download && go build -o bin/pob-core ./cmd/pob-core && go build -o bin/pob ./cmd/pob)
+VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
+(cd "$ROOT_DIR/core" && go mod download && go build -o bin/pob-core ./cmd/pob-core && go build -ldflags="-X main.version=$VERSION" -o bin/pob ./cmd/pob)
 echo "✅ core build successful"
 
 echo "🔨 Building macOS shell (Swift)..."

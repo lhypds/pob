@@ -273,14 +273,20 @@ public static class CoreBridge
     // ── lifecycle ───────────────────────────────────────────────────────────
 
     // Packaged install: pob-core.exe sits next to Pob.exe.
-    // Dev workflow: built by win/setup.ps1 into <root>/core/bin/.
+    // Dev workflow: walk up from Pob.exe towards the repository root and use
+    // <root>\core\bin\pob-core.exe built by win/setup.ps1.
     private static string? LocateCoreBinary()
     {
         string bundled = Path.Combine(AppContext.BaseDirectory, "pob-core.exe");
         if (File.Exists(bundled)) return bundled;
 
-        string dev = Path.Combine(SettingsService.ProjectRoot, "core", "bin", "pob-core.exe");
-        if (File.Exists(dev)) return dev;
+        string? dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 6 && dir != null; i++)
+        {
+            string candidate = Path.Combine(dir, "core", "bin", "pob-core.exe");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
         return null;
     }
 

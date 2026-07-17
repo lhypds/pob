@@ -58,6 +58,9 @@ func (c *Config) macroFile() string       { return filepath.Join(c.Root, "macro.
 func (c *Config) LogsDir() string         { return filepath.Join(c.Root, "logs") }
 
 func (c *Config) ensureFiles() {
+	// Root (and logs/) must exist before any file below is written — the CLI
+	// resolves to a not-yet-created ~/.pob.
+	_ = os.MkdirAll(c.LogsDir(), 0o755)
 	if c.InstanceID != "" {
 		_ = os.MkdirAll(filepath.Join(c.LogsDir(), c.InstanceID), 0o755)
 		c.seedInstanceSettings()
@@ -83,7 +86,6 @@ func (c *Config) ensureFiles() {
 	if _, err := os.Stat(c.macroFile()); os.IsNotExist(err) {
 		_ = os.WriteFile(c.macroFile(), []byte(""), 0o644)
 	}
-	_ = os.MkdirAll(c.LogsDir(), 0o755)
 }
 
 // seedInstanceSettings copies the root settings.json into the instance

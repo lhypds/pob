@@ -87,7 +87,7 @@ Logs
 Structure  
 
 ```
-logs/  
+~/.pob/logs/  
     +--- <instance>/                              one directory per app launch (multi-instance support).
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
@@ -240,25 +240,27 @@ when needed; the same menu item uninstalls it again). The dev scripts also
 build it to `core/bin/pob` next to `pob-core` (add that folder to your `PATH`,
 or call it by path).
 
+All project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
+live in `~/.pob`, created on first use and shared by the app and the CLI.
+
 Every running instance serves a small control API on an ephemeral localhost
-port, advertised in `logs/<instance>/control.json`; the CLI scans `logs/` to
-discover instances and talks to that API. Log and session inspection reads the
-log tree directly, so it also works for stopped instances.
+port, advertised in `~/.pob/logs/<instance>/control.json`; the CLI scans that
+directory to discover instances and talks to that API. Log and session
+inspection reads the log tree directly, so it also works for stopped
+instances.
 
 ```
 Usage: pob [flags] [command] [args]
 
 Flags:
-  --root <dir>       Project root (default: $POB_ROOT, else searched upward from
-                     the current directory for settings.json + logs/)
   --instance <id>    Target instance (default: the only running one)
   --session <id>     Target session; with no command, shows its details
 ```
 
 | Command | Description |
 |---------|-------------|
-| *(none)* | List instances; with `--instance` show that instance; with `--session` show that session |
-| `list` | List instances with status, times and session count |
+| *(none)* | List running instances; with `--instance` show that instance; with `--session` show that session |
+| `list [--all]` | List running instances with status, times and session count; `--all` includes stopped ones |
 | `status` | Live status of the target instance (executing, recording, model, MCP) |
 | `sessions` | List the target instance's sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
@@ -285,13 +287,13 @@ pob --instance 1752712345 mcp start      # start MCP and print the connection in
 Settings
 --------
 
-The `settings.json` in the project root is the shared template. When an
-instance starts it copies the template to its own `logs/<instance>/settings.json`,
-and both the shell and the Go core read and edit that per-instance copy from
+`~/.pob/settings.json` is the shared template. When an instance starts it
+copies the template to its own `~/.pob/logs/<instance>/settings.json`, and
+both the shell and the Go core read and edit that per-instance copy from
 then on — so multiple instances can run with independent settings (the
 Settings menu opens the instance's copy). Edit the root file to change the
 defaults new instances start with. `instruction.txt` and `macro.txt` stay
-shared at the root.
+shared at `~/.pob`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
