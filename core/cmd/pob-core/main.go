@@ -17,6 +17,7 @@ import (
 	"pob/core/internal/applog"
 	"pob/core/internal/bridge"
 	"pob/core/internal/config"
+	"pob/core/internal/ctlserver"
 	"pob/core/internal/ipc"
 	"pob/core/internal/llm"
 	"pob/core/internal/mcpserver"
@@ -63,9 +64,15 @@ func main() {
 		runner.TakeScreenshot()
 	})
 
+	mcp := mcpserver.New(br)
 	if cfg.StartMCP() {
-		mcpserver.New(br).Start(cfg.MCPPort())
+		_ = mcp.Start(cfg.MCPPort())
 	}
+
+	// The control server lets the `pob` CLI drive this instance; it always
+	// runs, on an ephemeral port advertised in logs/<instance>/control.json.
+	ctl := ctlserver.New(cfg, store, runner, mcp, br)
+	_ = ctl.Start()
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())
 	store.WriteInstanceStart()
@@ -75,11 +82,13 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
+		ctl.Stop()
 		store.WriteInstanceEnd()
 		os.Exit(0)
 	}()
 
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()
+	ctl.Stop()
 	store.WriteInstanceEnd()
 }

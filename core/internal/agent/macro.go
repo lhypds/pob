@@ -33,6 +33,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	}
 
 	sessionID := r.store.CreateSession()
+	r.setCurrentSession(sessionID)
 	r.store.SaveMacro(sessionID)
 	macroStart := time.Now()
 	applog.Logf("[%s] Macro session started", sessionID)

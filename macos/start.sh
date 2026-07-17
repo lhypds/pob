@@ -16,7 +16,7 @@ case "$COUNT" in
 esac
 
 echo "🔨 Building core (Go)..."
-(cd "$ROOT_DIR/core" && go build -o bin/pob-core ./cmd/pob-core)
+(cd "$ROOT_DIR/core" && go build -o bin/pob-core ./cmd/pob-core && go build -o bin/pob ./cmd/pob)
 
 echo "🔨 Building macOS shell (Swift)..."
 (cd "$SCRIPT_DIR" && swift build)

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -25,25 +26,87 @@ type Server struct {
 
 	mu       sync.Mutex
 	sessions map[string]chan []byte
+	server   *http.Server
+	port     int
 }
 
 func New(br *bridge.Bridge) *Server {
 	return &Server{br: br, sessions: map[string]chan []byte{}}
 }
 
-// Start listens on the given port in a background goroutine.
-func (s *Server) Start(port int) {
+// Start binds the listener synchronously (so callers see port conflicts) and
+// serves in a background goroutine. Starting an already-running server is a
+// no-op.
+func (s *Server) Start(port int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.server != nil {
+		return nil
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sse", s.handleSSE)
 	mux.HandleFunc("/messages", s.handleMessages)
 
-	server := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", port), Handler: withCORS(mux)}
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		applog.Logf("MCPServer: listen failed: %v", err)
+		return err
+	}
+
+	server := &http.Server{Handler: withCORS(mux)}
+	s.server = server
+	s.port = port
 	go func() {
 		applog.Logf("MCPServer: listening on port %d", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			applog.Logf("MCPServer: listener failed: %v", err)
 		}
 	}()
+	return nil
+}
+
+// Stop shuts the listener down, dropping any connected SSE clients. Stopping
+// a stopped server is a no-op.
+func (s *Server) Stop() {
+	s.mu.Lock()
+	server := s.server
+	s.server = nil
+	s.mu.Unlock()
+	if server == nil {
+		return
+	}
+	// Close (not Shutdown): SSE streams are long-lived, so a graceful drain
+	// would block until every client disconnects.
+	_ = server.Close()
+	applog.Log("MCPServer: stopped")
+}
+
+// Running reports whether the listener is up.
+func (s *Server) Running() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.server != nil
+}
+
+// Port returns the port the server was last started on.
+func (s *Server) Port() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.port
+}
+
+// ToolNames lists the MCP tool names this server exposes.
+func ToolNames() []string {
+	var names []string
+	for _, t := range toolDefinitions() {
+		if m, ok := t.(map[string]any); ok {
+			if name, ok := m["name"].(string); ok {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
 }
 
 func withCORS(next http.Handler) http.Handler {

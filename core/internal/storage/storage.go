@@ -56,6 +56,9 @@ func newInstanceID(logsDir string) string {
 
 func (s *Storage) InstanceID() string { return s.instanceID }
 
+// InstanceDir returns logs/<instance>, this process's log directory.
+func (s *Storage) InstanceDir() string { return filepath.Join(s.logsDir, s.instanceID) }
+
 func (s *Storage) instanceFile() string {
 	return filepath.Join(s.logsDir, s.instanceID, "instance.json")
 }
@@ -201,11 +204,13 @@ func (s *Storage) SaveScreenshot(png []byte, sessionID string) {
 }
 
 // SaveUserScreenshot writes a toolbar-button capture (outside any session) to
-// logs/<instance>/screenshots/<unixtime>.png.
-func (s *Storage) SaveUserScreenshot(png []byte) {
+// logs/<instance>/screenshots/<unixtime>.png and returns the file path.
+func (s *Storage) SaveUserScreenshot(png []byte) string {
 	dir := filepath.Join(s.logsDir, s.instanceID, "screenshots")
 	_ = os.MkdirAll(dir, 0o755)
-	_ = os.WriteFile(filepath.Join(dir, unixNow()+".png"), png, 0o644)
+	path := filepath.Join(dir, unixNow()+".png")
+	_ = os.WriteFile(path, png, 0o644)
+	return path
 }
 
 func (s *Storage) SaveSessionStartEndTimes(sessionID string, start, end time.Time) {

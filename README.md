@@ -92,6 +92,7 @@ logs/
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
          +--- instance.json                       instance start/end times, etc.
+         +--- control.json                        written while the instance runs; advertises the control API port used by the `pob` CLI.
          +--- .lock                               held locked while the instance runs; Clear Logs skips locked (running) instances.
 
          +--- <session>/ (instruction)            session executed from instruction.  
@@ -213,6 +214,55 @@ MCP tools:
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the Pob window content area and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
+
+
+CLI
+---
+
+The `pob` command controls and inspects instances from the terminal. The dev
+scripts build it to `core/bin/pob` next to `pob-core` (add that folder to your
+`PATH`, or call it by path).
+
+Every running instance serves a small control API on an ephemeral localhost
+port, advertised in `logs/<instance>/control.json`; the CLI scans `logs/` to
+discover instances and talks to that API. Log and session inspection reads the
+log tree directly, so it also works for stopped instances.
+
+```
+Usage: pob [flags] [command] [args]
+
+Flags:
+  --root <dir>       Project root (default: $POB_ROOT, else searched upward from
+                     the current directory for settings.json + logs/)
+  --instance <id>    Target instance (default: the only running one)
+  --session <id>     Target session; with no command, shows its details
+```
+
+| Command | Description |
+|---------|-------------|
+| *(none)* | List instances; with `--instance` show that instance; with `--session` show that session |
+| `list` | List instances with status, times and session count |
+| `status` | Live status of the target instance (executing, recording, model, MCP) |
+| `sessions` | List the target instance's sessions with duration and token usage |
+| `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
+| `run <text...>` | Replace `instruction.txt` with `<text>`, then execute it |
+| `macro` | Execute `macro.txt` |
+| `stop` | Stop the running session |
+| `screenshot` | Capture a screenshot; prints the saved file path |
+| `mcp status` | Show MCP server info (URL, tools, client config snippet) |
+| `mcp start` | Start the MCP server and print its info |
+| `mcp stop` | Stop the MCP server |
+| `version` | Print the Pob version |
+
+Examples:
+
+```
+pob                                      # what's running?
+pob run "click Save and close the dialog"
+pob --instance 1752712345 start          # run instruction.txt on that instance
+pob --instance 1752712345 --session 1752712400   # session detail: plans, steps, usage
+pob mcp start                            # start MCP and print the connection info
+```
 
 
 Settings

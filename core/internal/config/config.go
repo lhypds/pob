@@ -191,6 +191,12 @@ func (c *Config) Macro() string {
 	return string(data)
 }
 
+// WriteInstruction replaces instruction.txt (shared at the root) — used by
+// the CLI's `pob run "<text>"`.
+func (c *Config) WriteInstruction(text string) error {
+	return os.WriteFile(c.instructionFile(), []byte(text), 0o644)
+}
+
 func (c *Config) AppendToMacro(line string) {
 	f, err := os.OpenFile(c.macroFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

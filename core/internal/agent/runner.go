@@ -27,9 +27,10 @@ type Runner struct {
 	llm   *llm.Client
 	br    *bridge.Bridge
 
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	running bool
+	mu             sync.Mutex
+	cancel         context.CancelFunc
+	running        bool
+	currentSession string
 
 	recording atomic.Bool
 }
@@ -58,6 +59,32 @@ func NewRunner(cfg *config.Config, store *storage.Storage, llmClient *llm.Client
 }
 
 func (r *Runner) SetRecording(recording bool) { r.recording.Store(recording) }
+
+// Recording reports whether macro recording is on.
+func (r *Runner) Recording() bool { return r.recording.Load() }
+
+// Running reports whether a session is executing.
+func (r *Runner) Running() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.running
+}
+
+// CurrentSession returns the executing session's ID, or "" when idle.
+func (r *Runner) CurrentSession() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.running {
+		return ""
+	}
+	return r.currentSession
+}
+
+func (r *Runner) setCurrentSession(id string) {
+	r.mu.Lock()
+	r.currentSession = id
+	r.mu.Unlock()
+}
 
 // TakeScreenshot handles the toolbar screenshot button: flash, capture and
 // save under logs/<instance>/screenshots/. While recording it also appends
@@ -112,11 +139,12 @@ func (r *Runner) finish() {
 	r.cancel = nil
 }
 
-// RunInstruction starts an instruction session asynchronously.
-func (r *Runner) RunInstruction() {
+// RunInstruction starts an instruction session asynchronously. It returns
+// false when a session is already running.
+func (r *Runner) RunInstruction() bool {
 	ctx := r.start()
 	if ctx == nil {
-		return
+		return false
 	}
 	go func() {
 		defer r.finish()
@@ -124,13 +152,15 @@ func (r *Runner) RunInstruction() {
 		defer r.br.NotifyExecutionState(false)
 		r.runInstruction(ctx)
 	}()
+	return true
 }
 
-// RunMacro starts a macro session asynchronously.
-func (r *Runner) RunMacro() {
+// RunMacro starts a macro session asynchronously. It returns false when a
+// session is already running.
+func (r *Runner) RunMacro() bool {
 	ctx := r.start()
 	if ctx == nil {
-		return
+		return false
 	}
 	go func() {
 		defer r.finish()
@@ -138,6 +168,7 @@ func (r *Runner) RunMacro() {
 		defer r.br.NotifyExecutionState(false)
 		r.runMacro(ctx)
 	}()
+	return true
 }
 
 func (r *Runner) runInstruction(ctx context.Context) {
@@ -146,6 +177,7 @@ func (r *Runner) runInstruction(ctx context.Context) {
 	}
 
 	sessionID := r.store.CreateSession()
+	r.setCurrentSession(sessionID)
 	sessionStart := time.Now()
 	applog.Logf("[%s] Session started", sessionID)
 
