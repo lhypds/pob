@@ -101,7 +101,7 @@ class SettingsService {
     }
 
     private func serializeJSON(_ object: Any) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
               var string = String(data: data, encoding: .utf8) else { return nil }
         string = string.replacingOccurrences(of: "\" : ", with: "\": ")
         return string
