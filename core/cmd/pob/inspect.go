@@ -143,9 +143,9 @@ func listInstances(root string, all bool) {
 
 	if len(shown) == 0 {
 		if all {
-			fmt.Printf("No instances under %s — start the app first.\n", filepath.Join(root, "logs"))
+			fmt.Printf("No instances under %s — start one with `pob launch`.\n", filepath.Join(root, "logs"))
 		} else {
-			fmt.Printf("No running instances under %s — start the app first.\n", filepath.Join(root, "logs"))
+			fmt.Printf("No running instances under %s — start one with `pob launch`.\n", filepath.Join(root, "logs"))
 			if hidden > 0 {
 				fmt.Printf("(%d stopped — see `pob list --all`)\n", hidden)
 			}

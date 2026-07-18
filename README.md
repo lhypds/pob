@@ -195,11 +195,13 @@ MCP Server
 ----------
 
 The MCP server is built into `pob-core` (SSE transport). It does not start
-with the app — start it from the CLI, targeting an explicit instance. The
-port defaults to `8032`; pass a different one after `start` when running
-several instances:
+with the app — start it from the CLI. The target is the only running
+instance, or an explicit `--instance` when several are running. The port
+defaults to `8032`; pass a different one after `start` when running several
+instances:
 
 ```
+pob mcp start [port]
 pob --instance <id> mcp start [port]
 ```
 
@@ -261,6 +263,7 @@ Flags:
 |---------|-------------|
 | *(none)* | List running instances; with `--instance` show that instance; with `--session` show that session |
 | `list [--all]` | List running instances with status, times and session count; `--all` includes stopped ones |
+| `launch` | Start a new app instance and print its ID (alias: `new`). The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
 | `status` | Live status of the target instance (executing, recording, model, MCP) |
 | `sessions` | List the target instance's sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
@@ -269,14 +272,20 @@ Flags:
 | `stop` | Stop the running session |
 | `screenshot` | Capture a screenshot; prints the saved file path |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
-| `mcp start [port]` | Start the MCP server and print its info (requires `--instance`; port defaults to `8032`). Registers the server in the user settings of installed agent CLIs (`claude`, `gemini`) |
+| `mcp start [port]` | Start the MCP server and print its info (port defaults to `8032`). Registers the server in the user settings of installed agent CLIs (`claude`, `gemini`) |
 | `mcp stop` | Stop the MCP server and remove those registrations |
 | `version` | Print the Pob version |
+
+With no `--instance` the commands target the only running instance; when
+several are running the choice must be explicit, so an instruction never
+lands on an instance you didn't pick. `pob launch` starts a fresh instance
+and prints its ID.
 
 Examples:
 
 ```
 pob                                      # what's running?
+pob launch                               # start a new app instance
 pob run "click Save and close the dialog"
 pob --instance 1752712345 start          # run instruction.txt on that instance
 pob --instance 1752712345 --session 1752712400   # session detail: plans, steps, usage

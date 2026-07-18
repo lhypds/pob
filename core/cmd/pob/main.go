@@ -7,11 +7,16 @@
 // Usage examples:
 //
 //	pob                              list instances
+//	pob launch                       start a new app instance
 //	pob --instance 1752712345        show that instance
 //	pob --instance X --session Y     show one session's details
 //	pob start                        run instruction.txt on the running instance
 //	pob run "open the settings"      replace instruction.txt, then run it
 //	pob --instance X mcp start       start the MCP server and print its info
+//
+// With no --instance the commands target the only running instance; when
+// several are running the choice must be explicit. `pob launch` starts a
+// fresh one.
 package main
 
 import (
@@ -44,6 +49,7 @@ Commands:
                      with --session show that session
   list [--all]       List running instances; --all includes stopped ones
                      (aliases: ls, instances)
+  launch             Start a new app instance and print its ID (alias: new)
   status             Live status of the target instance
   sessions           List the target instance's sessions
   start              Execute instruction.txt (the toolbar Execute button)
@@ -52,15 +58,19 @@ Commands:
   stop               Stop the running session
   screenshot         Capture a screenshot; prints the saved file path
   mcp status         Show MCP server info (URL, tools, client config)
-  mcp start [port]   Start the MCP server and print its info (requires --instance;
-                     port defaults to 8032). Also registers the server in the
-                     user settings of installed agent CLIs (claude, gemini).
+  mcp start [port]   Start the MCP server and print its info (port defaults
+                     to 8032). Also registers the server in the user settings
+                     of installed agent CLIs (claude, gemini).
   mcp stop           Stop the MCP server and remove those registrations
   version            Print the Pob version
   help               Show this help
 
+With no --instance the commands target the only running instance; when
+several are running, pick one with --instance.
+
 Examples:
   pob                          # what's running?
+  pob launch                   # start a new app instance
   pob run "click the Save button and close the dialog"
   pob --instance 1752712345 start
   pob --instance 1752712345 --session 1752712400
@@ -110,6 +120,9 @@ func main() {
 		all := len(args) > 1 && (args[1] == "--all" || args[1] == "-a" || args[1] == "all")
 		listInstances(root, all)
 
+	case "launch", "new":
+		launchInstance(root)
+
 	case "sessions":
 		listSessionsCmd(root, resolveAnyInstance(root, *instanceFlag))
 
@@ -148,11 +161,6 @@ func main() {
 			}
 			port = n
 		}
-		// Starting MCP binds the instance to the shared MCP port, so the
-		// choice must be explicit — no defaulting to "the only running one".
-		if sub == "start" && *instanceFlag == "" {
-			fail("mcp start needs an explicit target: pob --instance <id> mcp start (see `pob list`)")
-		}
 		cmdMCP(resolveRunningInstance(root, *instanceFlag), sub, port)
 
 	default:
@@ -186,15 +194,10 @@ func resolveRunningInstance(root, id string) *Instance {
 		}
 		return inst
 	}
-	var running []*Instance
-	for _, inst := range discoverInstances(root) {
-		if inst.Running {
-			running = append(running, inst)
-		}
-	}
+	running := runningInstances(root)
 	switch len(running) {
 	case 0:
-		fail("no running Pob instance found — start the app first")
+		fail("no running Pob instance found — start one with `pob launch`")
 	case 1:
 		return running[0]
 	}
@@ -204,6 +207,16 @@ func resolveRunningInstance(root, id string) *Instance {
 	}
 	fail("multiple running instances (%s) — pick one with --instance", strings.Join(ids, ", "))
 	return nil
+}
+
+func runningInstances(root string) []*Instance {
+	var running []*Instance
+	for _, inst := range discoverInstances(root) {
+		if inst.Running {
+			running = append(running, inst)
+		}
+	}
+	return running
 }
 
 // resolveAnyInstance returns an instance ID for inspection commands, which

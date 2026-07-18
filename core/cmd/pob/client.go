@@ -276,7 +276,7 @@ func printMCPInfo(info map[string]any) {
 		fmt.Printf("Tools:      %s\n", strings.Join(names, ", "))
 	}
 	if !running {
-		fmt.Println("\nStart it with: pob --instance <id> mcp start")
+		fmt.Println("\nStart it with: pob mcp start")
 		return
 	}
 	fmt.Println("\nMCP client config (e.g. Claude Desktop's claude_desktop_config.json):")
