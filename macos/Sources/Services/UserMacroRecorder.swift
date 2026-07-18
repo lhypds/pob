@@ -4,8 +4,10 @@ import AppKit
 /// record toggle is on and no session is executing. Uses global event
 /// monitors, which only receive events delivered to OTHER applications — so
 /// interactions with the Pob window itself (toolbar buttons, etc.) are never
-/// recorded. Requires Accessibility trust, which the app already needs for
-/// posting CGEvents.
+/// recorded. Only mouse actions inside the window content area are recorded;
+/// clicks, drags and scrolls elsewhere on screen are ignored, since replay
+/// coordinates are relative to that area. Requires Accessibility trust, which
+/// the app already needs for posting CGEvents.
 ///
 /// Output uses the same action grammar the Go core replays:
 /// move / click / rightClick / doubleClick / drag / scroll / typeText / keyPress.
@@ -114,16 +116,18 @@ final class UserMacroRecorder {
     // MARK: - Mouse
 
     private func handleMouse(_ event: NSEvent) {
-        guard let pixel = currentPixel() else { return }
+        let pixel = currentPixel() // nil when outside the window content area
         switch event.type {
         case .leftMouseDown:
             flushScroll()
             flushText()
-            leftDownPixel = pixel
+            leftDownPixel = pixel // nil outside the window: interaction ignored
 
         case .leftMouseUp:
             guard let down = leftDownPixel else { return }
             leftDownPixel = nil
+            // Released outside the window: drop the whole interaction.
+            guard let pixel else { return }
             let dx = pixel.x - down.x
             let dy = pixel.y - down.y
             if dx * dx + dy * dy > 100 { // >10 screenshot px: a drag, not a click
@@ -146,12 +150,14 @@ final class UserMacroRecorder {
             // clickCount >= 3 is already covered by the doubleClick upgrade.
 
         case .rightMouseUp:
+            guard let pixel else { return }
             flushScroll()
             flushText()
             emitMove(to: pixel)
             appendLine("rightClick()")
 
         case .scrollWheel:
+            guard let pixel else { return }
             flushText()
             if scrollPixel == nil { scrollPixel = pixel }
             let unit: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 40
@@ -263,12 +269,15 @@ final class UserMacroRecorder {
 
     /// Current mouse position converted to screenshot pixel coordinates
     /// (top-left of the window content area, same space the replay uses).
+    /// Returns nil when the mouse is outside the content area, so callers
+    /// skip actions that happen outside the window.
     private func currentPixel() -> CGPoint? {
         guard let window,
               let screen = window.screen ?? NSScreen.main else { return nil }
         let contentRect = window.convertToScreen(window.contentLayoutRect)
-        let scale = screen.backingScaleFactor
         let mouse = NSEvent.mouseLocation
+        guard contentRect.contains(mouse) else { return nil }
+        let scale = screen.backingScaleFactor
         return CGPoint(x: (mouse.x - contentRect.origin.x) * scale,
                        y: (contentRect.maxY - mouse.y) * scale)
     }
