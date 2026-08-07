@@ -7,6 +7,7 @@
 #include <json-glib/json-glib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // ── project root ────────────────────────────────────────────────────────────
@@ -36,7 +37,10 @@ static void acquire_instance_lock(void) {
     gchar *lock_path = g_build_filename(settings_project_root(), "logs",
                                         settings_instance_id(), ".lock", NULL);
     instance_lock_fd = open(lock_path, O_CREAT | O_RDWR, 0644);
-    if (instance_lock_fd >= 0) flock(instance_lock_fd, LOCK_EX);
+    // Non-blocking: another process holding it means another Pob is running,
+    // which settings_another_instance_is_running has already turned into a
+    // refusal to launch. Waiting here would hang the app instead.
+    if (instance_lock_fd >= 0) flock(instance_lock_fd, LOCK_EX | LOCK_NB);
     g_free(lock_path);
 }
 
@@ -56,14 +60,101 @@ static gboolean instance_is_running(const char *dir_path) {
     return TRUE;
 }
 
-// Reserves logs/pb-<uid>/ exclusively for this process (drawing another ID if
-// that one is taken, mirroring the Go core's newInstanceID) and seeds it with
-// a copy of the root settings.json so the instance reads and edits its own
-// settings. instruction.txt and macro.txt stay shared.
+#define INSTANCE_PREFIX "pb-"
+
+// Reserves a fresh logs/pb-<uid>/, drawing another ID if that one is taken.
+// The ID is "pb-<4 hex>", the same scheme the pico-hid firmware uses for its
+// "ph-" board id. The headerbar shows it beside the window buttons.
+static gchar *reserve_instance_id(const char *logs) {
+    for (;;) {
+        gchar *id = g_strdup_printf(INSTANCE_PREFIX "%04x", g_random_int() & 0xffff);
+        gchar *dir = g_build_filename(logs, id, NULL);
+        int rc = g_mkdir(dir, 0755);
+        g_free(dir);
+        if (rc == 0 || errno != EEXIST) return id;
+        g_free(id);
+    }
+}
+
+// The pb-* directory modified last, or NULL when there are none. By
+// modification time rather than by name: the directory is touched every time
+// a session is written into it, so the newest is the one that was in use.
+static gchar *most_recent_instance(const char *logs) {
+    GDir *dir = g_dir_open(logs, 0, NULL);
+    if (!dir) return NULL;
+
+    gchar *newest = NULL;
+    gint64 newest_at = 0;
+    const gchar *name;
+    while ((name = g_dir_read_name(dir))) {
+        if (!g_str_has_prefix(name, INSTANCE_PREFIX)) continue;
+        gchar *path = g_build_filename(logs, name, NULL);
+        GStatBuf st;
+        if (g_stat(path, &st) == 0 && S_ISDIR(st.st_mode) &&
+            (!newest || (gint64)st.st_mtime > newest_at)) {
+            g_free(newest);
+            newest = g_strdup(name);
+            newest_at = (gint64)st.st_mtime;
+        }
+        g_free(path);
+    }
+    g_dir_close(dir);
+    return newest;
+}
+
+// The machine's instance id — the same one on every run, recorded in
+// ~/.pob/instance the first time it is worked out. This mirrors the Go core's
+// ResolveInstanceID because either side can get there first: the shell
+// resolves it to show in the headerbar and passes it to pob-core with
+// --instance, but the CLI can reach ~/.pob without a shell at all.
 //
-// The ID is "pb-<4 hex>": the last two bytes of a fresh UID as lowercase hex,
-// the same scheme the pico-hid firmware uses for its "ph-" board id. The
-// headerbar shows it beside the window buttons.
+// A machine upgrading from the versions that took a fresh id per launch has a
+// logs/ full of pb-* directories. Rather than add one more, the one used last
+// is adopted; the rest stay where they are as history.
+static gchar *resolve_instance_id(const char *logs) {
+    gchar *pointer = root_path("instance");
+    gchar *contents = NULL;
+    if (g_file_get_contents(pointer, &contents, NULL, NULL)) {
+        gchar *id = g_strstrip(contents);
+        // Anything that isn't an instance id — a truncated or hand-edited
+        // file — sends us back to working it out, rather than into a
+        // directory named after junk.
+        if (g_str_has_prefix(id, INSTANCE_PREFIX) && !strchr(id, '/')) {
+            gchar *resolved = g_strdup(id);
+            g_free(contents);
+            g_free(pointer);
+            return resolved;
+        }
+        g_free(contents);
+    }
+
+    gchar *id = most_recent_instance(logs);
+    if (!id) id = reserve_instance_id(logs);
+    gchar *line = g_strconcat(id, "\n", NULL);
+    g_file_set_contents(pointer, line, -1, NULL);
+    g_free(line);
+    g_free(pointer);
+    return id;
+}
+
+// TRUE when another Pob process already has this machine's instance — it
+// holds the flock on logs/<instance>/.lock for as long as it runs. Checked at
+// startup, since only one Pob drives a desktop.
+gboolean settings_another_instance_is_running(void) {
+    gchar *logs = root_path("logs");
+    g_mkdir_with_parents(logs, 0755);
+    gchar *id = resolve_instance_id(logs);
+    gchar *dir = g_build_filename(logs, id, NULL);
+    gboolean running = instance_is_running(dir);
+    g_free(dir);
+    g_free(id);
+    g_free(logs);
+    return running;
+}
+
+// This instance's logs/<instance>/ directory, seeded with a copy of the root
+// settings.json so it reads and edits its own settings. instruction.txt and
+// macro.txt stay shared.
 const char *settings_instance_id(void) {
     static gchar *instance_id = NULL;
     if (instance_id) return instance_id;
@@ -71,14 +162,10 @@ const char *settings_instance_id(void) {
     gchar *logs = root_path("logs");
     g_mkdir_with_parents(logs, 0755);
 
-    for (;;) {
-        g_free(instance_id);
-        instance_id = g_strdup_printf("pb-%04x", g_random_int() & 0xffff);
-        gchar *dir = g_build_filename(logs, instance_id, NULL);
-        int rc = g_mkdir(dir, 0755);
-        g_free(dir);
-        if (rc == 0 || errno != EEXIST) break;
-    }
+    instance_id = resolve_instance_id(logs);
+    gchar *instance_dir = g_build_filename(logs, instance_id, NULL);
+    g_mkdir_with_parents(instance_dir, 0755);
+    g_free(instance_dir);
     acquire_instance_lock();
 
     // Seed this instance's settings.json from the root template.

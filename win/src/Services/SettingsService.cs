@@ -47,15 +47,14 @@ public static class SettingsService
     /// </summary>
     private static FileStream? _instanceLock;
 
+    private const string InstancePrefix = "pb-";
+
     private static string AllocateInstance()
     {
         string logs = RootPath("logs");
         Directory.CreateDirectory(logs);
 
-        // Reserve logs/pb-<uid>/, drawing another ID if that one is taken
-        // (mirrors the Go core's newInstanceID).
-        string id = NewInstanceId();
-        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        string id = ResolveInstanceId(logs);
         string dir = Path.Combine(logs, id);
         Directory.CreateDirectory(dir);
         AcquireInstanceLock(dir);
@@ -75,12 +74,115 @@ public static class SettingsService
     }
 
     /// <summary>
-    /// pb-&lt;4 hex&gt; — the last two bytes of a fresh UID as lowercase hex, the
-    /// same scheme the pico-hid firmware uses for its ph- board id. The
-    /// toolbar shows it beside the window buttons, so the id on screen names
-    /// the logs directory to look in.
+    /// The machine's instance id — the same one on every run, recorded in
+    /// ~/.pob/instance the first time it is worked out. This mirrors the Go
+    /// core's ResolveInstanceID because either side can get there first: the
+    /// shell resolves it to show in the toolbar and passes it to pob-core
+    /// with --instance, but the CLI can reach ~/.pob without a shell at all.
+    ///
+    /// A machine upgrading from the versions that took a fresh id per launch
+    /// has a logs/ full of pb-* directories. Rather than add one more, the one
+    /// used last is adopted; the rest stay where they are as history.
     /// </summary>
-    private static string NewInstanceId() => "pb-" + Guid.NewGuid().ToString("N")[28..];
+    private static string ResolveInstanceId(string logs)
+    {
+        string pointer = RootPath("instance");
+        try
+        {
+            string id = File.ReadAllText(pointer).Trim();
+            // Anything that isn't an instance id — a truncated or hand-edited
+            // file — sends us back to working it out, rather than into a
+            // directory named after junk.
+            if (id.StartsWith(InstancePrefix, StringComparison.Ordinal) &&
+                id.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0)
+            {
+                return id;
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        string resolved = MostRecentInstance(logs) ?? ReserveInstanceId(logs);
+        try
+        {
+            File.WriteAllText(pointer, resolved + Environment.NewLine);
+        }
+        catch (IOException)
+        {
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// The pb-* directory written to last, or null when there are none. By
+    /// last-write time rather than by name: the directory is touched every
+    /// time a session is written into it, so the newest is the one that was
+    /// actually in use.
+    /// </summary>
+    private static string? MostRecentInstance(string logs)
+    {
+        string[] dirs;
+        try
+        {
+            dirs = Directory.GetDirectories(logs, InstancePrefix + "*");
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+
+        string? newest = null;
+        DateTime newestAt = DateTime.MinValue;
+        foreach (string dir in dirs)
+        {
+            DateTime at;
+            try
+            {
+                at = Directory.GetLastWriteTimeUtc(dir);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            if (newest == null || at > newestAt)
+            {
+                newest = Path.GetFileName(dir);
+                newestAt = at;
+            }
+        }
+        return newest;
+    }
+
+    /// <summary>
+    /// Reserves a fresh pb-&lt;4 hex&gt; directory — the last two bytes of a new
+    /// UID as lowercase hex, the same scheme the pico-hid firmware uses for
+    /// its ph- board id. The toolbar shows it beside the window buttons, so
+    /// the id on screen names the logs directory to look in.
+    /// </summary>
+    private static string ReserveInstanceId(string logs)
+    {
+        string id = NewInstanceId();
+        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        return id;
+    }
+
+    private static string NewInstanceId() => InstancePrefix + Guid.NewGuid().ToString("N")[28..];
+
+    /// <summary>
+    /// True when another Pob process already has this machine's instance — it
+    /// holds the exclusive handle on logs/&lt;instance&gt;/.lock for as long as it
+    /// runs. Checked at launch, since only one Pob drives a desktop.
+    /// </summary>
+    public static bool AnotherInstanceIsRunning()
+    {
+        string logs = RootPath("logs");
+        Directory.CreateDirectory(logs);
+        return IsInstanceRunning(Path.Combine(logs, ResolveInstanceId(logs)));
+    }
 
     private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
 

@@ -6,10 +6,10 @@ import Foundation
 /// this service only resolves the project root, opens files in the user's
 /// editor, persists the window frame and clears user files on request.
 ///
-/// Each instance (one per window) reserves its own logs/<instance>/ directory
-/// at creation and seeds it with a copy of the root settings.json, so
-/// instances read and edit their own settings side by side. instruction.txt
-/// and macro.txt stay shared at the root.
+/// A machine has one instance and it keeps its id for good: the same
+/// logs/<instance>/ directory every run, seeded with a copy of the root
+/// settings.json the first time. instruction.txt and macro.txt stay shared at
+/// the root.
 class SettingsService {
     private let fileManager = FileManager.default
 
@@ -65,21 +65,8 @@ class SettingsService {
         let logs = root.appendingPathComponent("logs")
         try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
 
-        // Reserve logs/pb-<uid>/ exclusively; on the rare collision with an
-        // existing directory, draw another ID (mirrors the Go core's
-        // newInstanceID).
-        var id = Self.newInstanceID()
-        while true {
-            do {
-                try fileManager.createDirectory(at: logs.appendingPathComponent(id), withIntermediateDirectories: false)
-                break
-            } catch CocoaError.fileWriteFileExists {
-                id = Self.newInstanceID()
-            } catch {
-                break
-            }
-        }
-        instanceID = id
+        instanceID = Self.resolveInstanceID(fileManager, root: root, logs: logs)
+        try? fileManager.createDirectory(at: logs.appendingPathComponent(instanceID), withIntermediateDirectories: true)
         acquireInstanceLock()
 
         // Seed this instance's settings.json from the root template.
@@ -92,12 +79,85 @@ class SettingsService {
         }
     }
 
-    /// `pb-<4 hex>` — the last two bytes of a fresh UID as lowercase hex,
-    /// the same scheme the pico-hid firmware uses for its `ph-` board id.
-    /// Shown in the toolbar beside the window buttons and used as the logs
-    /// directory name, so the id on screen names the directory to look in.
-    private static func newInstanceID() -> String {
-        "pb-" + UUID().uuidString.suffix(4).lowercased()
+    /// Every instance id starts with this.
+    private static let instancePrefix = "pb-"
+
+    /// The machine's instance id — the same one on every run, recorded in
+    /// ~/.pob/instance the first time it is worked out. This mirrors the Go
+    /// core's ResolveInstanceID because either side can get there first: the
+    /// shell resolves it to show in the toolbar and passes it to pob-core
+    /// with --instance, but the CLI can reach ~/.pob without a shell at all.
+    ///
+    /// A machine upgrading from the versions that took a fresh id per launch
+    /// has a logs/ full of pb-* directories. Rather than add one more, the one
+    /// used last is adopted; the rest stay where they are as history.
+    private static func resolveInstanceID(_ fileManager: FileManager, root: URL, logs: URL) -> String {
+        let pointer = root.appendingPathComponent("instance")
+
+        if let contents = try? String(contentsOf: pointer, encoding: .utf8) {
+            let id = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Anything that isn't an instance id — a truncated or hand-edited
+            // file — sends us back to working it out, rather than into a
+            // directory named after junk.
+            if id.hasPrefix(instancePrefix), !id.contains("/") {
+                return id
+            }
+        }
+
+        let id = mostRecentInstance(fileManager, logs: logs) ?? reserveInstanceID(fileManager, logs: logs)
+        try? (id + "\n").write(to: pointer, atomically: true, encoding: .utf8)
+        return id
+    }
+
+    /// The pb-* directory modified last, or nil when there are none. By
+    /// modification time rather than by name: the directory is touched every
+    /// time a session is written into it, so the newest is the one that was
+    /// actually in use.
+    private static func mostRecentInstance(_ fileManager: FileManager, logs: URL) -> String? {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: logs, includingPropertiesForKeys: keys) else { return nil }
+
+        var newest: (id: String, at: Date)?
+        for child in children where child.lastPathComponent.hasPrefix(instancePrefix) {
+            guard let values = try? child.resourceValues(forKeys: Set(keys)),
+                  values.isDirectory == true,
+                  let at = values.contentModificationDate else { continue }
+            if newest == nil || at > newest!.at {
+                newest = (child.lastPathComponent, at)
+            }
+        }
+        return newest?.id
+    }
+
+    /// Reserves a fresh `pb-<4 hex>` directory — the last two bytes of a new
+    /// UID as lowercase hex, the same scheme the pico-hid firmware uses for
+    /// its `ph-` board id. Shown in the toolbar beside the window buttons and
+    /// used as the logs directory name, so the id on screen names the
+    /// directory to look in.
+    private static func reserveInstanceID(_ fileManager: FileManager, logs: URL) -> String {
+        while true {
+            let id = instancePrefix + UUID().uuidString.suffix(4).lowercased()
+            do {
+                try fileManager.createDirectory(at: logs.appendingPathComponent(id), withIntermediateDirectories: false)
+                return id
+            } catch CocoaError.fileWriteFileExists {
+                continue // drawn one that already exists; draw another
+            } catch {
+                return id
+            }
+        }
+    }
+
+    /// True when another Pob process already has this machine's instance —
+    /// it holds the flock on logs/<instance>/.lock for as long as it runs.
+    /// Checked at launch, since only one Pob drives a desktop.
+    static func anotherInstanceIsRunning() -> Bool {
+        let fileManager = FileManager.default
+        let root = resolveProjectRoot(fileManager)
+        let logs = root.appendingPathComponent("logs")
+        let id = resolveInstanceID(fileManager, root: root, logs: logs)
+        return isInstanceRunning(logs.appendingPathComponent(id))
     }
 
     deinit {
@@ -203,7 +263,7 @@ class SettingsService {
         // logs/<instance>/.lock, so a held lock means "in use, skip".
         if let children = try? fileManager.contentsOfDirectory(at: logsFolder, includingPropertiesForKeys: nil) {
             for child in children where child.lastPathComponent != instanceID {
-                if isInstanceRunning(child) { continue }
+                if Self.isInstanceRunning(child) { continue }
                 try? fileManager.removeItem(at: child)
             }
         }
@@ -229,13 +289,16 @@ class SettingsService {
         let lockPath = logsFolder.appendingPathComponent(instanceID).appendingPathComponent(".lock").path
         lockFD = open(lockPath, O_CREAT | O_RDWR, 0o644)
         if lockFD >= 0 {
-            flock(lockFD, LOCK_EX)
+            // Non-blocking: another process holding it means another Pob is
+            // running, which anotherInstanceIsRunning has already turned into
+            // a refusal to launch. Waiting here would hang the app instead.
+            flock(lockFD, LOCK_EX | LOCK_NB)
         }
     }
 
     /// True when a live instance still holds the directory's .lock. Entries
     /// without a lock file (stale instances, stray files) count as not running.
-    private func isInstanceRunning(_ dir: URL) -> Bool {
+    private static func isInstanceRunning(_ dir: URL) -> Bool {
         let fd = open(dir.appendingPathComponent(".lock").path, O_RDWR)
         guard fd >= 0 else { return false }
         defer { close(fd) }

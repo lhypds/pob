@@ -2,17 +2,26 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-    /// Set by ContentView with the SwiftUI openWindow action, so the AppKit
-    /// menu can open a new WindowGroup window (a new instance) in-process —
-    /// the VSCode model: one app, one window per instance.
-    static var openNewInstanceWindow: (() -> Void)?
-
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
+
+        // One Pob drives a desktop: there is one pointer and one focused
+        // window to drive it with, so a second copy would only fight the
+        // first for both. `open` reuses a running app, but the dev scripts
+        // run the binary directly, which is where a second one comes from.
+        if SettingsService.anotherInstanceIsRunning() {
+            let alert = NSAlert()
+            alert.messageText = "Pob is already running"
+            alert.informativeText = "Only one Pob can run at a time — it drives the desktop, and there is one pointer to drive it with. Use the window that is already open."
+            alert.alertStyle = .warning
+            alert.runModal()
+            NSApplication.shared.terminate(nil)
+            return
+        }
 
         createMenu()
 
@@ -66,12 +75,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let mainMenu = NSMenu()
         let appMenu = NSMenu()
 
-        let newInstanceMenuItem = NSMenuItem(title: "New Instance", action: #selector(newInstance), keyEquivalent: "n")
-        newInstanceMenuItem.target = self
-        appMenu.addItem(newInstanceMenuItem)
-
-        appMenu.addItem(.separator())
-
         // Title is state-dependent (Install/Uninstall) — kept current by
         // validateMenuItem(_:) each time the menu opens.
         let cliMenuItem = NSMenuItem(title: "Install 'pob' Command…", action: #selector(toggleCLIInstall), keyEquivalent: "")
@@ -101,8 +104,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Dock-icon clicks and "open untitled" events must never let SwiftUI
-    /// open an extra window (each window is a full instance here) — surface
-    /// the existing windows instead.
+    /// open an extra window — there is one instance and one window for it —
+    /// so surface the existing window instead.
     func applicationShouldOpenUntitledFile(_: NSApplication) -> Bool {
         false
     }
@@ -114,22 +117,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
         }
         return false
-    }
-
-    /// Right-click menu on the Dock icon.
-    func applicationDockMenu(_: NSApplication) -> NSMenu? {
-        let menu = NSMenu()
-        let newInstanceItem = NSMenuItem(title: "New Instance", action: #selector(newInstance), keyEquivalent: "")
-        newInstanceItem.target = self
-        menu.addItem(newInstanceItem)
-        return menu
-    }
-
-    /// Opens a new window in this process; its ContentView creates a fresh
-    /// PobInstance with its own logs/<instance>/ directory, settings copy and
-    /// pob-core child.
-    @objc private func newInstance() {
-        AppDelegate.openNewInstanceWindow?()
     }
 
     // MARK: - "pob" command-line tool

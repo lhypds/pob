@@ -11,10 +11,14 @@
 // Absolute project root path (cached after first call, never freed).
 const char *settings_project_root(void);
 
-// logs/<instance> directory id reserved for this process (cached after first
-// call, never freed). Holds this instance's settings.json, seeded from the
-// root settings.json; passed to pob-core via --instance.
+// The machine's logs/<instance> directory id — the same one on every run
+// (cached after first call, never freed). Holds this instance's settings.json,
+// seeded from the root settings.json; passed to pob-core via --instance.
 const char *settings_instance_id(void);
+
+// TRUE when another Pob process is already running. Only one Pob drives a
+// desktop, so this is checked before the window is built.
+gboolean settings_another_instance_is_running(void);
 
 // Saved window frame from settings.json (window_x/y/width/height).
 // Returns FALSE when any key is missing.

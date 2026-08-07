@@ -554,30 +554,15 @@ static void on_trash_clicked(GtkButton *b, gpointer d) {
 
 // ── headerbar (toolbar + context menu + drag lock) ──────────────────────────
 
-// Launches another copy of this executable from the project root; it
-// reserves its own logs/<instance>/ directory and settings.json copy.
-static void on_new_instance(void) {
-    gchar *self = g_file_read_link("/proc/self/exe", NULL);
-    if (!self) return;
-    gchar *argv[] = {self, NULL};
-    g_spawn_async(settings_project_root(), argv, NULL, G_SPAWN_DEFAULT,
-                  NULL, NULL, NULL, NULL);
-    g_free(self);
-}
-
 static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
     (void)w; (void)d;
     if (ev->button == 3) {
         GtkWidget *menu = gtk_menu_new();
-        GtkWidget *new_instance = gtk_menu_item_new_with_label("New Instance");
         GtkWidget *about = gtk_menu_item_new_with_label("About Pob");
         GtkWidget *quit = gtk_menu_item_new_with_label("Quit Pob");
-        g_signal_connect_swapped(new_instance, "activate", G_CALLBACK(on_new_instance), NULL);
         g_signal_connect_swapped(about, "activate", G_CALLBACK(show_about_dialog), NULL);
         g_signal_connect_swapped(quit, "activate", G_CALLBACK(g_application_quit),
                                  G_APPLICATION(g_state.app));
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), new_instance);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), about);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit);
@@ -867,6 +852,25 @@ static void on_activate(GtkApplication *app, gpointer data) {
         return;
     }
 
+    // One Pob drives a desktop: there is one pointer and one focused window
+    // to drive it with, so a second copy would only fight the first for both.
+    // GApplication normally hands a second launch to the running one and this
+    // never fires; it is here for the case where it cannot — no session bus,
+    // which is ordinary enough in a container.
+    if (settings_another_instance_is_running()) {
+        GtkWidget *dialog = gtk_message_dialog_new(
+            NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_OK,
+            "Pob is already running");
+        gtk_message_dialog_format_secondary_text(
+            GTK_MESSAGE_DIALOG(dialog),
+            "Only one Pob can run at a time — it drives the desktop, and there "
+            "is one pointer to drive it with. Use the window that is already open.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        g_application_quit(G_APPLICATION(app));
+        return;
+    }
+
     install_css();
 
     GtkWidget *win = gtk_application_window_new(app);
@@ -946,8 +950,17 @@ int main(int argc, char **argv) {
     // in its ON look.
     g_state.is_click_through = TRUE;
 
-    GtkApplication *app = gtk_application_new("jp.co.linktivity.pob",
-                                              G_APPLICATION_NON_UNIQUE);
+    // Unique, not NON_UNIQUE: a second launch should reach the Pob already
+    // running and present its window, not start a rival for the pointer.
+    // (G_APPLICATION_DEFAULT_FLAGS is the GLib 2.74 name for what
+    // G_APPLICATION_FLAGS_NONE meant; the old one is still needed to build on
+    // distributions that predate it.)
+#if GLIB_CHECK_VERSION(2, 74, 0)
+    GApplicationFlags app_flags = G_APPLICATION_DEFAULT_FLAGS;
+#else
+    GApplicationFlags app_flags = G_APPLICATION_FLAGS_NONE;
+#endif
+    GtkApplication *app = gtk_application_new("jp.co.linktivity.pob", app_flags);
     g_state.app = app;
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL);
     g_signal_connect(app, "shutdown", G_CALLBACK(on_shutdown), NULL);
