@@ -15,15 +15,12 @@ import (
 	"time"
 )
 
-// launchInstance starts a new Pob app instance and returns it once its
-// control API is up; exits with an error when the app cannot be found or
-// the new instance never answers.
+// launchInstance starts the Pob app and returns the instance once its control
+// API is up; exits with an error when the app is already running, cannot be
+// found, or never answers.
 func launchInstance(root string) *Instance {
-	before := make(map[string]bool)
-	for _, inst := range discoverInstances(root) {
-		if inst.Running {
-			before[inst.ID] = true
-		}
+	if inst := theInstance(root); inst.Running {
+		fail("Pob is already running (%s)", inst.ID)
 	}
 
 	app, err := findApp()
@@ -37,15 +34,13 @@ func launchInstance(root string) *Instance {
 
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		for _, inst := range discoverInstances(root) {
-			if inst.Running && !before[inst.ID] {
-				fmt.Printf("Instance %s is running.\n", inst.ID)
-				return inst
-			}
+		if inst := theInstance(root); inst.Running {
+			fmt.Printf("Instance %s is running.\n", inst.ID)
+			return inst
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
-	fail("Pob was launched but no new instance came up within 30s — check %s", filepath.Join(root, "app.log"))
+	fail("Pob was launched but did not come up within 30s — check %s", filepath.Join(root, "app.log"))
 	return nil
 }
 
@@ -89,12 +84,15 @@ func findApp() (string, error) {
 }
 
 // startApp launches the app fully detached from this CLI: .app bundles go
-// through `open -n` (a fresh instance even when one is already running),
-// bare binaries get their own session with output appended to <root>/app.log
-// like the dev start scripts do.
+// through `open`, bare binaries get their own session with output appended to
+// <root>/app.log like the dev start scripts do.
+//
+// Plain `open`, not `open -n`: the caller has already established that Pob is
+// not running, and -n exists to start a second copy alongside a first, which
+// is the thing that is no longer wanted.
 func startApp(app, root string) error {
 	if strings.HasSuffix(app, ".app") {
-		return exec.Command("open", "-n", app).Run()
+		return exec.Command("open", app).Run()
 	}
 	logFile, err := os.OpenFile(filepath.Join(root, "app.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {

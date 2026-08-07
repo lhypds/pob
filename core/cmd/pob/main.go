@@ -1,22 +1,17 @@
-// pob is the command-line interface to Pob. It discovers running instances
-// through logs/<instance>/control.json and drives them over the localhost
-// control API served by pob-core (see internal/ctlserver); log and session
-// inspection reads the logs/ tree directly, so it also works for stopped
-// instances.
+// pob is the command-line interface to Pob. A machine runs one instance and
+// it keeps one id, so there is nothing to pick between: the commands drive it
+// over the localhost control API served by pob-core (see internal/ctlserver),
+// found through logs/<instance>/control.json. Log and session inspection reads
+// the logs/ tree directly, so it also works when the app is not running.
 //
 // Usage examples:
 //
-//	pob                              list instances
-//	pob launch                       start a new app instance
-//	pob --instance 1752712345        show that instance
-//	pob --instance X --session Y     show one session's details
-//	pob start                        run instruction.txt on the running instance
+//	pob                              show the instance
+//	pob launch                       start the app
+//	pob --session Y                  show one session's details
+//	pob start                        run instruction.txt
 //	pob run "open the settings"      replace instruction.txt, then run it
-//	pob --instance X mcp start       start the MCP server and print its info
-//
-// With no --instance the commands target the only running instance; when
-// several are running the choice must be explicit. `pob launch` starts a
-// fresh one.
+//	pob mcp start                    start the MCP server and print its info
 package main
 
 import (
@@ -41,17 +36,14 @@ All project files (settings.json, instruction.txt, macro.txt, logs/) live in
 Usage: pob [flags] [command] [args]
 
 Flags:
-  --instance <id>    Target instance (default: the only running one)
   --session <id>     Target session; with no command, shows its details
 
 Commands:
-  (none)             List running instances; with --instance show that instance;
-                     with --session show that session
-  list [--all]       List running instances; --all includes stopped ones
-                     (aliases: ls, instances)
-  launch             Start a new app instance and print its ID (alias: new)
-  status             Live status of the target instance
-  sessions           List the target instance's sessions
+  (none)             Show the instance and its sessions; with --session show
+                     that session
+  launch             Start the app (alias: new)
+  status             Live status of the instance
+  sessions           List the instance's sessions
   start              Execute instruction.txt (the toolbar Execute button)
   run <text...>      Replace instruction.txt with <text>, then execute it
   macro              Execute macro.txt
@@ -65,16 +57,12 @@ Commands:
   version            Print the Pob version
   help               Show this help
 
-With no --instance the commands target the only running instance; when
-several are running, pick one with --instance.
-
 Examples:
   pob                          # what's running?
-  pob launch                   # start a new app instance
+  pob launch                   # start the app
   pob run "click the Save button and close the dialog"
-  pob --instance 1752712345 start
-  pob --instance 1752712345 --session 1752712400
-  pob --instance 1752712345 mcp start
+  pob --session 1752712400
+  pob mcp start
 `
 
 func fail(format string, args ...any) {
@@ -83,7 +71,6 @@ func fail(format string, args ...any) {
 }
 
 func main() {
-	instanceFlag := flag.String("instance", "", "target instance ID")
 	sessionFlag := flag.String("session", "", "target session ID")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
@@ -107,46 +94,39 @@ func main() {
 
 	switch command {
 	case "":
-		switch {
-		case *sessionFlag != "":
-			showSession(root, resolveAnyInstance(root, *instanceFlag), *sessionFlag)
-		case *instanceFlag != "":
-			showInstance(root, *instanceFlag)
-		default:
-			listInstances(root, false)
+		if *sessionFlag != "" {
+			showSession(root, theInstance(root).ID, *sessionFlag)
+			return
 		}
-
-	case "list", "ls", "instances":
-		all := len(args) > 1 && (args[1] == "--all" || args[1] == "-a" || args[1] == "all")
-		listInstances(root, all)
+		showInstance(root)
 
 	case "launch", "new":
 		launchInstance(root)
 
 	case "sessions":
-		listSessionsCmd(root, resolveAnyInstance(root, *instanceFlag))
+		listSessionsCmd(root, theInstance(root).ID)
 
 	case "status":
-		showStatus(resolveRunningInstance(root, *instanceFlag))
+		showStatus(runningInstance(root))
 
 	case "start":
-		cmdStart(resolveRunningInstance(root, *instanceFlag), "")
+		cmdStart(runningInstance(root), "")
 
 	case "run":
 		text := strings.TrimSpace(strings.Join(args[1:], " "))
 		if text == "" {
 			fail("run needs the instruction text: pob run \"open the settings\"")
 		}
-		cmdStart(resolveRunningInstance(root, *instanceFlag), text)
+		cmdStart(runningInstance(root), text)
 
 	case "macro":
-		cmdMacro(resolveRunningInstance(root, *instanceFlag))
+		cmdMacro(runningInstance(root))
 
 	case "stop":
-		cmdStop(resolveRunningInstance(root, *instanceFlag))
+		cmdStop(runningInstance(root))
 
 	case "screenshot":
-		cmdScreenshot(resolveRunningInstance(root, *instanceFlag))
+		cmdScreenshot(runningInstance(root))
 
 	case "mcp":
 		sub := ""
@@ -161,7 +141,7 @@ func main() {
 			}
 			port = n
 		}
-		cmdMCP(resolveRunningInstance(root, *instanceFlag), sub, port)
+		cmdMCP(runningInstance(root), sub, port)
 
 	default:
 		fail("unknown command %q — run `pob help`", command)
@@ -181,70 +161,12 @@ func projectRoot() string {
 	return root
 }
 
-// resolveRunningInstance returns the live instance to control: the one named
-// by --instance (which must be running), or the only running one.
-func resolveRunningInstance(root, id string) *Instance {
-	if id != "" {
-		inst := loadInstance(root, id)
-		if inst == nil {
-			fail("instance %s not found under %s", id, filepath.Join(root, "logs"))
-		}
-		if !inst.Running {
-			fail("instance %s is not running", id)
-		}
-		return inst
+// runningInstance is the instance for the commands that drive a live app,
+// which is every command that isn't reading the logs.
+func runningInstance(root string) *Instance {
+	inst := theInstance(root)
+	if !inst.Running {
+		fail("Pob is not running — start it with `pob launch`")
 	}
-	running := runningInstances(root)
-	switch len(running) {
-	case 0:
-		fail("no running Pob instance found — start one with `pob launch`")
-	case 1:
-		return running[0]
-	}
-	ids := make([]string, len(running))
-	for i, inst := range running {
-		ids[i] = inst.ID
-	}
-	fail("multiple running instances (%s) — pick one with --instance", strings.Join(ids, ", "))
-	return nil
-}
-
-func runningInstances(root string) []*Instance {
-	var running []*Instance
-	for _, inst := range discoverInstances(root) {
-		if inst.Running {
-			running = append(running, inst)
-		}
-	}
-	return running
-}
-
-// resolveAnyInstance returns an instance ID for inspection commands, which
-// work on stopped instances too: --instance if given, else the only running
-// instance, else the only instance on disk.
-func resolveAnyInstance(root, id string) string {
-	if id != "" {
-		if loadInstance(root, id) == nil {
-			fail("instance %s not found under %s", id, filepath.Join(root, "logs"))
-		}
-		return id
-	}
-	instances := discoverInstances(root)
-	if len(instances) == 0 {
-		fail("no instances found under %s", filepath.Join(root, "logs"))
-	}
-	var running []*Instance
-	for _, inst := range instances {
-		if inst.Running {
-			running = append(running, inst)
-		}
-	}
-	if len(running) == 1 {
-		return running[0].ID
-	}
-	if len(running) == 0 && len(instances) == 1 {
-		return instances[0].ID
-	}
-	fail("several instances match — pick one with --instance (see `pob list`)")
-	return ""
+	return inst
 }

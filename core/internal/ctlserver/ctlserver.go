@@ -142,13 +142,11 @@ func (s *Server) webUIInfo() map[string]any {
 	if port == 0 {
 		port = s.cfg.WebUIPort()
 	}
-	urls := s.web.URLs()
 	return map[string]any{
-		"running":    s.web.Running(),
-		"port":       port,
-		"url":        s.web.URL(),
-		"urls":       urls,
-		"holds_port": s.web.HoldsPort(),
+		"running": s.web.Running(),
+		"port":    port,
+		"url":     s.web.URL(),
+		"urls":    s.web.URLs(),
 	}
 }
 

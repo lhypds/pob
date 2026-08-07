@@ -1,6 +1,7 @@
 // Package storage writes the instance/session/plan/step/verification log
-// tree under <root>/logs/ (see README "Logs" section). Each process gets its
-// own instance directory so multiple app instances can run side by side.
+// tree under <root>/logs/ (see README "Logs" section). One instance runs on a
+// machine and it keeps one id for good, so every session it ever writes lands
+// in the same logs/<instance>/ directory — see ResolveInstanceID.
 package storage
 
 import (
@@ -11,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -22,17 +24,26 @@ type Storage struct {
 	macro        func() string
 }
 
+// InstancePrefix is what every instance id starts with. The shells match on
+// it to tell an instance directory from anything else under logs/.
+const InstancePrefix = "pb-"
+
+// instancePointer holds the machine's one instance id. It sits beside logs/
+// rather than inside it, so clearing the logs doesn't change which instance
+// this machine is — the id is in the toolbar and in the web UI address, and
+// both should survive a tidy-up.
+const instancePointer = "instance"
+
 // New creates logs/<instance>/ for this process; every session it writes
-// lives under that directory. A non-empty instanceID reuses a directory the
-// shell already allocated (which also holds this instance's settings.json);
-// otherwise a fresh pb-<uid> one is reserved.
+// lives under that directory. instanceID is the one the shell resolved and
+// passed in; an empty one is resolved here, which is what the CLI does when
+// it runs without a shell.
 func New(logsDir, instanceID string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
 	_ = os.MkdirAll(logsDir, 0o755)
 	if instanceID == "" {
-		instanceID = newInstanceID(logsDir)
-	} else {
-		_ = os.MkdirAll(filepath.Join(logsDir, instanceID), 0o755)
+		instanceID = ResolveInstanceID(filepath.Dir(logsDir))
 	}
+	_ = os.MkdirAll(filepath.Join(logsDir, instanceID), 0o755)
 	return &Storage{
 		logsDir:      logsDir,
 		instanceID:   instanceID,
@@ -40,6 +51,75 @@ func New(logsDir, instanceID string, settingsDict func() map[string]any, instruc
 		instruction:  instruction,
 		macro:        macro,
 	}
+}
+
+// ResolveInstanceID returns the machine's instance id, the same one on every
+// run. It is recorded in <root>/instance the first time it is worked out.
+//
+// A machine upgrading from the versions that started a fresh instance per
+// launch has a logs/ full of pb-* directories. Rather than add one more, the
+// most recently used is adopted as the one instance from here on; the others
+// stay where they are as history.
+//
+// The shells resolve the id the same way before spawning pob-core, since they
+// need it for the toolbar and their own settings file. Whoever gets there
+// first writes the pointer and the other reads it.
+func ResolveInstanceID(root string) string {
+	logsDir := filepath.Join(root, "logs")
+	pointer := filepath.Join(root, instancePointer)
+
+	if id := readInstancePointer(pointer); id != "" {
+		return id
+	}
+
+	id := mostRecentInstance(logsDir)
+	if id == "" {
+		id = newInstanceID(logsDir)
+	}
+	_ = os.MkdirAll(root, 0o755)
+	_ = os.WriteFile(pointer, []byte(id+"\n"), 0o644)
+	return id
+}
+
+// readInstancePointer reads <root>/instance, ignoring anything that isn't an
+// instance id — a truncated or hand-edited file should send the machine back
+// to working the id out rather than into a directory named after junk.
+func readInstancePointer(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	id := strings.TrimSpace(string(data))
+	if !strings.HasPrefix(id, InstancePrefix) || strings.ContainsAny(id, `/\`) {
+		return ""
+	}
+	return id
+}
+
+// mostRecentInstance is the pb-* directory under logsDir modified last, or ""
+// when there are none. Modification time rather than the id or instance.json:
+// the directory is touched every time a session is written into it, so the
+// newest is the one that was actually being used.
+func mostRecentInstance(logsDir string) string {
+	entries, err := os.ReadDir(logsDir)
+	if err != nil {
+		return ""
+	}
+	var newest string
+	var newestAt time.Time
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), InstancePrefix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestAt) {
+			newest, newestAt = entry.Name(), info.ModTime()
+		}
+	}
+	return newest
 }
 
 // newInstanceID reserves a pb-<uid> directory under logsDir. If the ID is
@@ -66,7 +146,7 @@ func instanceID() string {
 		uid[0] = byte(n >> 8)
 		uid[1] = byte(n)
 	}
-	return fmt.Sprintf("pb-%02x%02x", uid[0], uid[1])
+	return fmt.Sprintf("%s%02x%02x", InstancePrefix, uid[0], uid[1])
 }
 
 func (s *Storage) InstanceID() string { return s.instanceID }

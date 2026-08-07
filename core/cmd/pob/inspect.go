@@ -127,53 +127,8 @@ func listSessions(instanceDir string) []sessionInfo {
 
 // --- views ----------------------------------------------------------------
 
-// listInstances prints running instances; with all it includes stopped ones.
-func listInstances(root string, all bool) {
-	instances := discoverInstances(root)
-	shown := instances
-	if !all {
-		shown = nil
-		for _, inst := range instances {
-			if inst.Running {
-				shown = append(shown, inst)
-			}
-		}
-	}
-	hidden := len(instances) - len(shown)
-
-	if len(shown) == 0 {
-		if all {
-			fmt.Printf("No instances under %s — start one with `pob launch`.\n", filepath.Join(root, "logs"))
-		} else {
-			fmt.Printf("No running instances under %s — start one with `pob launch`.\n", filepath.Join(root, "logs"))
-			if hidden > 0 {
-				fmt.Printf("(%d stopped — see `pob list --all`)\n", hidden)
-			}
-		}
-		return
-	}
-
-	fmt.Printf("%-13s %-9s %-20s %-20s %s\n", "INSTANCE", "STATUS", "STARTED", "ENDED", "SESSIONS")
-	for _, inst := range shown {
-		status := "stopped"
-		ended := formatTime(inst.EndTime)
-		if inst.Running {
-			status = "running"
-			ended = "—"
-		}
-		fmt.Printf("%-13s %-9s %-20s %-20s %d\n",
-			inst.ID, status, formatTime(inst.StartTime), ended, len(listSessions(inst.Dir)))
-	}
-	if hidden > 0 {
-		fmt.Printf("(%d stopped not shown — see `pob list --all`)\n", hidden)
-	}
-}
-
-func showInstance(root, id string) {
-	inst := loadInstance(root, id)
-	if inst == nil {
-		fail("instance %s not found under %s", id, filepath.Join(root, "logs"))
-	}
+func showInstance(root string) {
+	inst := theInstance(root)
 
 	if inst.Running {
 		showStatus(inst)
