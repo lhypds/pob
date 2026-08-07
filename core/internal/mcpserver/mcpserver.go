@@ -7,13 +7,17 @@
 package mcpserver
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +70,10 @@ func (s *Server) Start(port int) error {
 			applog.Logf("MCPServer: listener failed: %v", err)
 		}
 	}()
+	// Show the virtual cursor for as long as the server is up — an MCP client
+	// can move it at any time, and an invisible cursor makes those moves look
+	// like nothing happened.
+	s.br.NotifyMCPState(true)
 	return nil
 }
 
@@ -82,6 +90,7 @@ func (s *Server) Stop() {
 	// Close (not Shutdown): SSE streams are long-lived, so a graceful drain
 	// would block until every client disconnects.
 	_ = server.Close()
+	s.br.NotifyMCPState(false)
 	applog.Log("MCPServer: stopped")
 }
 
@@ -284,12 +293,21 @@ func toolDefinitions() []any {
 		return map[string]any{"type": "string", "description": description}
 	}
 
+	// Absolute coordinates are screenshot pixels as reported by take_screenshot,
+	// which is also what the position line of every result refers to.
+	absX := num("Target x in screenshot pixels, measured from the left edge.")
+	absY := num("Target y in screenshot pixels, measured from the top edge.")
+	xy := func() map[string]any { return map[string]any{"x": absX, "y": absY} }
+
 	return []any{
 		tool("take_screenshot",
-			"Capture a screenshot of the Pob window and return it as a PNG image. "+
-				"All crop parameters are optional. When all four are provided, only that region is "+
-				"captured. Coordinates are in screenshot pixels, origin at top-left. Set with_cursor "+
-				"to true to draw the virtual cursor into the image.",
+			"Capture a screenshot of the Pob window and return it as a PNG image, plus a text line "+
+				"giving the image size. Start here: the returned pixel dimensions are the coordinate "+
+				"space every other tool uses. All crop parameters are optional. When all four are "+
+				"provided, only that region is captured — note that crops shift the origin, so read "+
+				"coordinates for later clicks off an uncropped shot. Coordinates are in screenshot "+
+				"pixels, origin at top-left. Set with_cursor to true to draw the virtual cursor into "+
+				"the image.",
 			map[string]any{
 				"crop_x":      map[string]any{"type": "integer", "description": "Left edge in screenshot pixels."},
 				"crop_y":      map[string]any{"type": "integer", "description": "Top edge in screenshot pixels."},
@@ -297,6 +315,10 @@ func toolDefinitions() []any {
 				"crop_height": map[string]any{"type": "integer", "description": "Height in screenshot pixels."},
 				"with_cursor": map[string]any{"type": "boolean", "description": "Draw the virtual cursor into the image. Default false."},
 			}, nil),
+		tool("get_cursor_position",
+			"Return the current virtual cursor position in screenshot pixels without moving or "+
+				"clicking anything.",
+			nil, nil),
 		tool("reset_cursor",
 			"Reset the virtual cursor to its home position and return the new position. "+
 				"Use this to get to a known state before a sequence of relative moves.",
@@ -304,11 +326,17 @@ func toolDefinitions() []any {
 		tool("move_cursor",
 			"Move the virtual cursor by a relative pixel offset in screenshot space "+
 				"(origin = top-left, x increases right, y increases down) and return the new position. "+
-				"Take a screenshot with with_cursor=true to see where the cursor is.",
+				"Use this to nudge an already-close cursor; prefer move_cursor_to when you can read the "+
+				"target off a screenshot.",
 			map[string]any{
 				"dx": num("Horizontal offset in screenshot pixels. Positive = right, negative = left."),
 				"dy": num("Vertical offset in screenshot pixels. Positive = down, negative = up."),
 			}, []string{"dx", "dy"}),
+		tool("move_cursor_to",
+			"Move the virtual cursor to an absolute position in screenshot pixels and return the new "+
+				"position. This is the reliable way to aim: read the target's coordinates off a "+
+				"screenshot and pass them directly.",
+			xy(), []string{"x", "y"}),
 		tool("click",
 			"Left-click at the current virtual cursor position.",
 			nil, nil),
@@ -318,6 +346,19 @@ func toolDefinitions() []any {
 		tool("double_click",
 			"Double-click at the current virtual cursor position.",
 			nil, nil),
+		tool("move_and_click",
+			"Move the virtual cursor to an absolute screenshot-pixel position and left-click there, in "+
+				"one step. Preferred over move_cursor_to + click for clicking something you located in a "+
+				"screenshot.",
+			xy(), []string{"x", "y"}),
+		tool("move_and_right_click",
+			"Move the virtual cursor to an absolute screenshot-pixel position and right-click there, in "+
+				"one step — e.g. to open a context menu.",
+			xy(), []string{"x", "y"}),
+		tool("move_and_double_click",
+			"Move the virtual cursor to an absolute screenshot-pixel position and double-click there, in "+
+				"one step — e.g. to open an item or select a word.",
+			xy(), []string{"x", "y"}),
 		tool("drag",
 			"Drag from the current virtual cursor position by (dx, dy) screenshot pixels. "+
 				"The cursor ends at the new position.",
@@ -325,30 +366,73 @@ func toolDefinitions() []any {
 				"dx": num("Horizontal drag offset in screenshot pixels. Positive = right."),
 				"dy": num("Vertical drag offset in screenshot pixels. Positive = down."),
 			}, []string{"dx", "dy"}),
+		tool("drag_to",
+			"Drag from the current virtual cursor position to an absolute screenshot-pixel position. "+
+				"Place the cursor on the drag source first (move_cursor_to), then call this with the "+
+				"drop target.",
+			xy(), []string{"x", "y"}),
 		tool("scroll",
 			"Scroll at the current virtual cursor position. dy > 0 = scroll down, dy < 0 = scroll up, "+
-				"dx > 0 = scroll right.",
+				"dx > 0 = scroll right. The scroll lands on whatever is under the cursor, so aim at the "+
+				"pane you mean to scroll.",
 			map[string]any{
 				"dx": num("Horizontal scroll amount in pixels."),
 				"dy": num("Vertical scroll amount in pixels. Positive = down."),
 			}, []string{"dx", "dy"}),
+		tool("move_and_scroll",
+			"Move the virtual cursor to an absolute screenshot-pixel position and scroll there, in one "+
+				"step. Use this to scroll a specific pane without disturbing the rest of the window.",
+			map[string]any{
+				"x":  absX,
+				"y":  absY,
+				"dx": num("Horizontal scroll amount in pixels."),
+				"dy": num("Vertical scroll amount in pixels. Positive = down."),
+			}, []string{"x", "y", "dx", "dy"}),
 		tool("type_text",
-			"Type text at the current keyboard focus.",
+			"Type text at the current keyboard focus. Click the target field first — this types wherever "+
+				"focus already is.",
 			map[string]any{
 				"text": str("The text to type."),
 			}, []string{"text"}),
 		tool("key_press",
-			"Press a special key. Supported: return, tab, space, delete, escape, left, right, up, down, "+
-				"home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
+			"Press a special key or shortcut. Supported: return, tab, space, delete, escape, left, right, "+
+				"up, down, home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
 			map[string]any{
 				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\"."),
 			}, []string{"key"}),
+		tool("wait",
+			"Pause before the next action, to let the UI settle after a click or a page load. "+
+				"Capped at 10000 ms.",
+			map[string]any{
+				"milliseconds": num("How long to wait, in milliseconds. Capped at 10000."),
+			}, []string{"milliseconds"}),
+	}
+}
+
+// maxWaitMillis bounds the `wait` tool so a bad argument cannot stall the
+// caller's request for minutes.
+const maxWaitMillis = 10000
+
+// numArg reads a JSON number argument. Models routinely send numbers as
+// strings, so those are accepted too; ok is false when the argument is missing
+// or is neither.
+func numArg(arguments map[string]any, key string) (float64, bool) {
+	switch v := arguments[key].(type) {
+	case float64:
+		return v, true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return f, err == nil
+	default:
+		return 0, false
 	}
 }
 
 func (s *Server) callTool(id any, name string, arguments map[string]any) map[string]any {
-	numArg := func(key string) float64 {
-		v, _ := arguments[key].(float64)
+	// Optional numeric argument: absent reads as 0, matching the old behaviour
+	// for the relative-offset tools.
+	opt := func(key string) float64 {
+		v, _ := numArg(arguments, key)
 		return v
 	}
 	position := func(pos bridge.Point, err error, action string) map[string]any {
@@ -357,17 +441,43 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		}
 		return textResult(id, fmt.Sprintf("%s. Cursor at (%d, %d).", action, pos.X, pos.Y))
 	}
+	// target reads the required absolute (x, y) pair. Defaulting a missing
+	// coordinate to 0 would silently aim at the top-left corner, so this
+	// reports the bad call instead.
+	target := func() (float64, float64, map[string]any) {
+		x, okX := numArg(arguments, "x")
+		y, okY := numArg(arguments, "y")
+		if !okX || !okY {
+			return 0, 0, rpcError(id, -32602, "Tool "+name+" requires numeric x and y in screenshot pixels")
+		}
+		return x, y, nil
+	}
 
 	switch name {
 	case "take_screenshot":
 		return s.takeScreenshot(id, arguments)
+
+	case "get_cursor_position":
+		pos, err := s.br.CursorPosition()
+		if err != nil {
+			return rpcError(id, -32603, "Cursor query failed: "+err.Error())
+		}
+		return textResult(id, fmt.Sprintf("Cursor at (%d, %d).", pos.X, pos.Y))
 
 	case "reset_cursor":
 		pos, err := s.br.ResetCursor()
 		return position(pos, err, "Cursor reset")
 
 	case "move_cursor":
-		pos, err := s.br.MoveCursor(numArg("dx"), numArg("dy"))
+		pos, err := s.br.MoveCursor(opt("dx"), opt("dy"))
+		return position(pos, err, "Cursor moved")
+
+	case "move_cursor_to":
+		x, y, bad := target()
+		if bad != nil {
+			return bad
+		}
+		pos, err := s.br.MoveCursorTo(x, y)
 		return position(pos, err, "Cursor moved")
 
 	case "click":
@@ -382,13 +492,50 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		pos, err := s.br.DoubleClick()
 		return position(pos, err, "Double-clicked")
 
+	case "move_and_click", "move_and_right_click", "move_and_double_click":
+		x, y, bad := target()
+		if bad != nil {
+			return bad
+		}
+		action, do := "Moved and clicked", s.br.Click
+		switch name {
+		case "move_and_right_click":
+			action, do = "Moved and right-clicked", s.br.RightClick
+		case "move_and_double_click":
+			action, do = "Moved and double-clicked", s.br.DoubleClick
+		}
+		if _, err := s.br.MoveCursorTo(x, y); err != nil {
+			return rpcError(id, -32603, action+" failed: "+err.Error())
+		}
+		pos, err := do()
+		return position(pos, err, action)
+
 	case "drag":
-		pos, err := s.br.Drag(numArg("dx"), numArg("dy"))
+		pos, err := s.br.Drag(opt("dx"), opt("dy"))
+		return position(pos, err, "Dragged")
+
+	case "drag_to":
+		x, y, bad := target()
+		if bad != nil {
+			return bad
+		}
+		pos, err := s.br.DragTo(x, y)
 		return position(pos, err, "Dragged")
 
 	case "scroll":
-		pos, err := s.br.Scroll(int(numArg("dx")), int(numArg("dy")))
+		pos, err := s.br.Scroll(int(opt("dx")), int(opt("dy")))
 		return position(pos, err, "Scrolled")
+
+	case "move_and_scroll":
+		x, y, bad := target()
+		if bad != nil {
+			return bad
+		}
+		if _, err := s.br.MoveCursorTo(x, y); err != nil {
+			return rpcError(id, -32603, "Moved and scrolled failed: "+err.Error())
+		}
+		pos, err := s.br.Scroll(int(opt("dx")), int(opt("dy")))
+		return position(pos, err, "Moved and scrolled")
 
 	case "type_text":
 		text, _ := arguments["text"].(string)
@@ -403,6 +550,17 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 			return rpcError(id, -32603, "Key press failed: "+err.Error())
 		}
 		return textResult(id, "Pressed "+key+".")
+
+	case "wait":
+		ms, ok := numArg(arguments, "milliseconds")
+		if !ok || ms < 0 {
+			return rpcError(id, -32602, "wait requires a non-negative milliseconds value")
+		}
+		if ms > maxWaitMillis {
+			ms = maxWaitMillis
+		}
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		return textResult(id, fmt.Sprintf("Waited %d ms.", int(ms)))
 
 	default:
 		return rpcError(id, -32601, "Unknown tool: "+name)
@@ -426,16 +584,27 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 	}
 
 	withCursor, _ := arguments["with_cursor"].(bool)
-	png, err := s.br.CaptureScreenshot(withCursor, crop)
+	shot, err := s.br.CaptureScreenshot(withCursor, crop)
 	if err != nil {
 		return rpcError(id, -32603, "Screenshot capture failed")
 	}
 
-	return rpcResult(id, map[string]any{
-		"content": []any{map[string]any{
-			"type":     "image",
-			"data":     base64.StdEncoding.EncodeToString(png),
-			"mimeType": "image/png",
-		}},
-	})
+	content := []any{map[string]any{
+		"type":     "image",
+		"data":     base64.StdEncoding.EncodeToString(shot),
+		"mimeType": "image/png",
+	}}
+	// The absolute-position tools address this image's pixel grid, so state its
+	// size — and, for a crop, the offset those coordinates need.
+	if cfg, err := png.DecodeConfig(bytes.NewReader(shot)); err == nil {
+		note := fmt.Sprintf("Screenshot is %d×%d pixels; coordinates for move_cursor_to / move_and_click "+
+			"are measured from its top-left corner.", cfg.Width, cfg.Height)
+		if crop != nil {
+			note += fmt.Sprintf(" This is a crop taken at (%d, %d), so add that offset to any coordinate "+
+				"read off this image before clicking.", int(crop.X), int(crop.Y))
+		}
+		content = append(content, map[string]any{"type": "text", "text": note})
+	}
+
+	return rpcResult(id, map[string]any{"content": content})
 }

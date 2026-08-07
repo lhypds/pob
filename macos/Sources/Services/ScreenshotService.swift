@@ -26,6 +26,15 @@ class ScreenshotService {
 
     private init() {}
 
+    /// The pixel→screen mapping for a window, derived from its geometry alone.
+    /// Capturing an image is not required to know where a screenshot pixel
+    /// lands, so mouse actions can resolve coordinates before the first capture.
+    func context(for window: NSWindow) -> ScreenshotContext? {
+        guard let screen = window.screen ?? NSScreen.main else { return nil }
+        let screenRect = window.convertToScreen(window.contentLayoutRect)
+        return ScreenshotContext(contentRectInScreen: screenRect, scale: screen.backingScaleFactor)
+    }
+
     /// Capture the window content area and also return coordinate context.
     /// Uses CGWindowListCreateImage with .optionOnScreenBelowWindow so the pob overlay
     /// window itself (including its background) is excluded from the capture.

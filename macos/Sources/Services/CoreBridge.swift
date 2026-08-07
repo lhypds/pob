@@ -10,6 +10,10 @@ final class CoreBridge: ObservableObject {
     /// True while the Go core is executing a session; drives the cursor
     /// overlay, window lock and click-through logic in the UI.
     @Published var isExecuting = false
+    /// True while the MCP server is running, i.e. an external client may move
+    /// the cursor at any moment. Drives the cursor overlay only — unlike
+    /// isExecuting it does not lock the window or pause the macro recorder.
+    @Published var isMCPDriving = false
     /// Set when the Go core asks the user whether to continue past max_steps.
     @Published var showMaxStepWarning = false
     /// Incremented whenever the Go core requests the screenshot flash effect.
@@ -183,6 +187,16 @@ final class CoreBridge: ObservableObject {
             let executing = params["executing"] as? Bool ?? false
             DispatchQueue.main.async { self.isExecuting = executing }
 
+        case "mcp.state":
+            let active = params["active"] as? Bool ?? false
+            DispatchQueue.main.async {
+                // Park the cursor at its home position so it is visible the
+                // moment the server comes up, rather than sitting on the
+                // top-left corner where it reads as "no cursor at all".
+                if active { self.mouse.resetCursor() }
+                self.isMCPDriving = active
+            }
+
         case "screenshot.capture":
             guard let id else { return }
             handleScreenshotCapture(id: id, params: params)
@@ -256,14 +270,33 @@ final class CoreBridge: ObservableObject {
         respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
     }
 
+    /// The mapping from screenshot pixels to screen coordinates. Falls back to
+    /// the window's current geometry when nothing has been captured yet:
+    /// without this, every click, drag and scroll issued before the first
+    /// screenshot was dropped on the floor while still reporting success.
+    private func currentContext() async -> ScreenshotContext? {
+        if let ctx = lastContext { return ctx }
+        return await MainActor.run { () -> ScreenshotContext? in
+            guard let window = self.window,
+                  let ctx = ScreenshotService.shared.context(for: window) else {
+                AppLogger.log("CoreBridge: no window for coordinate mapping")
+                return nil
+            }
+            self.lastContext = ctx
+            return ctx
+        }
+    }
+
     /// Runs a mouse action at the virtual cursor position, converting to
     /// screen coordinates via the most recent screenshot context.
     private func performAtCursor(id: Any, action: @escaping (CGPoint) async -> Void) {
         let pos = self.mouse.virtualCursorPosition
         Task {
-            if let ctx = self.lastContext {
-                await action(ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
+            guard let ctx = await self.currentContext() else {
+                self.respondError(id: id, message: "No window available to map screenshot coordinates")
+                return
             }
+            await action(ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y))
             self.respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
         }
     }
@@ -274,15 +307,17 @@ final class CoreBridge: ObservableObject {
         let startPos = self.mouse.virtualCursorPosition
         let endPos = CGPoint(x: startPos.x + dx, y: startPos.y + dy)
         Task {
-            if let ctx = self.lastContext {
-                let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
-                let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
-                await self.mouse.performDrag(from: from, to: to) { t in
-                    self.mouse.moveCursor(to: CGPoint(
-                        x: startPos.x + (endPos.x - startPos.x) * t,
-                        y: startPos.y + (endPos.y - startPos.y) * t
-                    ))
-                }
+            guard let ctx = await self.currentContext() else {
+                self.respondError(id: id, message: "No window available to map screenshot coordinates")
+                return
+            }
+            let from = ctx.toCGEventPoint(pixelX: startPos.x, pixelY: startPos.y)
+            let to = ctx.toCGEventPoint(pixelX: endPos.x, pixelY: endPos.y)
+            await self.mouse.performDrag(from: from, to: to) { t in
+                self.mouse.moveCursor(to: CGPoint(
+                    x: startPos.x + (endPos.x - startPos.x) * t,
+                    y: startPos.y + (endPos.y - startPos.y) * t
+                ))
             }
             self.mouse.moveCursor(to: endPos)
             self.respond(id: id, result: ["x": Double(endPos.x), "y": Double(endPos.y)])
@@ -294,9 +329,11 @@ final class CoreBridge: ObservableObject {
         let dy = Int32(params["dy"] as? Double ?? 0)
         let pos = self.mouse.virtualCursorPosition
         Task {
-            if let ctx = self.lastContext {
-                await self.mouse.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
+            guard let ctx = await self.currentContext() else {
+                self.respondError(id: id, message: "No window available to map screenshot coordinates")
+                return
             }
+            await self.mouse.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
             self.respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
         }
     }

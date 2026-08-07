@@ -106,7 +106,7 @@ struct InstanceContentView: View {
                 }
             }
 
-            if bridge.isExecuting {
+            if bridge.isExecuting || bridge.isMCPDriving {
                 let scale = NSScreen.main?.backingScaleFactor ?? 2.0
                 let cursorImg = NSCursor.arrow.image
                 let hot = NSCursor.arrow.hotSpot
@@ -144,6 +144,11 @@ struct InstanceContentView: View {
             withAnimation(.easeOut(duration: 0.1)) {
                 animatedCursorPos = newPos
             }
+        }
+        .onChange(of: bridge.isMCPDriving) { driving in
+            // Start the overlay where the cursor actually is, so it does not
+            // appear at a stale spot until the client's first move.
+            if driving { animatedCursorPos = mouseService.virtualCursorPosition }
         }
         .onChange(of: bridge.isExecuting) { executing in
             if executing {

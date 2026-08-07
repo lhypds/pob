@@ -225,9 +225,43 @@ For other clients, register the printed URL manually. Claude Desktop
 
 MCP tools:
 
+All coordinates are **screenshot pixels**, origin at the top-left of the image
+returned by `take_screenshot` — the client never deals with screen-level
+positions. `take_screenshot` reports the image size alongside the PNG, so the
+model can read a target's coordinates off the image and pass them straight to
+the `*_to` / `move_and_*` tools. Every action returns the resulting cursor
+position.
+
+Perception:
+
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer | Capture the Pob window content area and return a PNG image. When all four crop parameters are provided, only that region is captured. Coordinates are in screen points (logical pixels), origin top-left. |
+| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer, `with_cursor?`: boolean | Capture the Pob window content area and return a PNG image plus its pixel dimensions. When all four crop parameters are provided, only that region is captured (coordinates read off a crop need the crop offset added back). `with_cursor` draws the virtual cursor into the image. |
+| `get_cursor_position` | — | Current virtual cursor position, without moving or clicking. |
+
+Pointer:
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `reset_cursor` | — | Return the cursor to its home position. |
+| `move_cursor` | `dx`, `dy`: number | Nudge the cursor by a relative offset. |
+| `move_cursor_to` | `x`, `y`: number | Move the cursor to an absolute position. |
+| `click` / `right_click` / `double_click` | — | Click at the current cursor position. |
+| `move_and_click` | `x`, `y`: number | Move to an absolute position and left-click there, in one step. |
+| `move_and_right_click` | `x`, `y`: number | Move and right-click — e.g. to open a context menu. |
+| `move_and_double_click` | `x`, `y`: number | Move and double-click — e.g. to open an item. |
+| `drag` | `dx`, `dy`: number | Drag from the cursor position by a relative offset. |
+| `drag_to` | `x`, `y`: number | Drag from the cursor position to an absolute position. |
+| `scroll` | `dx`, `dy`: number | Scroll at the cursor position. `dy > 0` scrolls down, `dx > 0` scrolls right. |
+| `move_and_scroll` | `x`, `y`, `dx`, `dy`: number | Move to an absolute position and scroll there, to target one pane. |
+
+Keyboard and timing:
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `type_text` | `text`: string | Type text at the current keyboard focus (click the field first). |
+| `key_press` | `key`: string | Press a key or shortcut: `return`, `tab`, `space`, `delete`, `escape`, arrows, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
+| `wait` | `milliseconds`: number | Pause to let the UI settle. Capped at 10000 ms. |
 
 
 CLI

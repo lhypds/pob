@@ -63,6 +63,23 @@ func (b *Bridge) MoveCursor(dx, dy float64) (Point, error) {
 	return pointFrom(result), err
 }
 
+// CursorPosition returns the current virtual cursor position. The shell has no
+// separate query for it, so this is a zero-delta move — every platform treats
+// cursor.move as position += delta and answers with the result.
+func (b *Bridge) CursorPosition() (Point, error) {
+	return b.MoveCursor(0, 0)
+}
+
+// MoveCursorTo moves the virtual cursor to an absolute screenshot-pixel
+// position, translating it into the relative move the shell expects.
+func (b *Bridge) MoveCursorTo(x, y float64) (Point, error) {
+	cur, err := b.CursorPosition()
+	if err != nil {
+		return Point{}, err
+	}
+	return b.MoveCursor(x-float64(cur.X), y-float64(cur.Y))
+}
+
 func (b *Bridge) Click() (Point, error) {
 	result, err := b.ipc.Call("mouse.click", nil)
 	return pointFrom(result), err
@@ -82,6 +99,16 @@ func (b *Bridge) DoubleClick() (Point, error) {
 func (b *Bridge) Drag(dx, dy float64) (Point, error) {
 	result, err := b.ipc.Call("mouse.drag", map[string]any{"dx": dx, "dy": dy})
 	return pointFrom(result), err
+}
+
+// DragTo drags from the current cursor position to an absolute position;
+// returns the end position.
+func (b *Bridge) DragTo(x, y float64) (Point, error) {
+	cur, err := b.CursorPosition()
+	if err != nil {
+		return Point{}, err
+	}
+	return b.Drag(x-float64(cur.X), y-float64(cur.Y))
 }
 
 func (b *Bridge) Scroll(dx, dy int) (Point, error) {
@@ -118,4 +145,12 @@ func (b *Bridge) ConfirmMaxStep() bool {
 // NotifyExecutionState tells the UI whether an execution session is running.
 func (b *Bridge) NotifyExecutionState(executing bool) {
 	b.ipc.Notify("session.state", map[string]any{"executing": executing})
+}
+
+// NotifyMCPState tells the UI whether an external MCP client is driving this
+// instance, so the virtual cursor stays visible while it does. Kept separate
+// from session.state: MCP control should not lock the window or pause the
+// macro recorder the way an agent run does.
+func (b *Bridge) NotifyMCPState(active bool) {
+	b.ipc.Notify("mcp.state", map[string]any{"active": active})
 }
