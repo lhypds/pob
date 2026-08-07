@@ -76,7 +76,7 @@ func main() {
 	})
 
 	// The MCP server never starts with the app — it is started on demand via
-	// `pob mcp --instance <id> start` (see internal/ctlserver).
+	// `pob mcp start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
 
 	// The web UI does start with the app, so that reaching for a phone is all
