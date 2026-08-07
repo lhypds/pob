@@ -23,6 +23,10 @@ It allows AI to:
 - Record and replay operation macros
 - Work with MCP-compatible AI clients
 
+The same bridge works for people, not only for AI: every instance serves a web
+page you can open on your phone, and a desktop app with a full-size keyboard
+and a trackpad — see [Web UI](#web-ui) and [Pob Keyboard](#pob-keyboard).
+
 
 Architecture
 ------------
@@ -45,6 +49,15 @@ linux-x11/  The same hands and eyes for Linux/Xorg (C + GTK 3). Identical UI
 win/     The same hands and eyes for Windows (C# / WPF). Identical UI and
          features; screenshots via GDI, input via SendInput.
          See win/README.md.
+
+webui/   The remote control (Go, zero dependencies), compiled into pob-core
+         and started with the app: an HTTP server on one shared port serving
+         index.html — a text field, a keyboard-mirror button and a trackpad —
+         routing /<instance> to the process that owns it.
+
+keyboard/  Pob Keyboard (Go + Fyne), a separate desktop app: a full-size
+           on-screen keyboard and a trackpad in their own window, driving an
+           instance through the same web UI API. Run it with ./keyboard.sh.
 ```
 
 The shell spawns `pob-core` as a child process and the two talk over
@@ -53,6 +66,10 @@ stdin/stdout with line-delimited JSON-RPC:
 - Shell → core: `run.instruction`, `run.macro`, `run.stop`, `recording.changed`
 - Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
   `keyboard.type`, `ui.confirmMaxStep`, … and `session.state` notifications
+
+Everything that drives the machine goes through those same calls — the agent
+loop, the MCP server, and the web UI — so a tap on a phone and a tool call
+from a model take exactly the same path.
 
 All coordinates crossing the boundary are screenshot pixels; the shell owns
 the conversion to real screen positions. Porting to a new platform means
@@ -75,7 +92,7 @@ OpenAI
 gpt-5.5, works
 
 Claude
-claude-opus-4-8, works, but the mouse fly outside of the window sometimes.
+claude-opus-4-8, works.
 
 Google
 gemini-2.5-flash, not working
@@ -88,7 +105,7 @@ Structure
 
 ```
 ~/.pob/logs/  
-    +--- <instance>/                              one directory per app launch (multi-instance support).
+    +--- pb-<uid>/                                one directory per app launch (multi-instance support).
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
          +--- instance.json                       instance start/end times, etc.
@@ -116,9 +133,11 @@ Structure
               +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```
 
-`<instance>` is a unique instance ID named as a unixtime, created when the app starts. Each running
-app instance writes to its own directory, so multiple instances can run side by side without their
-logs colliding (if two instances start within the same second, the later one bumps its ID by one).  
+`<instance>` is a unique instance ID of the form `pb-<4 hex>` (the last two bytes of a fresh UID in
+lowercase hex), created when the app starts and shown in the toolbar beside the window buttons — so
+the ID on screen names the directory to look in. Each running app instance writes to its own
+directory, so multiple instances can run side by side without their logs colliding (if the drawn ID
+is already taken, another one is drawn).  
 `<session>` is a unique session ID named as a unixtime.  
 `<plan>` is a unique plan ID named as a unixtime.  
 `<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  
@@ -130,7 +149,8 @@ Features
 
 <img width="839" height="762" alt="image" src="https://github.com/user-attachments/assets/e74edfe9-7bd7-40b1-a403-d0391477d2d8" />
 
-Toolbar buttons (left to right):
+The toolbar shows this instance's ID (`pb-<uid>`) at the left, beside the window buttons; the action
+buttons are packed against the right edge, in this order (left to right):
 
 | # | Button | Description |
 |---|--------|-------------|
@@ -165,11 +185,13 @@ These are the tools the AI can call during a session:
 | `drag(dx, dy)` | `dx`: number, `dy`: number | Drag from the current cursor position by `(dx, dy)` pixels. Cursor ends at the new position. |
 | `scroll(dx, dy)` | `dx`: number, `dy`: number | Scroll at the current cursor position. `dy > 0` = down, `dy < 0` = up, `dx > 0` = right. |
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
-| `keyPress(key)` | `key`: string | Press a special key. Supported: `return`, `tab`, `space`, `delete`, `escape`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
+| `keyPress(key)` | `key`: string | Press a key, optionally with `+`-joined modifiers in front of it (see [Key names](#key-names)) — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. |
 | `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
 | `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<instanceId>/<sessionId>/screenshots/<unixtime>.png`. |
 
 All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).  
+The cursor is held inside the Pob window: a move that would take it past an edge stops at the edge, since
+everything it addresses — what the screenshots show, what the clicks are aimed through — is inside that window.  
 These functions are also available in macros (see Macro below).  
 
 
@@ -260,8 +282,137 @@ Keyboard and timing:
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `type_text` | `text`: string | Type text at the current keyboard focus (click the field first). |
-| `key_press` | `key`: string | Press a key or shortcut: `return`, `tab`, `space`, `delete`, `escape`, arrows, `home`, `end`, `pageup`, `pagedown`, `f1`–`f12`, `cmd+a/c/v/x/z/w/s/t/r`. |
+| `key_press` | `key`: string | Press a key or shortcut — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. See [Key names](#key-names). |
 | `wait` | `milliseconds`: number | Pause to let the UI settle. Capped at 10000 ms. |
+
+
+Key names
+---------
+
+`keyPress` / `key_press` takes one key, optionally preceded by `+`-joined
+modifiers: `ctrl+alt+shift+f5`. A name is a *position* on the keyboard rather
+than a character, so the machine's own layout decides what it produces — which
+is what lets the [Web UI](#web-ui) and [Pob Keyboard](#pob-keyboard) forward
+real keypresses verbatim.
+
+| Modifier | Meaning |
+|----------|---------|
+| `cmd` | Command on macOS, Ctrl on Linux and Windows — the ordinary-shortcut modifier, so `cmd+c` copies everywhere |
+| `ctrl` | Control on every platform |
+| `alt` | Option / Alt |
+| `shift` | Shift |
+| `gui` | The key beside the space bar itself: Command / Windows / Super (aliases: `win`, `super`, `meta`) |
+
+Keys: `a`–`z`, `0`–`9`, `return`, `tab`, `space`, `backspace`,
+`forwarddelete`, `escape`, `insert`, `left`, `right`, `up`, `down`, `home`,
+`end`, `pageup`, `pagedown`, `capslock`, `printscreen`, `scrolllock`, `pause`,
+`menu`, `f1`–`f24`, `minus`, `equals`, `leftbracket`, `rightbracket`,
+`backslash`, `semicolon`, `quote`, `grave`, `comma`, `period`, `slash`.
+
+`delete` is an alias for `backspace`, as it always was; the key that deletes
+forwards is `forwarddelete`. macOS has no `menu` key, and takes `printscreen`,
+`scrolllock` and `pause` to mean F13–F15 — the same keycaps in the same place
+on an Apple board.
+
+
+Web UI
+------
+
+Every instance serves a remote control page, started with the app. One port
+serves the whole machine and the path says which instance:
+
+```
+http://192.168.1.40:8033/pb-a703
+```
+
+`pob status` prints the address — one line per network the machine is on. The
+instance ID is the one in the toolbar. With a single instance running the path
+can be left off, and the root leads to it.
+
+The port is yours to set: `webui_port` in `settings.json`, or `POB_WEBUI_PORT`
+in the environment. It is the same for every instance, so the address can be
+typed from memory instead of looked up per window.
+
+The page is three controls:
+
+- a **text field** — type a line, press ↵, and it is typed on the machine
+- a **keyboard mirror** button — while it is on, keys pressed here go straight
+  through, shortcuts included. On a phone the soft keyboard is mirrored
+  instead, so autocorrect and swipe typing still work.
+- a **trackpad** — drag to move the pointer, tap to click, two-finger tap to
+  right-click, two fingers to scroll, double-tap-and-hold to drag
+
+**The page is served on every network interface**, so anyone on the same
+network who knows the address can move this machine's pointer and type on it.
+That is the point of it — but it is also why `"webui": false` in
+`settings.json` turns it off, per instance.
+
+
+### How one port serves every instance
+
+Only one process can hold a port, and every window is its own instance with
+its own `pob-core`. So each instance binds a private loopback port and
+publishes it in `logs/<instance>/webui.json`, and whichever instance gets the
+shared port becomes the front door: it serves its own page directly and hands
+the others' requests to the process that owns them. Close that window and
+another instance takes the port within a few seconds — `pob status` shows
+`holds_port` if you ever need to know which one has it.
+
+With several instances running, the root lists them.
+
+
+### API
+
+The page POSTs commands to its own path as `text/plain`, which makes the same
+thing scriptable:
+
+```
+curl -X POST --data 'typing=hello'          http://192.168.1.40:8033/pb-a703/
+curl -X POST --data 'keycode=CTRL+c,CTRL+v' http://192.168.1.40:8033/pb-a703/
+curl -X POST --data 'mouse=MOVE(40,10)'     http://192.168.1.40:8033/pb-a703/
+curl -X POST --data 'mouse=CLICK(0,0)'      http://192.168.1.40:8033/pb-a703/
+```
+
+The protocol is the pico-hid board's, so its clients work against Pob
+unchanged: `typing=<text>`, `keycode=<chord>` (`,` separates keys pressed in
+turn, `+` joins keys held together, using the HID names in
+[Key names](#key-names)), `mouse=ACTION(x,y)` with `MOVE`, `CLICK`,
+`RIGHT_CLICK`, `DOUBLE_CLICK`, `PRESS`, `RELEASE` and `SCROLL`, and an optional
+`seq=<token>&` prefix that makes a retry safe to send twice. `consumer=` —
+media and brightness keys — is accepted and ignored: the shells post plain key
+events and have nowhere to put a consumer-control usage.
+
+A command posted to the bare root is served where it lands rather than
+redirected, so a client that doesn't follow redirects — or one that would turn
+a redirected POST into a GET, which is most of them — still gets its keystroke
+through.
+
+
+Pob Keyboard
+------------
+
+A desktop client for the same API: a full-size 104-key board and a trackpad in
+one window, for driving a machine running Pob from another computer.
+
+```
+./keyboard.sh
+./keyboard.sh -url http://192.168.1.40:8033/pb-3f9a
+```
+
+With no address it opens Settings… straight away, laid out as the address
+itself — machine, port, instance ID — and remembered between runs. Pasting the
+whole line `pob status` prints into the first field fills all three.
+
+Keys pressed on your real keyboard are forwarded too while the window has
+focus, and light up the matching keycap. Modifier keys latch — click once for
+the next key only, twice to lock — so a shortcut can be built without holding
+anything down. The **Target** setting (Windows / macOS) doesn't change what
+gets sent, only how the keys either side of the space bar are labelled and
+ordered.
+
+Building it needs a C compiler (the UI draws through OpenGL): `xcode-select
+--install` on macOS, `sudo apt install gcc libgl1-mesa-dev xorg-dev` on
+Debian/Ubuntu.
 
 
 CLI
@@ -298,7 +449,7 @@ Flags:
 | *(none)* | List running instances; with `--instance` show that instance; with `--session` show that session |
 | `list [--all]` | List running instances with status, times and session count; `--all` includes stopped ones |
 | `launch` | Start a new app instance and print its ID (alias: `new`). The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
-| `status` | Live status of the target instance (executing, recording, model, MCP) |
+| `status` | Live status of the target instance (executing, recording, model, MCP, web UI address) |
 | `sessions` | List the target instance's sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
 | `run <text...>` | Replace `instruction.txt` with `<text>`, then execute it |
@@ -350,6 +501,8 @@ shared at `~/.pob`.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
+| `webui` | `true` | Serve the [Web UI](#web-ui) remote control page. `false` stops this instance accepting pointer and keyboard commands from the network |
+| `webui_port` | `8033` | The one port every instance on this machine is reached through; the instance is named in the path. `POB_WEBUI_PORT` overrides it |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |
@@ -385,6 +538,8 @@ Tools (Swift) on macOS, or GTK 3 development libraries on Linux (see
 ./restart.sh    # rebuild and relaunch in the background (logs to app.log)
 ./stop.sh       # stop the app and the core process
 ./build.sh      # release build (macOS: Pob.app, Linux: dist tarball)
+./keyboard.sh   # build and run Pob Keyboard (its own Go module, not built
+                # by the scripts above)
 ```
 
 The root scripts are dispatchers: `setup.sh` writes your choice (`macos` or

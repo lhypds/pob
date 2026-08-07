@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Pob.Interop;
 
 namespace Pob.Views;
@@ -14,6 +15,10 @@ public partial class OverlayWindow : Window
     public ContentView ContentView => ContentArea;
 
     private const double EdgeSize = 6;
+
+    // How often the pointer is sampled while click-through is on — short
+    // enough that the border is grabbable the moment the pointer lands on it.
+    private static readonly TimeSpan EdgeWatchInterval = TimeSpan.FromMilliseconds(30);
 
     private enum Zone
     {
@@ -33,6 +38,10 @@ public partial class OverlayWindow : Window
     private NativeMethods.POINT _resizeStartCursor;
     private Rect _resizeStartFrame;
 
+    private bool _passThrough;
+    private bool _edgeHot;
+    private DispatcherTimer? _edgeWatch;
+
     public OverlayWindow()
     {
         InitializeComponent();
@@ -45,9 +54,59 @@ public partial class OverlayWindow : Window
 
     private IntPtr Hwnd => new WindowInteropHelper(this).Handle;
 
+    // WS_EX_TRANSPARENT is a whole-window flag, so switching click-through on
+    // would also swallow the edge-resize grips below. Mirror the macOS shell:
+    // while it is on, watch the pointer and lift the flag for as long as it
+    // sits in the resize border — the edges stay grabbable and everything
+    // inside them still passes through.
     public void SetHitTestTransparent(bool pass)
     {
-        NativeMethods.SetExStyleFlag(Hwnd, NativeMethods.WS_EX_TRANSPARENT, pass);
+        _passThrough = pass;
+        if (!pass)
+        {
+            _edgeWatch?.Stop();
+            _edgeHot = false;
+        }
+        ApplyHitTest();
+        if (pass) StartEdgeWatch();
+    }
+
+    private void ApplyHitTest()
+    {
+        NativeMethods.SetExStyleFlag(Hwnd, NativeMethods.WS_EX_TRANSPARENT,
+                                     _passThrough && !_edgeHot && !_resizing);
+    }
+
+    private void StartEdgeWatch()
+    {
+        _edgeWatch ??= new DispatcherTimer(EdgeWatchInterval, DispatcherPriority.Input,
+                                           OnEdgeWatchTick, Dispatcher);
+        _edgeWatch.Start();
+    }
+
+    private void OnEdgeWatchTick(object? sender, EventArgs e)
+    {
+        if (_resizing) return; // mouse is captured — leave the flag lifted
+        Zone zone = PointerZone();
+        Cursor? cursor = ZoneCursor(zone);
+        if (Cursor != cursor) Cursor = cursor;
+        bool hot = zone != Zone.None;
+        if (hot == _edgeHot) return;
+        _edgeHot = hot;
+        ApplyHitTest();
+    }
+
+    // The resize zone under the real pointer. Read from the OS rather than
+    // from a WPF mouse event: while click-through is on the window is hit-test
+    // transparent, so no mouse event ever reaches it.
+    private Zone PointerZone()
+    {
+        if (!ResizeAllowed || !IsVisible) return Zone.None;
+        NativeMethods.GetCursorPos(out NativeMethods.POINT p);
+        Point local = PointFromScreen(new Point(p.X, p.Y));
+        if (local.X < 0 || local.Y < 0 || local.X > ActualWidth || local.Y > ActualHeight)
+            return Zone.None;
+        return HitTestZone(local);
     }
 
     public void SetNoActivate(bool noActivate)

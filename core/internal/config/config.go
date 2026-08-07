@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"pob/webui"
 )
 
 type Config struct {
@@ -36,6 +38,8 @@ var defaults = map[string]any{
 	"editor":              "system",
 	"terminal":            "system",
 	"stop_hook":           "",
+	"webui":               true,
+	"webui_port":          webui.DefaultPort,
 }
 
 func New(root, instanceID string) *Config {
@@ -161,6 +165,35 @@ func (c *Config) APIKey() string {
 func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.openai.com/v1") }
 func (c *Config) Model() string    { return c.str("model", "gpt-4o") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
+
+// WebUI reports whether the phone-facing remote control page should be
+// served. It is on by default; turning it off is how a machine stops
+// accepting pointer and keyboard commands from the local network.
+func (c *Config) WebUI() bool {
+	switch v := c.readSettings()["webui"].(type) {
+	case bool:
+		return v
+	case string:
+		// Hand-edited files hold "true"/"false" as often as booleans. Anything
+		// unreadable falls back to on, which is the default either way.
+		enabled, err := strconv.ParseBool(strings.TrimSpace(v))
+		return err != nil || enabled
+	}
+	return true
+}
+
+// WebUIPort is the port every instance on this machine is reached through —
+// one port, with the instance named in the path, so the address can be typed
+// from memory rather than looked up per window. POB_WEBUI_PORT overrides the
+// setting, for a shell or a .env that wants to pick it per launch.
+func (c *Config) WebUIPort() int {
+	if env := strings.TrimSpace(os.Getenv("POB_WEBUI_PORT")); env != "" {
+		if port, err := strconv.Atoi(env); err == nil && port > 0 && port < 65536 {
+			return port
+		}
+	}
+	return c.intVal("webui_port", webui.DefaultPort, 1)
+}
 
 func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }
 func (c *Config) MaxStepLogs() int       { return c.intVal("max_steplogs", 10, 1) }

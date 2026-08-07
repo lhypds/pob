@@ -275,7 +275,8 @@ public class ContentView : FrameworkElement
 
     // ── input ───────────────────────────────────────────────────────────────
 
-    private void CopyToClipboard(string text)
+    // Also used by the toolbar's instance-id badge.
+    public static void CopyToClipboard(string text)
     {
         try
         {

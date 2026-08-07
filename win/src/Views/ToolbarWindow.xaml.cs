@@ -39,6 +39,8 @@ public partial class ToolbarWindow : Window
     {
         InitializeComponent();
         Title = $"Pob {AppState.Version}";
+        InstanceIdText.Text = SettingsService.InstanceId;
+        InstanceIdBadge.ToolTip = $"Instance {SettingsService.InstanceId} — click to copy";
         SetClickThroughVisual(AppState.IsClickThrough);
     }
 
@@ -98,6 +100,15 @@ public partial class ToolbarWindow : Window
     }
 
     // ── toolbar actions ─────────────────────────────────────────────────────
+
+    // Copies the instance id, like the coordinate labels do. Handled so the
+    // click doesn't also start a titlebar drag.
+    private void OnInstanceIdClicked(object sender, MouseButtonEventArgs e)
+    {
+        ContentView.CopyToClipboard(SettingsService.InstanceId);
+        Content2?.ShowMessage($"Copied {SettingsService.InstanceId}");
+        e.Handled = true;
+    }
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenSettingsFile();
 

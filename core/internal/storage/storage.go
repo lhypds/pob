@@ -5,6 +5,7 @@ package storage
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -41,17 +42,31 @@ func New(logsDir, instanceID string, settingsDict func() map[string]any, instruc
 	}
 }
 
-// newInstanceID reserves a unixtime-named directory under logsDir. If another
-// instance grabbed the same second, it bumps until a free one is found.
+// newInstanceID reserves a pb-<uid> directory under logsDir. If the ID is
+// already taken, another one is drawn until a free one is found.
 func newInstanceID(logsDir string) string {
-	id := time.Now().Unix()
 	for {
-		err := os.Mkdir(filepath.Join(logsDir, fmt.Sprintf("%d", id)), 0o755)
+		id := instanceID()
+		err := os.Mkdir(filepath.Join(logsDir, id), 0o755)
 		if err == nil || !os.IsExist(err) {
-			return fmt.Sprintf("%d", id)
+			return id
 		}
-		id++
 	}
+}
+
+// instanceID builds a "pb-<4 hex>" id: the last two bytes of a fresh UID as
+// lowercase hex, the same scheme the pico-hid firmware uses for its "ph-"
+// board id. The shells show it in the toolbar beside the window buttons.
+func instanceID() string {
+	var uid [2]byte
+	if _, err := rand.Read(uid[:]); err != nil {
+		// crypto/rand does not fail in practice; fall back to the clock so an
+		// instance still gets a directory rather than none.
+		n := time.Now().UnixNano()
+		uid[0] = byte(n >> 8)
+		uid[1] = byte(n)
+	}
+	return fmt.Sprintf("pb-%02x%02x", uid[0], uid[1])
 }
 
 func (s *Storage) InstanceID() string { return s.instanceID }

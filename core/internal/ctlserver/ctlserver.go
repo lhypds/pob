@@ -4,8 +4,9 @@
 // logs/<instance>/control.json ({pid, port}) which the CLI scans to discover
 // live instances. Endpoints:
 //
-//	GET  /status           — instance id, executing/recording state, MCP state
+//	GET  /status           — instance id, executing/recording state, MCP and web UI state
 //	GET  /mcp              — MCP server info (running, port, url, tools)
+//	GET  /webui            — web UI info (running, port, url)
 //	POST /mcp/start        — start the MCP server; body: none
 //	POST /mcp/stop         — stop the MCP server
 //	POST /run/instruction  — run instruction.txt; optional body {"instruction": "..."} replaces it first
@@ -29,6 +30,7 @@ import (
 	"pob/core/internal/config"
 	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
+	"pob/webui"
 )
 
 type Server struct {
@@ -36,14 +38,15 @@ type Server struct {
 	store  *storage.Storage
 	runner *agent.Runner
 	mcp    *mcpserver.Server
+	web    *webui.Server
 	br     *bridge.Bridge
 
 	server *http.Server
 	port   int
 }
 
-func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, br *bridge.Bridge) *Server {
-	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, br: br}
+func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, web *webui.Server, br *bridge.Bridge) *Server {
+	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, web: web, br: br}
 }
 
 func (s *Server) controlFile() string {
@@ -58,6 +61,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp", s.handleMCPInfo)
 	mux.HandleFunc("/mcp/start", s.handleMCPStart)
 	mux.HandleFunc("/mcp/stop", s.handleMCPStop)
+	mux.HandleFunc("/webui", s.handleWebUIInfo)
 	mux.HandleFunc("/run/instruction", s.handleRunInstruction)
 	mux.HandleFunc("/run/macro", s.handleRunMacro)
 	mux.HandleFunc("/run/stop", s.handleRunStop)
@@ -129,6 +133,25 @@ func (s *Server) mcpInfo() map[string]any {
 	}
 }
 
+// webUIInfo describes the phone-facing remote control page. A stopped server
+// still reports the port it would take, which is the one in settings.json.
+// "urls" is one address per network the machine is on, since which of them is
+// reachable depends on where the phone is.
+func (s *Server) webUIInfo() map[string]any {
+	port := s.web.Port()
+	if port == 0 {
+		port = s.cfg.WebUIPort()
+	}
+	urls := s.web.URLs()
+	return map[string]any{
+		"running":    s.web.Running(),
+		"port":       port,
+		"url":        s.web.URL(),
+		"urls":       urls,
+		"holds_port": s.web.HoldsPort(),
+	}
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"instance":  s.store.InstanceID(),
@@ -139,7 +162,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"recording": s.runner.Recording(),
 		"model":     s.cfg.Model(),
 		"mcp":       s.mcpInfo(),
+		"webui":     s.webUIInfo(),
 	})
+}
+
+func (s *Server) handleWebUIInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.webUIInfo())
 }
 
 func (s *Server) handleMCPInfo(w http.ResponseWriter, r *http.Request) {

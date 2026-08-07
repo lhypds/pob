@@ -7,6 +7,12 @@ struct ScreenshotContext {
     let contentRectInScreen: CGRect
     let scale: CGFloat
 
+    /// The content area in screenshot pixels — which is both the size of the
+    /// image a capture produces and the box the virtual cursor lives in.
+    var pixelSize: CGSize {
+        CGSize(width: contentRectInScreen.width * scale, height: contentRectInScreen.height * scale)
+    }
+
     /// Converts a screenshot pixel position (origin: top-left, Y increases downward)
     /// to a CGEvent mouse position (origin: top-left of primary display, Y increases downward).
     func toCGEventPoint(pixelX px: CGFloat, pixelY py: CGFloat) -> CGPoint {

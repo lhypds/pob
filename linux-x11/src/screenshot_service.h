@@ -17,6 +17,8 @@ typedef struct {
     gboolean valid;
     int origin_x; // content-area origin on the root window, device pixels
     int origin_y;
+    int width; // content-area size in device pixels — the box the virtual
+    int height; // cursor lives in, and the size of the image a capture makes
     int scale; // GDK scale factor at capture time
 } ShotContext;
 

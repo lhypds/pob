@@ -45,7 +45,14 @@ func discoverInstances(root string) []*Instance {
 			instances = append(instances, inst)
 		}
 	}
-	sort.Slice(instances, func(i, j int) bool { return instances[i].ID > instances[j].ID })
+	// IDs are random (pb-<uid>), so order by the recorded start time and fall
+	// back to the ID for entries whose instance.json is missing a start time.
+	sort.Slice(instances, func(i, j int) bool {
+		if instances[i].StartTime != instances[j].StartTime {
+			return instances[i].StartTime > instances[j].StartTime
+		}
+		return instances[i].ID > instances[j].ID
+	})
 	return instances
 }
 
@@ -159,6 +166,27 @@ func showStatus(inst *Instance) {
 			fmt.Printf("MCP:        running — %s\n", mcp["url"])
 		} else {
 			fmt.Printf("MCP:        stopped\n")
+		}
+	}
+
+	if web, ok := status["webui"].(map[string]any); ok {
+		running, _ := web["running"].(bool)
+		urls, _ := web["urls"].([]any)
+		switch {
+		case !running:
+			fmt.Printf("Web UI:     off\n")
+		case len(urls) == 0:
+			fmt.Printf("Web UI:     %s\n", web["url"])
+		default:
+			// The name first, then the addresses it resolves to — a phone on a
+			// network that swallows mDNS needs one of the latter.
+			for i, u := range urls {
+				if i == 0 {
+					fmt.Printf("Web UI:     %v\n", u)
+				} else {
+					fmt.Printf("            %v\n", u)
+				}
+			}
 		}
 	}
 }

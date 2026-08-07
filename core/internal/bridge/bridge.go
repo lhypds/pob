@@ -7,12 +7,18 @@ package bridge
 import (
 	"encoding/base64"
 	"fmt"
+	"sync"
 
 	"pob/core/internal/ipc"
 )
 
 type Bridge struct {
 	ipc *ipc.Client
+
+	mu sync.Mutex
+	// driving holds the remote-control sources currently active, so the
+	// virtual cursor is hidden only once the last of them has finished.
+	driving map[string]bool
 }
 
 type Point struct {
@@ -26,7 +32,7 @@ type CropRect struct {
 }
 
 func New(client *ipc.Client) *Bridge {
-	return &Bridge{ipc: client}
+	return &Bridge{ipc: client, driving: map[string]bool{}}
 }
 
 func pointFrom(result map[string]any) Point {
@@ -147,10 +153,26 @@ func (b *Bridge) NotifyExecutionState(executing bool) {
 	b.ipc.Notify("session.state", map[string]any{"executing": executing})
 }
 
-// NotifyMCPState tells the UI whether an external MCP client is driving this
-// instance, so the virtual cursor stays visible while it does. Kept separate
-// from session.state: MCP control should not lock the window or pause the
-// macro recorder the way an agent run does.
-func (b *Bridge) NotifyMCPState(active bool) {
-	b.ipc.Notify("mcp.state", map[string]any{"active": active})
+// NotifyRemoteControl tells the UI that something outside the agent loop — an
+// MCP client, a browser on the web UI — is driving this instance, so the
+// virtual cursor stays visible while it does. Kept separate from
+// session.state: remote control should not lock the window or pause the macro
+// recorder the way an agent run does.
+//
+// Sources are counted rather than toggled, since more than one can be driving
+// at a time and the cursor must not vanish while the other still has it.
+func (b *Bridge) NotifyRemoteControl(source string, active bool) {
+	b.mu.Lock()
+	if active == b.driving[source] {
+		b.mu.Unlock()
+		return
+	}
+	if active {
+		b.driving[source] = true
+	} else {
+		delete(b.driving, source)
+	}
+	driving := len(b.driving) > 0
+	b.mu.Unlock()
+	b.ipc.Notify("mcp.state", map[string]any{"active": driving})
 }

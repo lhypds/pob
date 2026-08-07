@@ -97,6 +97,9 @@ cat > "$CONTENTS/Info.plist" << PLIST
 
   <key>NSScreenCaptureUsageDescription</key>
   <string>Pob needs Screen Recording access to capture the screen for AI analysis.</string>
+
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Pob serves its remote control page to your phone or another computer on this network.</string>
 </dict>
 </plist>
 PLIST

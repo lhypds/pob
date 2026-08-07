@@ -33,7 +33,13 @@ final class CoreBridge: ObservableObject {
 
     /// Coordinate context of the most recent capture; used to convert
     /// screenshot pixels to CGEvent screen positions for mouse actions.
-    private var lastContext: ScreenshotContext?
+    private var lastContext: ScreenshotContext? {
+        didSet {
+            // The area a screenshot covers is also the box the virtual cursor
+            // lives in, so the two are always learned together.
+            mouse.contentPixelSize = lastContext?.pixelSize ?? .zero
+        }
+    }
     /// Pending ui.confirmMaxStep request id, answered via resolveMaxStep.
     private var maxStepRequestId: Any?
 
@@ -285,6 +291,15 @@ final class CoreBridge: ObservableObject {
             self.lastContext = ctx
             return ctx
         }
+    }
+
+    /// The window moved or was resized, so both the mapping from screenshot
+    /// pixels to the screen and the box the cursor is held inside have
+    /// changed. Recomputed rather than just invalidated, because this runs on
+    /// the main thread — the only place the window's geometry can be read.
+    func windowGeometryChanged() {
+        guard let window, let ctx = ScreenshotService.shared.context(for: window) else { return }
+        lastContext = ctx
     }
 
     /// Runs a mouse action at the virtual cursor position, converting to

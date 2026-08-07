@@ -9,8 +9,9 @@
         ShowInTaskbar="True"
         ResizeMode="NoResize"
         Height="32">
-    <!-- Compact titlebar, same left-to-right order as the macOS toolbar:
-         file group, then actions; window controls packed right. -->
+    <!-- Compact titlebar, same layout as the macOS toolbar: the instance id
+         at the leading edge beside the window buttons, then everything else
+         packed right — file group, actions, window controls. -->
     <Border x:Name="Bar"
             Background="#F2F2F2"
             BorderBrush="#33000000"
@@ -26,7 +27,31 @@
             </ContextMenu>
         </Border.ContextMenu>
         <DockPanel LastChildFill="False" Margin="4,0,0,0">
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+            <!-- Instance id (pb-xxxx): names this instance's logs directory;
+                 click to copy it. Small monospaced pill, like the macOS badge. -->
+            <Border x:Name="InstanceIdBadge" DockPanel.Dock="Left" VerticalAlignment="Center"
+                    Background="#29808080" CornerRadius="5" Padding="6,2" Margin="0,0,4,0"
+                    Cursor="Hand" MouseLeftButtonDown="OnInstanceIdClicked">
+                <TextBlock x:Name="InstanceIdText" FontFamily="Consolas" FontSize="11"
+                           FontWeight="Bold" Foreground="#FF404040"/>
+            </Border>
+            <!-- Window controls: native caption buttons — full-height, flush
+                 with the window's right edge, system chrome glyphs. Docked
+                 before the action buttons so they stay rightmost. -->
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                <Button x:Name="MinimizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
+                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE921;"/>
+                </Button>
+                <Button x:Name="MaximizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="OnMaximizeClicked">
+                    <TextBlock x:Name="MaximizeIcon" Style="{StaticResource CaptionIcon}" Text="&#xE922;"/>
+                </Button>
+                <Button x:Name="CloseBtn" Style="{StaticResource CaptionCloseButton}" ToolTip="Close" Click="OnCloseClicked">
+                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE8BB;"/>
+                </Button>
+            </StackPanel>
+            <!-- File group then action toggles, in the same left-to-right
+                 order as the macOS toolbar, packed right. -->
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                 <Button x:Name="SettingsBtn" Style="{StaticResource ToolButton}" ToolTip="Settings" Click="OnSettingsClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE713;"/>
                 </Button>
@@ -81,19 +106,6 @@
                 </Button>
                 <Button x:Name="TrashBtn" Style="{StaticResource ToolButton}" ToolTip="Clear" Click="OnTrashClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE74D;"/>
-                </Button>
-            </StackPanel>
-            <!-- Window controls: native caption buttons — full-height, flush
-                 with the window's right edge, system chrome glyphs. -->
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                <Button x:Name="MinimizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
-                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE921;"/>
-                </Button>
-                <Button x:Name="MaximizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="OnMaximizeClicked">
-                    <TextBlock x:Name="MaximizeIcon" Style="{StaticResource CaptionIcon}" Text="&#xE922;"/>
-                </Button>
-                <Button x:Name="CloseBtn" Style="{StaticResource CaptionCloseButton}" ToolTip="Close" Click="OnCloseClicked">
-                    <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE8BB;"/>
                 </Button>
             </StackPanel>
         </DockPanel>

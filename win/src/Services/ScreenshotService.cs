@@ -24,6 +24,8 @@ public struct ShotContext
     public bool Valid;
     public int OriginX; // content-area origin on the screen, device pixels
     public int OriginY;
+    public int Width;  // content-area size in device pixels — the box the
+    public int Height; // virtual cursor lives in, and the size a capture makes
     public double Scale; // DPI scale factor at capture time
 }
 
@@ -37,11 +39,14 @@ public static class ScreenshotService
         lock (CtxLock) return _context;
     }
 
-    private static void SetContext(int ox, int oy, double scale)
+    private static void SetContext(int ox, int oy, int w, int h, double scale)
     {
         lock (CtxLock)
         {
-            _context = new ShotContext { Valid = true, OriginX = ox, OriginY = oy, Scale = scale };
+            _context = new ShotContext
+            {
+                Valid = true, OriginX = ox, OriginY = oy, Width = w, Height = h, Scale = scale,
+            };
         }
     }
 
@@ -148,7 +153,7 @@ public static class ScreenshotService
             return;
         }
 
-        SetContext(devX, devY, scale);
+        SetContext(devX, devY, devW, devH, scale);
 
         BitmapSource result = shot;
 

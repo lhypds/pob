@@ -42,8 +42,32 @@ public static class MouseService
         }
     }
 
+    // ClampToWindow holds a position inside the Pob window. Everything the
+    // cursor addresses is inside that window — it is what the screenshots show
+    // and what the clicks are aimed through — so a position outside it can
+    // only act on something nobody asked for and that no screenshot would ever
+    // reveal. Relative moves are what make this necessary: a trackpad drag, or
+    // a run of nudges from a model, adds up in one direction and walks off the
+    // edge.
+    //
+    // Until a capture context exists there is nothing to clamp to, and the
+    // position is left as it is.
+    private static void ClampToWindow(ref double x, ref double y)
+    {
+        ShotContext ctx = ScreenshotService.GetContext();
+        if (!ctx.Valid || ctx.Width <= 0 || ctx.Height <= 0) return;
+        // The last pixel is Width - 1: a cursor at Width would be the first
+        // pixel outside the window.
+        x = Math.Clamp(x, 0, ctx.Width - 1);
+        y = Math.Clamp(y, 0, ctx.Height - 1);
+    }
+
     private static void SetVirtualPos(double x, double y)
     {
+        // Clamped outside the lock: reading the capture context takes a lock of
+        // its own, and taking the two in one order here and the other order
+        // anywhere else is how a deadlock gets built.
+        ClampToWindow(ref x, ref y);
         lock (PosLock)
         {
             _virtualX = x;
@@ -62,11 +86,11 @@ public static class MouseService
         double x, y;
         lock (PosLock)
         {
-            _virtualX += dx;
-            _virtualY += dy;
-            x = _virtualX;
-            y = _virtualY;
+            x = _virtualX + dx;
+            y = _virtualY + dy;
         }
+        SetVirtualPos(x, y);
+        GetVirtualPos(out x, out y); // the clamped position, not the asked-for one
         AppState.Overlay?.ContentView.CursorTargetChanged(x, y);
     }
 
@@ -216,6 +240,10 @@ public static class MouseService
         }
 
         SetVirtualPos(endX, endY);
+        // Read it back rather than reusing endX/endY: a drag ending past the
+        // window edge is held at the edge, and the drawn cursor has to agree
+        // with where the cursor actually is.
+        GetVirtualPos(out endX, out endY);
         PostDisplayPos(endX, endY);
     }
 
@@ -254,7 +282,10 @@ public static class MouseService
     // ── keyboard synthesis ──────────────────────────────────────────────────
 
     private const ushort VK_RETURN = 0x0D;
+    private const ushort VK_SHIFT = 0x10;
     private const ushort VK_CONTROL = 0x11;
+    private const ushort VK_MENU = 0x12; // Alt
+    private const ushort VK_LWIN = 0x5B;
 
     private static void TapVk(ushort vk, bool extended)
     {
@@ -283,60 +314,120 @@ public static class MouseService
         }
     }
 
-    // Special-key names accepted by the core's keyPress tool; extended = the
-    // key sits on the navigation cluster and needs KEYEVENTF_EXTENDEDKEY.
+    // Key names accepted by the core's keyPress tool, as virtual-key codes;
+    // extended = the key sits on the navigation cluster or the right-hand side
+    // of the board and needs KEYEVENTF_EXTENDEDKEY to be told apart from its
+    // keypad twin.
+    //
+    // A name is a *position* on the board rather than a character — "slash" is
+    // wherever the layout puts it — so the active layout decides what actually
+    // gets typed. That is what lets a keyboard elsewhere forward keys verbatim.
     private static readonly Dictionary<string, (ushort Vk, bool Extended)> PlainKeys = new()
     {
         ["return"] = (0x0D, false), ["enter"] = (0x0D, false),
         ["tab"] = (0x09, false), ["space"] = (0x20, false),
         ["delete"] = (0x08, false), ["backspace"] = (0x08, false),
+        ["forwarddelete"] = (0x2E, true), ["insert"] = (0x2D, true),
         ["escape"] = (0x1B, false), ["esc"] = (0x1B, false),
         ["left"] = (0x25, true), ["up"] = (0x26, true),
         ["right"] = (0x27, true), ["down"] = (0x28, true),
         ["home"] = (0x24, true), ["end"] = (0x23, true),
         ["pageup"] = (0x21, true), ["pagedown"] = (0x22, true),
-        ["f1"] = (0x70, false), ["f2"] = (0x71, false), ["f3"] = (0x72, false),
-        ["f4"] = (0x73, false), ["f5"] = (0x74, false), ["f6"] = (0x75, false),
-        ["f7"] = (0x76, false), ["f8"] = (0x77, false), ["f9"] = (0x78, false),
-        ["f10"] = (0x79, false), ["f11"] = (0x7A, false), ["f12"] = (0x7B, false),
+        ["capslock"] = (0x14, false), ["printscreen"] = (0x2C, true),
+        ["scrolllock"] = (0x91, false), ["pause"] = (0x13, false),
+        ["menu"] = (0x5D, true),
+
+        ["minus"] = (0xBD, false), ["equals"] = (0xBB, false),
+        ["leftbracket"] = (0xDB, false), ["rightbracket"] = (0xDD, false),
+        ["backslash"] = (0xDC, false), ["semicolon"] = (0xBA, false),
+        ["quote"] = (0xDE, false), ["grave"] = (0xC0, false),
+        ["comma"] = (0xBC, false), ["period"] = (0xBE, false),
+        ["slash"] = (0xBF, false),
     };
 
-    // "cmd+<letter>" maps to Ctrl+<letter> — the Windows equivalent of the
-    // macOS Command shortcuts (same convention as the Linux shell).
-    private static bool ResolveKey(string name, out ushort vk, out bool extended, out bool ctrl)
+    // Modifiers a chord may hold. "cmd" keeps meaning Ctrl here — the Windows
+    // equivalent of the macOS Command shortcuts, and what a macro or an MCP
+    // call has always meant by one. "gui" is the other thing you might mean:
+    // the physical key beside the space bar, which on this machine is Windows.
+    private static readonly Dictionary<string, ushort> Modifiers = new()
+    {
+        ["cmd"] = VK_CONTROL, ["command"] = VK_CONTROL,
+        ["ctrl"] = VK_CONTROL, ["control"] = VK_CONTROL,
+        ["alt"] = VK_MENU, ["option"] = VK_MENU, ["opt"] = VK_MENU,
+        ["shift"] = VK_SHIFT,
+        ["gui"] = VK_LWIN, ["win"] = VK_LWIN, ["super"] = VK_LWIN, ["meta"] = VK_LWIN,
+    };
+
+    private static bool IsExtendedModifier(ushort vk) => vk == VK_LWIN;
+
+    /// Resolves "escape", "cmd+v" or "ctrl+alt+shift+f5" into the key to press
+    /// and the modifiers to hold while pressing it. Everything before the last
+    /// "+" is a modifier; the last part is the key.
+    private static bool ResolveKey(string key, out ushort vk, out bool extended, out List<ushort> modifiers)
     {
         vk = 0;
         extended = false;
-        ctrl = false;
+        modifiers = new List<ushort>();
+
+        string[] parts = key.Split('+', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return false;
+
+        string name = parts[^1];
         if (PlainKeys.TryGetValue(name, out (ushort Vk, bool Extended) entry))
         {
             vk = entry.Vk;
             extended = entry.Extended;
-            return true;
         }
-        if (name.StartsWith("cmd+") && name.Length == 5 && name[4] >= 'a' && name[4] <= 'z')
+        else if (name.Length == 1 && name[0] >= 'a' && name[0] <= 'z')
         {
-            vk = (ushort)('A' + (name[4] - 'a'));
-            ctrl = true;
-            return true;
+            vk = (ushort)('A' + (name[0] - 'a'));
         }
-        return false;
+        else if (name.Length == 1 && name[0] >= '0' && name[0] <= '9')
+        {
+            vk = name[0];
+        }
+        else if (name.Length >= 2 && name[0] == 'f'
+                 && int.TryParse(name.AsSpan(1), out int n) && n >= 1 && n <= 24)
+        {
+            vk = (ushort)(0x70 + n - 1); // VK_F1 … VK_F24 run consecutively
+        }
+        else
+        {
+            return false;
+        }
+
+        for (int i = 0; i < parts.Length - 1; i++)
+        {
+            if (!Modifiers.TryGetValue(parts[i], out ushort mod)) return false;
+            if (!modifiers.Contains(mod)) modifiers.Add(mod);
+        }
+        return true;
     }
 
     private static void DoKeyPress(string key)
     {
         string lower = key.ToLowerInvariant();
-        if (!ResolveKey(lower, out ushort vk, out bool extended, out bool ctrl))
+        if (!ResolveKey(lower, out ushort vk, out bool extended, out List<ushort> modifiers))
         {
             AppLogger.Log($"Unknown key: {key}");
             return;
         }
 
         uint flags = extended ? NativeMethods.KEYEVENTF_EXTENDEDKEY : 0;
-        if (ctrl) NativeMethods.Send(NativeMethods.KeyInput(VK_CONTROL, 0, 0));
+        foreach (ushort mod in modifiers)
+        {
+            NativeMethods.Send(NativeMethods.KeyInput(mod, 0,
+                IsExtendedModifier(mod) ? NativeMethods.KEYEVENTF_EXTENDEDKEY : 0));
+        }
         NativeMethods.Send(NativeMethods.KeyInput(vk, 0, flags));
         Thread.Sleep(30); // match macOS: 30 ms hold
         NativeMethods.Send(NativeMethods.KeyInput(vk, 0, flags | NativeMethods.KEYEVENTF_KEYUP));
-        if (ctrl) NativeMethods.Send(NativeMethods.KeyInput(VK_CONTROL, 0, NativeMethods.KEYEVENTF_KEYUP));
+        // Released in reverse, so a modifier never outlives one held under it.
+        for (int i = modifiers.Count - 1; i >= 0; i--)
+        {
+            uint modFlags = NativeMethods.KEYEVENTF_KEYUP;
+            if (IsExtendedModifier(modifiers[i])) modFlags |= NativeMethods.KEYEVENTF_EXTENDEDKEY;
+            NativeMethods.Send(NativeMethods.KeyInput(modifiers[i], 0, modFlags));
+        }
     }
 }

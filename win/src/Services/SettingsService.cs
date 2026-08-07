@@ -52,11 +52,11 @@ public static class SettingsService
         string logs = RootPath("logs");
         Directory.CreateDirectory(logs);
 
-        // Reserve logs/<unixtime>/, bumping if another instance grabbed the
-        // same second (mirrors the Go core's newInstanceID).
-        long id = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        while (Directory.Exists(Path.Combine(logs, id.ToString()))) id++;
-        string dir = Path.Combine(logs, id.ToString());
+        // Reserve logs/pb-<uid>/, drawing another ID if that one is taken
+        // (mirrors the Go core's newInstanceID).
+        string id = NewInstanceId();
+        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        string dir = Path.Combine(logs, id);
         Directory.CreateDirectory(dir);
         AcquireInstanceLock(dir);
 
@@ -71,8 +71,16 @@ public static class SettingsService
         catch (IOException)
         {
         }
-        return id.ToString();
+        return id;
     }
+
+    /// <summary>
+    /// pb-&lt;4 hex&gt; — the last two bytes of a fresh UID as lowercase hex, the
+    /// same scheme the pico-hid firmware uses for its ph- board id. The
+    /// toolbar shows it beside the window buttons, so the id on screen names
+    /// the logs directory to look in.
+    /// </summary>
+    private static string NewInstanceId() => "pb-" + Guid.NewGuid().ToString("N")[28..];
 
     private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
 

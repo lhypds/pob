@@ -59,6 +59,11 @@ const char *app_version(void) {
 // than the macOS compact toolbar, so render slightly smaller.
 #define POB_ICON_SIZE 12
 
+// Width of the window-edge band kept inside the input shape while
+// click-through is on, so the frame can still be grabbed to resize. Stays
+// within GTK's own CSD resize handle ("decoration-resize-handle", 20 px).
+#define POB_RESIZE_BORDER 12
+
 static const char *pick_icon(const char *const names[]) {
     GtkIconTheme *theme = gtk_icon_theme_get_default();
     for (int i = 0; names[i]; i++)
@@ -213,7 +218,7 @@ static void set_clickthrough_icon(void) {
 
 void app_update_click_through(void) {
     GtkWidget *win = GTK_WIDGET(g_state.window);
-    if (!gtk_widget_get_realized(win)) return;
+    if (!gtk_widget_get_realized(win) || !g_state.content) return;
 
     // Pass clicks through the content area (toolbar stays interactive) when
     // the user enabled click-through, or while executing — on X11 the
@@ -223,10 +228,33 @@ void app_update_click_through(void) {
                     !g_state.is_targeting && !g_state.is_cropping;
 
     if (pass) {
-        GtkAllocation alloc;
-        gtk_widget_get_allocation(g_state.headerbar, &alloc);
-        cairo_rectangle_int_t rect = {alloc.x, alloc.y, alloc.width, alloc.height};
-        cairo_region_t *region = cairo_region_create_rectangle(&rect);
+        GtkAllocation hb, content;
+        gtk_widget_get_allocation(g_state.headerbar, &hb);
+        gtk_widget_get_allocation(g_state.content, &content);
+
+        // Interactive: the headerbar, plus a band along the visible frame's
+        // edges so the window can still be grabbed to resize. Bounded to the
+        // frame — the CSD shadow around it is invisible and must not catch
+        // clicks. A locked (or executing) window cannot be resized, so it
+        // keeps the band out and passes everything below the headerbar
+        // through.
+        cairo_rectangle_int_t frame = {
+            content.x, hb.y, content.width, content.y + content.height - hb.y,
+        };
+        cairo_region_t *region = cairo_region_create_rectangle(&frame);
+        cairo_rectangle_int_t hbr = {hb.x, hb.y, hb.width, hb.height};
+        cairo_region_union_rectangle(region, &hbr);
+
+        int border = (g_state.is_locked || g_state.is_executing) ? 0 : POB_RESIZE_BORDER;
+        cairo_rectangle_int_t hole = {
+            content.x + border,
+            content.y,
+            content.width - 2 * border,
+            content.height - border,
+        };
+        if (hole.width > 0 && hole.height > 0)
+            cairo_region_subtract_rectangle(region, &hole);
+
         gtk_widget_input_shape_combine_region(win, region);
         cairo_region_destroy(region);
     } else {
@@ -237,6 +265,8 @@ void app_update_click_through(void) {
 void app_update_window_lock(void) {
     gboolean locked = g_state.is_locked || g_state.is_executing;
     gtk_window_set_resizable(g_state.window, !locked);
+    // The resize band in the input shape only exists while resizing is allowed.
+    app_update_click_through();
 }
 
 // Sets click-through and syncs the toolbar button (icon, tooltip, shape).
@@ -575,6 +605,33 @@ static GtkWidget *build_applog_button(void) {
     return btn;
 }
 
+// This instance's id (pb-xxxx) as a small monospaced pill — the same badge the
+// macOS toolbar shows beside the window buttons. It names the instance's
+// logs/<instance>/ directory; clicking copies it, like the coordinate labels.
+static void on_instance_id_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    const char *id = settings_instance_id();
+    GtkClipboard *cb = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    gtk_clipboard_set_text(cb, id, -1);
+    gtk_clipboard_store(cb);
+    gchar *msg = g_strdup_printf("Copied %s", id);
+    content_view_show_message(msg);
+    g_free(msg);
+}
+
+static GtkWidget *build_instance_id_button(void) {
+    GtkWidget *btn = gtk_button_new_with_label(settings_instance_id());
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn),
+                                "pob-instance-id");
+    gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
+    gchar *tip = g_strdup_printf("Instance %s — click to copy",
+                                 settings_instance_id());
+    gtk_widget_set_tooltip_text(btn, tip);
+    g_free(tip);
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_instance_id_clicked), NULL);
+    return btn;
+}
+
 // Custom window controls: GTK's own "titlebutton" widgets take their size
 // and glyphs from the desktop theme (PiXflat pads them to ~32px), so instead
 // the headerbar shows no theme controls and packs our own icon_button()s —
@@ -662,25 +719,30 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.window, "window-state-event",
                      G_CALLBACK(on_window_state), NULL);
 
-    // Same left-to-right order as the macOS toolbar: file group, then actions.
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), settings_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), logs_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), applog_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), instruction_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), macro_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.record_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.play_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.target_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.crop_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), screenshot_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), g_state.lock_btn);
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), trash_btn);
-    // pack_end packs right-to-left; close first keeps the usual order
-    // (minimize, maximize, close) reading left to right.
+    // Instance id at the leading edge, beside the window buttons — the same
+    // spot as the macOS badge.
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), build_instance_id_button());
+
+    // Everything else packs right, in the same left-to-right order as the
+    // macOS toolbar (file group, then actions) followed by the window
+    // controls. pack_end packs right-to-left, so this list is that order
+    // reversed: close first ends up rightmost.
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), close_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), maximize_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), minimize_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), trash_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.lock_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), screenshot_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.crop_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.target_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.play_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.record_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), macro_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), instruction_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), applog_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), logs_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), settings_btn);
 
     gtk_widget_add_events(hb, GDK_BUTTON_PRESS_MASK);
     g_signal_connect(hb, "button-press-event",
@@ -737,6 +799,16 @@ static void install_css(void) {
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
+        // Instance id pill, matching the macOS badge. Selector is qualified
+        // past the compact-button rule below, which would otherwise win on
+        // specificity and square the corners.
+        "window.pob-window headerbar button.pob-instance-id {\n"
+        "  font-family: monospace; font-size: 8pt; font-weight: bold;\n"
+        "  min-width: 0; min-height: 0; padding: 2px 6px; margin-right: 4px;\n"
+        "  border: none; box-shadow: none; border-radius: 5px;\n"
+        "  background-image: none;\n"
+        "  background-color: rgba(128, 128, 128, 0.16);\n"
+        "}\n"
         // Compact titlebar: kill the theme's headerbar min-height/padding
         // and the 6px margins it puts on headerbar buttons.
         "window.pob-window headerbar {\n"
@@ -825,6 +897,10 @@ static void on_activate(GtkApplication *app, gpointer data) {
     build_headerbar();
     g_state.content = content_view_new();
     gtk_container_add(GTK_CONTAINER(win), g_state.content);
+    // Input shape depends on the content geometry too — a vertical-only resize
+    // leaves the headerbar allocation untouched.
+    g_signal_connect_swapped(g_state.content, "size-allocate",
+                             G_CALLBACK(app_update_click_through), NULL);
 
     gtk_window_set_keep_above(g_state.window, TRUE); // macOS: window.level = .floating
 

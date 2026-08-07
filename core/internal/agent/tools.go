@@ -64,9 +64,13 @@ func makeTools() []map[string]any {
 				"text": str("The text to type."),
 			}, []string{"text"}),
 		fn("keyPress",
-			"Press a special key. Supported: return, tab, space, delete, escape, left, right, up, down, home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
+			"Press a special key, optionally with \"+\"-joined modifiers in front of it: cmd (Command "+
+				"on macOS, Ctrl elsewhere), ctrl, alt, shift, gui. Keys: a–z, 0–9, return, tab, space, "+
+				"backspace, forwarddelete, escape, insert, left, right, up, down, home, end, pageup, "+
+				"pagedown, capslock, printscreen, scrolllock, pause, menu, f1–f24, minus, equals, "+
+				"leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, period, slash.",
 			map[string]any{
-				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\"."),
+				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\", \"ctrl+shift+t\"."),
 			}, []string{"key"}),
 		fn("sleep",
 			"Pause execution for a given number of milliseconds.",

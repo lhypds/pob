@@ -23,6 +23,7 @@ import (
 	"pob/core/internal/llm"
 	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
+	"pob/webui"
 )
 
 func main() {
@@ -69,9 +70,22 @@ func main() {
 	// `pob mcp --instance <id> start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
 
+	// The web UI does start with the app, so that reaching for a phone is all
+	// it takes: it serves at http://<machine>:<port>/<instance> for anyone on
+	// the same network, which is why "webui": false in settings.json turns it
+	// off. Every instance shares that one port and is told apart by the path,
+	// so they have to be able to find each other — which is what the logs
+	// directory is for.
+	web := webui.New(store.InstanceID(), cfg.LogsDir(), br.Remote(), applog.Logf)
+	if cfg.WebUI() {
+		if err := web.Start(cfg.WebUIPort()); err != nil {
+			applog.Logf("WebUI: not started: %v", err)
+		}
+	}
+
 	// The control server lets the `pob` CLI drive this instance; it always
 	// runs, on an ephemeral port advertised in logs/<instance>/control.json.
-	ctl := ctlserver.New(cfg, store, runner, mcp, br)
+	ctl := ctlserver.New(cfg, store, runner, mcp, web, br)
 	_ = ctl.Start()
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())
@@ -83,6 +97,7 @@ func main() {
 	go func() {
 		<-sig
 		ctl.Stop()
+		web.Stop()
 		store.WriteInstanceEnd()
 		os.Exit(0)
 	}()
@@ -90,5 +105,6 @@ func main() {
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()
 	ctl.Stop()
+	web.Stop()
 	store.WriteInstanceEnd()
 }

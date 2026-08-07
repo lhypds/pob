@@ -8,6 +8,7 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
+#include <stdlib.h>
 #include <string.h>
 
 // ── virtual cursor state ────────────────────────────────────────────────────
@@ -23,7 +24,28 @@ void mouse_get_virtual_pos(double *x, double *y) {
     g_mutex_unlock(&pos_mutex);
 }
 
+// clamp_to_window holds a position inside the Pob window. Everything the
+// cursor addresses is inside that window — it is what the screenshots show and
+// what the clicks are aimed through — so a position outside it can only act on
+// something nobody asked for and that no screenshot would ever reveal.
+// Relative moves are what make this necessary: a trackpad drag, or a run of
+// nudges from a model, adds up in one direction and walks off the edge.
+//
+// Until a capture context exists there is nothing to clamp to, and the
+// position is left as it is.
+static void clamp_to_window(double *x, double *y) {
+    ShotContext ctx = screenshot_get_context();
+    if (!ctx.valid || ctx.width <= 0 || ctx.height <= 0) return;
+    // The last pixel is width - 1: a cursor at width would be the first pixel
+    // outside the window.
+    if (*x < 0) *x = 0;
+    if (*y < 0) *y = 0;
+    if (*x > ctx.width - 1) *x = ctx.width - 1;
+    if (*y > ctx.height - 1) *y = ctx.height - 1;
+}
+
 static void set_virtual_pos(double x, double y) {
+    clamp_to_window(&x, &y);
     g_mutex_lock(&pos_mutex);
     virtual_x = x;
     virtual_y = y;
@@ -37,9 +59,15 @@ void mouse_reset_cursor(void) {
 
 void mouse_move_by(double dx, double dy) {
     g_mutex_lock(&pos_mutex);
-    virtual_x += dx;
-    virtual_y += dy;
-    double x = virtual_x, y = virtual_y;
+    double x = virtual_x + dx, y = virtual_y + dy;
+    g_mutex_unlock(&pos_mutex);
+    // Clamped outside the lock: reading the capture context takes a lock of
+    // its own, and taking the two in one order here and the other order
+    // anywhere else is how a deadlock gets built.
+    clamp_to_window(&x, &y);
+    g_mutex_lock(&pos_mutex);
+    virtual_x = x;
+    virtual_y = y;
     g_mutex_unlock(&pos_mutex);
     content_view_cursor_target_changed(x, y);
 }
@@ -186,6 +214,10 @@ static void do_drag(Display *dpy, double dx, double dy) {
     }
 
     set_virtual_pos(end_x, end_y);
+    // Read it back rather than reusing end_x/end_y: a drag ending past the
+    // window edge is held at the edge, and the drawn cursor has to agree with
+    // where the cursor actually is.
+    mouse_get_virtual_pos(&end_x, &end_y);
     post_display_pos(end_x, end_y);
 }
 
@@ -319,9 +351,11 @@ static void do_type(Display *dpy, const char *text) {
     }
 }
 
-// Special-key names accepted by the core's keyPress tool. "cmd+<letter>"
-// maps to Ctrl+<letter> — the Unix equivalent of the macOS Command shortcuts.
-static gboolean resolve_key(const char *name, KeySym *ks, gboolean *ctrl) {
+// Key names accepted by the core's keyPress tool. A name is a *position* on
+// the board rather than a character — "slash" is wherever the layout puts it —
+// so the active layout decides what gets typed, which is what lets a keyboard
+// elsewhere forward keys verbatim.
+static gboolean resolve_key_name(const char *name, KeySym *ks) {
     static const struct {
         const char *name;
         KeySym sym;
@@ -329,52 +363,113 @@ static gboolean resolve_key(const char *name, KeySym *ks, gboolean *ctrl) {
         {"return", XK_Return}, {"enter", XK_Return},
         {"tab", XK_Tab},       {"space", XK_space},
         {"delete", XK_BackSpace}, {"backspace", XK_BackSpace},
+        {"forwarddelete", XK_Delete}, {"insert", XK_Insert},
         {"escape", XK_Escape}, {"esc", XK_Escape},
         {"left", XK_Left},     {"right", XK_Right},
         {"down", XK_Down},     {"up", XK_Up},
         {"home", XK_Home},     {"end", XK_End},
         {"pageup", XK_Prior},  {"pagedown", XK_Next},
-        {"f1", XK_F1},   {"f2", XK_F2},   {"f3", XK_F3},   {"f4", XK_F4},
-        {"f5", XK_F5},   {"f6", XK_F6},   {"f7", XK_F7},   {"f8", XK_F8},
-        {"f9", XK_F9},   {"f10", XK_F10}, {"f11", XK_F11}, {"f12", XK_F12},
+        {"capslock", XK_Caps_Lock}, {"printscreen", XK_Print},
+        {"scrolllock", XK_Scroll_Lock}, {"pause", XK_Pause},
+        {"menu", XK_Menu},
+        {"minus", XK_minus},   {"equals", XK_equal},
+        {"leftbracket", XK_bracketleft}, {"rightbracket", XK_bracketright},
+        {"backslash", XK_backslash}, {"semicolon", XK_semicolon},
+        {"quote", XK_apostrophe}, {"grave", XK_grave},
+        {"comma", XK_comma},   {"period", XK_period}, {"slash", XK_slash},
     };
 
-    *ctrl = FALSE;
     for (gsize i = 0; i < G_N_ELEMENTS(plain); i++) {
         if (g_str_equal(name, plain[i].name)) {
             *ks = plain[i].sym;
             return TRUE;
         }
     }
-    if (g_str_has_prefix(name, "cmd+") && strlen(name) == 5 &&
-        name[4] >= 'a' && name[4] <= 'z') {
-        *ks = (KeySym)(XK_a + (name[4] - 'a'));
-        *ctrl = TRUE;
+    if (strlen(name) == 1 && name[0] >= 'a' && name[0] <= 'z') {
+        *ks = (KeySym)(XK_a + (name[0] - 'a'));
         return TRUE;
+    }
+    if (strlen(name) == 1 && name[0] >= '0' && name[0] <= '9') {
+        *ks = (KeySym)(XK_0 + (name[0] - '0'));
+        return TRUE;
+    }
+    if (name[0] == 'f' && name[1] != '\0') {
+        char *end = NULL;
+        long n = strtol(name + 1, &end, 10);
+        // XK_F1..XK_F24 run consecutively, so the number is enough.
+        if (end && *end == '\0' && n >= 1 && n <= 24) {
+            *ks = (KeySym)(XK_F1 + (n - 1));
+            return TRUE;
+        }
     }
     return FALSE;
 }
 
+// Modifiers a chord may hold. "cmd" keeps meaning Ctrl here — the Unix
+// equivalent of the macOS Command shortcuts, and what a macro or an MCP call
+// has always meant by one. "gui" is the other thing you might mean: the
+// physical key beside the space bar, which on this machine is Super.
+static gboolean resolve_modifier(const char *name, KeySym *ks) {
+    static const struct {
+        const char *name;
+        KeySym sym;
+    } mods[] = {
+        {"cmd", XK_Control_L},   {"command", XK_Control_L},
+        {"ctrl", XK_Control_L},  {"control", XK_Control_L},
+        {"alt", XK_Alt_L},       {"option", XK_Alt_L},  {"opt", XK_Alt_L},
+        {"shift", XK_Shift_L},
+        {"gui", XK_Super_L},     {"win", XK_Super_L},
+        {"super", XK_Super_L},   {"meta", XK_Super_L},
+    };
+    for (gsize i = 0; i < G_N_ELEMENTS(mods); i++) {
+        if (g_str_equal(name, mods[i].name)) {
+            *ks = mods[i].sym;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+// Presses one key, optionally with modifiers held: "escape", "cmd+v",
+// "ctrl+alt+shift+f5". Everything before the last "+" is a modifier; the last
+// part is the key.
 static void do_key_press(Display *dpy, const char *key) {
     gchar *lower = g_ascii_strdown(key, -1);
+    gchar **parts = g_strsplit(lower, "+", -1);
+    g_free(lower);
+
+    guint count = g_strv_length(parts);
     KeySym ks;
-    gboolean ctrl;
-    if (!resolve_key(lower, &ks, &ctrl)) {
+    if (count == 0 || !resolve_key_name(parts[count - 1], &ks)) {
         app_logger_log("Unknown key: %s", key);
-        g_free(lower);
+        g_strfreev(parts);
         return;
     }
-    g_free(lower);
+
+    // Held one per modifier named, in the order given and released in reverse,
+    // so a modifier never outlives one held under it.
+    KeyCode mod_kc[8];
+    guint mod_count = 0;
+    for (guint i = 0; i + 1 < count && mod_count < G_N_ELEMENTS(mod_kc); i++) {
+        KeySym mod_ks;
+        if (!resolve_modifier(parts[i], &mod_ks)) {
+            app_logger_log("Unknown modifier in key: %s", key);
+            g_strfreev(parts);
+            return;
+        }
+        KeyCode kc = XKeysymToKeycode(dpy, mod_ks);
+        if (kc != 0) mod_kc[mod_count++] = kc;
+    }
+    g_strfreev(parts);
 
     KeyCode kc = XKeysymToKeycode(dpy, ks);
     if (kc == 0) return;
-    KeyCode ctrl_kc = XKeysymToKeycode(dpy, XK_Control_L);
 
-    if (ctrl) fake_key(dpy, ctrl_kc, True);
+    for (guint i = 0; i < mod_count; i++) fake_key(dpy, mod_kc[i], True);
     fake_key(dpy, kc, True);
     g_usleep(30 * 1000); // match macOS: 30 ms hold
     fake_key(dpy, kc, False);
-    if (ctrl) fake_key(dpy, ctrl_kc, False);
+    for (guint i = mod_count; i > 0; i--) fake_key(dpy, mod_kc[i - 1], False);
 }
 
 // ── worker main ─────────────────────────────────────────────────────────────

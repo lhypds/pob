@@ -94,8 +94,8 @@ class SettingsService {
 
     /// `pb-<4 hex>` — the last two bytes of a fresh UID as lowercase hex,
     /// the same scheme the pico-hid firmware uses for its `ph-` board id.
-    /// Shown in the overlay's top-right corner and used as the logs directory
-    /// name, so the badge on screen names the directory to look in.
+    /// Shown in the toolbar beside the window buttons and used as the logs
+    /// directory name, so the id on screen names the directory to look in.
     private static func newInstanceID() -> String {
         "pb-" + UUID().uuidString.suffix(4).lowercased()
     }

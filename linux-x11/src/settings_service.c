@@ -56,10 +56,14 @@ static gboolean instance_is_running(const char *dir_path) {
     return TRUE;
 }
 
-// Reserves logs/<unixtime>/ exclusively for this process (bumping if another
-// instance grabbed the same second, mirroring the Go core's newInstanceID)
-// and seeds it with a copy of the root settings.json so the instance reads
-// and edits its own settings. instruction.txt and macro.txt stay shared.
+// Reserves logs/pb-<uid>/ exclusively for this process (drawing another ID if
+// that one is taken, mirroring the Go core's newInstanceID) and seeds it with
+// a copy of the root settings.json so the instance reads and edits its own
+// settings. instruction.txt and macro.txt stay shared.
+//
+// The ID is "pb-<4 hex>": the last two bytes of a fresh UID as lowercase hex,
+// the same scheme the pico-hid firmware uses for its "ph-" board id. The
+// headerbar shows it beside the window buttons.
 const char *settings_instance_id(void) {
     static gchar *instance_id = NULL;
     if (instance_id) return instance_id;
@@ -67,15 +71,14 @@ const char *settings_instance_id(void) {
     gchar *logs = root_path("logs");
     g_mkdir_with_parents(logs, 0755);
 
-    gint64 id = g_get_real_time() / G_USEC_PER_SEC;
     for (;;) {
-        gchar *dir = g_strdup_printf("%s/%" G_GINT64_FORMAT, logs, id);
+        g_free(instance_id);
+        instance_id = g_strdup_printf("pb-%04x", g_random_int() & 0xffff);
+        gchar *dir = g_build_filename(logs, instance_id, NULL);
         int rc = g_mkdir(dir, 0755);
         g_free(dir);
         if (rc == 0 || errno != EEXIST) break;
-        id++;
     }
-    instance_id = g_strdup_printf("%" G_GINT64_FORMAT, id);
     acquire_instance_lock();
 
     // Seed this instance's settings.json from the root template.

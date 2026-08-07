@@ -73,7 +73,7 @@ func (s *Server) Start(port int) error {
 	// Show the virtual cursor for as long as the server is up — an MCP client
 	// can move it at any time, and an invisible cursor makes those moves look
 	// like nothing happened.
-	s.br.NotifyMCPState(true)
+	s.br.NotifyRemoteControl("mcp", true)
 	return nil
 }
 
@@ -90,7 +90,7 @@ func (s *Server) Stop() {
 	// Close (not Shutdown): SSE streams are long-lived, so a graceful drain
 	// would block until every client disconnects.
 	_ = server.Close()
-	s.br.NotifyMCPState(false)
+	s.br.NotifyRemoteControl("mcp", false)
 	applog.Log("MCPServer: stopped")
 }
 
@@ -395,10 +395,15 @@ func toolDefinitions() []any {
 				"text": str("The text to type."),
 			}, []string{"text"}),
 		tool("key_press",
-			"Press a special key or shortcut. Supported: return, tab, space, delete, escape, left, right, "+
-				"up, down, home, end, pageup, pagedown, f1–f12, cmd+a/c/v/x/z/w/s/t/r.",
+			"Press a special key or shortcut. A key may be preceded by \"+\"-joined modifiers: "+
+				"cmd (Command on macOS, Ctrl elsewhere — use this for ordinary shortcuts), ctrl, alt, "+
+				"shift, gui (the key beside the space bar: Command / Windows / Super). Keys: a–z, 0–9, "+
+				"return, tab, space, backspace, forwarddelete, escape, insert, left, right, up, down, "+
+				"home, end, pageup, pagedown, capslock, printscreen, scrolllock, pause, menu, f1–f24, "+
+				"minus, equals, leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, "+
+				"period, slash.",
 			map[string]any{
-				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\"."),
+				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\", \"ctrl+shift+t\"."),
 			}, []string{"key"}),
 		tool("wait",
 			"Pause before the next action, to let the UI settle after a click or a page load. "+

@@ -294,10 +294,47 @@ struct InstanceContentView: View {
 
     // MARK: - Toolbar
 
+    /// The instance id sits at the leading edge beside the window buttons,
+    /// then a flexible space pushes every button to the trailing edge.
+    /// (Placements like .navigation / .primaryAction are no-ops in a plain
+    /// WindowGroup toolbar — a Spacer item is what NSToolbar honors.)
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // macOS 26 draws a light capsule behind every toolbar item; hidden for
+        // the badge, whose own pill would otherwise sit inside it with the
+        // capsule's edge peeking out below as a white rim.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .automatic) { instanceBadge }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .automatic) { instanceBadge }
+        }
+        ToolbarItem(placement: .automatic) { Spacer() }
         toolbarFileItems
         toolbarActionItems
+    }
+
+    /// Names this window's logs/<instance>/ directory, so the id on screen is
+    /// the directory to look in (and what `pob show <id>` takes). Click to
+    /// copy it, like the targeting and crop labels.
+    private var instanceBadge: some View {
+        Button(action: {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(instance.settings.instanceID, forType: .string)
+            showToast("Copied \(instance.settings.instanceID)")
+        }) {
+            Text(instance.settings.instanceID)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.primary.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Instance \(instance.settings.instanceID) — click to copy")
     }
 
     @ToolbarContentBuilder

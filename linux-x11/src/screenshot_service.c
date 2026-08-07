@@ -13,7 +13,7 @@
 // ── capture context ─────────────────────────────────────────────────────────
 
 static GMutex ctx_mutex;
-static ShotContext current_ctx = {FALSE, 0, 0, 1};
+static ShotContext current_ctx = {FALSE, 0, 0, 0, 0, 1};
 
 ShotContext screenshot_get_context(void) {
     g_mutex_lock(&ctx_mutex);
@@ -22,11 +22,13 @@ ShotContext screenshot_get_context(void) {
     return c;
 }
 
-static void set_context(int ox, int oy, int scale) {
+static void set_context(int ox, int oy, int w, int h, int scale) {
     g_mutex_lock(&ctx_mutex);
     current_ctx.valid = TRUE;
     current_ctx.origin_x = ox;
     current_ctx.origin_y = oy;
+    current_ctx.width = w;
+    current_ctx.height = h;
     current_ctx.scale = scale;
     g_mutex_unlock(&ctx_mutex);
 }
@@ -235,7 +237,7 @@ static gboolean do_capture(gpointer data) {
         return G_SOURCE_REMOVE;
     }
 
-    set_context(dev_x, dev_y, scale);
+    set_context(dev_x, dev_y, dev_w, dev_h, scale);
 
     cairo_surface_t *surface = ximage_to_surface(img);
     XDestroyImage(img);

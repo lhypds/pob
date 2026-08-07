@@ -105,9 +105,11 @@ final class PobInstance: NSObject, ObservableObject {
         windowObservers = [
             nc.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main) { [weak self] _ in
                 self?.saveWindowFrame()
+                self?.bridge.windowGeometryChanged()
             },
             nc.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
                 self?.saveWindowFrame()
+                self?.bridge.windowGeometryChanged()
             },
             // SwiftUI can keep the window's scene state (and thus this
             // object) alive after close, so stop the Go core explicitly
@@ -117,6 +119,11 @@ final class PobInstance: NSObject, ObservableObject {
             },
         ]
 
+        // Seed the pixel→screen mapping and the box the cursor is held inside
+        // from the window as it stands, so both are right before the first
+        // screenshot rather than only after it.
+        bridge.windowGeometryChanged()
+
         window.standardWindowButton(.closeButton)?.isEnabled = true
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
         window.standardWindowButton(.zoomButton)?.isEnabled = true
@@ -125,6 +132,10 @@ final class PobInstance: NSObject, ObservableObject {
     }
 
     // MARK: - Click-through
+
+    /// Width of the window-edge band kept live while click-through is on, so
+    /// the frame can still be grabbed to resize.
+    private static let resizeBorder: CGFloat = 6
 
     /// Called by the view whenever isExecuting or isTargeting changes.
     func setClickThrough(_ enabled: Bool) {
@@ -146,10 +157,24 @@ final class PobInstance: NSObject, ObservableObject {
 
         let mouse = NSEvent.mouseLocation
         let wf = window.frame
+        guard mouse.x >= wf.minX, mouse.x <= wf.maxX,
+              mouse.y >= wf.minY, mouse.y <= wf.maxY
+        else {
+            window.ignoresMouseEvents = true
+            return
+        }
+
         // Top 50 pt covers the compact unified toolbar + traffic-light buttons.
-        let inToolbar = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
-            mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
-        window.ignoresMouseEvents = !inToolbar
+        let inToolbar = mouse.y >= (wf.maxY - 50)
+        // The edges stay live so the window can still be resized while clicks
+        // pass through everything inside them. A locked (or executing) window
+        // drops .resizable — then the band would only swallow clicks meant for
+        // the app below.
+        let border = Self.resizeBorder
+        let onEdge = window.styleMask.contains(.resizable) &&
+            (mouse.x - wf.minX <= border || wf.maxX - mouse.x <= border ||
+             mouse.y - wf.minY <= border || wf.maxY - mouse.y <= border)
+        window.ignoresMouseEvents = !(inToolbar || onEdge)
     }
 
     /// Driven by AppDelegate's app-wide mouseMoved monitors.
