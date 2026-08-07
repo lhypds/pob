@@ -42,8 +42,14 @@ public static class SettingsService
 
     /// <summary>
     /// Exclusive handle on logs/&lt;InstanceId&gt;/.lock, held for the process
-    /// lifetime so ClearLogs (from this or another process) can tell the
-    /// directory belongs to a running instance.
+    /// lifetime. It marks the directory as belonging to a running Pob, which
+    /// is what ClearLogs checks — and taking it is also how a second Pob is
+    /// detected, see ClaimInstance.
+    ///
+    /// Opened exactly once. The share mode is enforced per handle, not per
+    /// process, so opening this same file a second time would be refused by
+    /// the handle this process already holds — Pob would find itself and
+    /// conclude it was already running.
     /// </summary>
     private static FileStream? _instanceLock;
 
@@ -173,15 +179,23 @@ public static class SettingsService
     private static string NewInstanceId() => InstancePrefix + Guid.NewGuid().ToString("N")[28..];
 
     /// <summary>
-    /// True when another Pob process already has this machine's instance — it
-    /// holds the exclusive handle on logs/&lt;instance&gt;/.lock for as long as it
-    /// runs. Checked at launch, since only one Pob drives a desktop.
+    /// Claims this machine's instance for this process and reports whether it
+    /// was free; false means another Pob already holds it. Called at launch,
+    /// before any window is built, since only one Pob drives a desktop.
+    ///
+    /// Claiming and asking are the same operation on purpose. Asking first
+    /// and taking it after would leave a gap for a second Pob to slip
+    /// through — and, because the share mode belongs to the handle rather
+    /// than the process, the asking itself would collide with the handle this
+    /// process had already opened.
     /// </summary>
-    public static bool AnotherInstanceIsRunning()
+    public static bool ClaimInstance()
     {
         string logs = RootPath("logs");
         Directory.CreateDirectory(logs);
-        return IsInstanceRunning(Path.Combine(logs, ResolveInstanceId(logs)));
+        string dir = Path.Combine(logs, ResolveInstanceId(logs));
+        Directory.CreateDirectory(dir);
+        return AcquireInstanceLock(dir);
     }
 
     private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
@@ -433,15 +447,31 @@ public static class SettingsService
         TryTruncate(RootPath("app.log"));
     }
 
-    private static void AcquireInstanceLock(string instanceDir)
+    /// <summary>
+    /// Takes the lock handle, or reports that someone else has it. Already
+    /// holding it counts as success — this process is the someone else.
+    /// </summary>
+    private static bool AcquireInstanceLock(string instanceDir)
     {
+        if (_instanceLock != null) return true;
         try
         {
             _instanceLock = new FileStream(Path.Combine(instanceDir, ".lock"),
-                FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return true;
         }
         catch (IOException)
         {
+            // A sharing violation is another Pob. Anything else here is a
+            // broken ~/.pob, but both look the same from out here and
+            // refusing to start is the safer reading of the two.
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Permissions, not a second Pob. Start anyway rather than refuse
+            // over something unrelated.
+            return true;
         }
     }
 

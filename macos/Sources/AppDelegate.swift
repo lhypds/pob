@@ -13,7 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // window to drive it with, so a second copy would only fight the
         // first for both. `open` reuses a running app, but the dev scripts
         // run the binary directly, which is where a second one comes from.
-        if SettingsService.anotherInstanceIsRunning() {
+        if !SettingsService.claimInstance() {
             let alert = NSAlert()
             alert.messageText = "Pob is already running"
             alert.informativeText = "Only one Pob can run at a time — it drives the desktop, and there is one pointer to drive it with. Use the window that is already open."

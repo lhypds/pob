@@ -35,7 +35,7 @@ public partial class App : Application
         // One Pob drives a desktop: there is one pointer and one focused
         // window to drive it with, so a second copy would only fight the
         // first for both.
-        if (SettingsService.AnotherInstanceIsRunning())
+        if (!SettingsService.ClaimInstance())
         {
             MessageBox.Show(
                 "Only one Pob can run at a time — it drives the desktop, and there is one pointer to drive it with. Use the window that is already open.",

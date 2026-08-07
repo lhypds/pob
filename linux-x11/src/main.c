@@ -857,7 +857,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
     // GApplication normally hands a second launch to the running one and this
     // never fires; it is here for the case where it cannot — no session bus,
     // which is ordinary enough in a container.
-    if (settings_another_instance_is_running()) {
+    if (!settings_claim_instance()) {
         GtkWidget *dialog = gtk_message_dialog_new(
             NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_OK,
             "Pob is already running");

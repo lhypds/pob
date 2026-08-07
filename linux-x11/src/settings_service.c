@@ -28,20 +28,35 @@ static gchar *root_path(const char *name) {
 
 // ── instance directory ──────────────────────────────────────────────────────
 
-// Exclusive flock on logs/<instance>/.lock, held for the process lifetime so
-// settings_clear_logs (from this or another process) can tell the directory
-// belongs to a running instance.
+// Exclusive flock on logs/<instance>/.lock, held for the process lifetime. It
+// marks the directory as belonging to a running Pob, which is what
+// settings_clear_logs checks — and taking it is also how a second Pob is
+// detected, see settings_claim_instance.
+//
+// Opened exactly once. flock is per open file description, not per process, so
+// a second open() of this same file would be refused by the lock this process
+// already holds — Pob would find itself and conclude it was already running.
 static int instance_lock_fd = -1;
 
-static void acquire_instance_lock(void) {
-    gchar *lock_path = g_build_filename(settings_project_root(), "logs",
-                                        settings_instance_id(), ".lock", NULL);
-    instance_lock_fd = open(lock_path, O_CREAT | O_RDWR, 0644);
-    // Non-blocking: another process holding it means another Pob is running,
-    // which settings_another_instance_is_running has already turned into a
-    // refusal to launch. Waiting here would hang the app instead.
-    if (instance_lock_fd >= 0) flock(instance_lock_fd, LOCK_EX | LOCK_NB);
+// Takes the flock, or reports that someone else has it. Already holding it
+// counts as success: this process is the someone else.
+static gboolean acquire_instance_lock(const char *instance_dir) {
+    if (instance_lock_fd >= 0) return TRUE;
+
+    gchar *lock_path = g_build_filename(instance_dir, ".lock", NULL);
+    int fd = open(lock_path, O_CREAT | O_RDWR, 0644);
     g_free(lock_path);
+    // A lock file that won't open is a broken ~/.pob, not a second Pob. Start
+    // anyway rather than refuse over something unrelated.
+    if (fd < 0) return TRUE;
+
+    // Non-blocking: a held lock is an answer, not something to wait for.
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        close(fd);
+        return FALSE;
+    }
+    instance_lock_fd = fd;
+    return TRUE;
 }
 
 // TRUE when a live instance still holds the directory's .lock. Entries
@@ -137,19 +152,26 @@ static gchar *resolve_instance_id(const char *logs) {
     return id;
 }
 
-// TRUE when another Pob process already has this machine's instance — it
-// holds the flock on logs/<instance>/.lock for as long as it runs. Checked at
-// startup, since only one Pob drives a desktop.
-gboolean settings_another_instance_is_running(void) {
+// Claims this machine's instance for this process and reports whether it was
+// free; FALSE means another Pob already holds it. Called at startup, before
+// the window is built, since only one Pob drives a desktop.
+//
+// Claiming and asking are the same operation on purpose. Asking first and
+// taking it after would leave a gap for a second Pob to slip through — and,
+// because flock belongs to the open file description rather than the process,
+// the asking itself would collide with the lock this process had already
+// taken.
+gboolean settings_claim_instance(void) {
     gchar *logs = root_path("logs");
     g_mkdir_with_parents(logs, 0755);
     gchar *id = resolve_instance_id(logs);
     gchar *dir = g_build_filename(logs, id, NULL);
-    gboolean running = instance_is_running(dir);
+    g_mkdir_with_parents(dir, 0755);
+    gboolean claimed = acquire_instance_lock(dir);
     g_free(dir);
     g_free(id);
     g_free(logs);
-    return running;
+    return claimed;
 }
 
 // This instance's logs/<instance>/ directory, seeded with a copy of the root
@@ -165,8 +187,10 @@ const char *settings_instance_id(void) {
     instance_id = resolve_instance_id(logs);
     gchar *instance_dir = g_build_filename(logs, instance_id, NULL);
     g_mkdir_with_parents(instance_dir, 0755);
+    // Normally already held — settings_claim_instance ran at startup. This is
+    // the path for anything that reaches the settings without it.
+    acquire_instance_lock(instance_dir);
     g_free(instance_dir);
-    acquire_instance_lock();
 
     // Seed this instance's settings.json from the root template.
     gchar *root_settings = root_path("settings.json");
@@ -447,9 +471,9 @@ void settings_clear_logs(void) {
     remove_tree(own);
     g_object_unref(own);
     g_mkdir_with_parents(instance_dir, 0755);
+    acquire_instance_lock(instance_dir);
     g_free(instance_dir);
     g_free(path);
-    acquire_instance_lock();
 
     if (settings_data) {
         g_file_set_contents(settings_path, settings_data, settings_len, NULL);

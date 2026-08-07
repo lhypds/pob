@@ -18,10 +18,16 @@ class SettingsService {
     /// --instance so both sides use the same directory.
     let instanceID: String
 
-    /// Exclusive flock on logs/<instanceID>/.lock, held for the instance's
-    /// lifetime so clearLogs (from this or another process) can tell the
-    /// directory belongs to a running instance.
-    private var lockFD: Int32 = -1
+    /// Exclusive flock on logs/<instanceID>/.lock, held for the process
+    /// lifetime. It marks the directory as belonging to a running Pob, which
+    /// is what clearLogs checks — and taking it is also how a second Pob is
+    /// detected, see claimInstance.
+    ///
+    /// Static, and taken exactly once. flock is per open file description,
+    /// not per process, so a second open() of this same file would be refused
+    /// by the lock this process already holds — Pob would find itself and
+    /// conclude it was already running.
+    private static var lockFD: Int32 = -1
 
     /// Shared project root (same for every instance in this process).
     static var projectRoot: URL {
@@ -66,8 +72,11 @@ class SettingsService {
         try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
 
         instanceID = Self.resolveInstanceID(fileManager, root: root, logs: logs)
-        try? fileManager.createDirectory(at: logs.appendingPathComponent(instanceID), withIntermediateDirectories: true)
-        acquireInstanceLock()
+        let dir = logs.appendingPathComponent(instanceID)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Normally already held — claimInstance ran at launch. This is the
+        // path for anything that builds a SettingsService without it.
+        Self.acquireInstanceLock(at: dir)
 
         // Seed this instance's settings.json from the root template.
         let rootSettings = root.appendingPathComponent("settings.json")
@@ -149,23 +158,37 @@ class SettingsService {
         }
     }
 
-    /// True when another Pob process already has this machine's instance —
-    /// it holds the flock on logs/<instance>/.lock for as long as it runs.
-    /// Checked at launch, since only one Pob drives a desktop.
-    static func anotherInstanceIsRunning() -> Bool {
+    /// True when this process holds the machine's instance. Anything that
+    /// would drive the desktop — starting pob-core above all — has to check
+    /// it, because the scene is built before the app delegate gets to refuse
+    /// the launch, and a core started in that window would outlive the
+    /// refusal.
+    static var holdsInstanceLock: Bool { lockFD >= 0 }
+
+    /// Claims this machine's instance for this process and reports whether
+    /// it was free; false means another Pob already holds it. Called at
+    /// launch, before any window is built, since only one Pob drives a
+    /// desktop.
+    ///
+    /// Claiming and asking are the same operation on purpose. Asking first
+    /// and taking it after would leave a gap for a second Pob to slip
+    /// through — and, because flock belongs to the open file description
+    /// rather than the process, the asking itself would collide with the lock
+    /// this process had already taken.
+    static func claimInstance() -> Bool {
         let fileManager = FileManager.default
         let root = resolveProjectRoot(fileManager)
         let logs = root.appendingPathComponent("logs")
-        let id = resolveInstanceID(fileManager, root: root, logs: logs)
-        return isInstanceRunning(logs.appendingPathComponent(id))
+        try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
+        let dir = logs.appendingPathComponent(resolveInstanceID(fileManager, root: root, logs: logs))
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return acquireInstanceLock(at: dir)
     }
 
     deinit {
-        // Instances share this process (one per window) — release the lock
-        // when the window closes so the directory becomes clearable.
-        if lockFD >= 0 {
-            close(lockFD)
-        }
+        // The lock is the process's, not this object's: SwiftUI can release
+        // and rebuild a @StateObject while the app runs, and dropping the
+        // lock there would let a second Pob in. The OS releases it on exit.
     }
 
     private func serializeJSON(_ object: Any) -> String? {
@@ -271,13 +294,13 @@ class SettingsService {
         // Wipe this instance's own logs, carrying over its live settings.json.
         // The .lock goes down with the directory, so re-acquire it after.
         let settingsData = try? Data(contentsOf: settingsFile)
-        if lockFD >= 0 {
-            close(lockFD)
-            lockFD = -1
+        if Self.lockFD >= 0 {
+            close(Self.lockFD)
+            Self.lockFD = -1
         }
         try? fileManager.removeItem(at: instanceDir)
         try? fileManager.createDirectory(at: instanceDir, withIntermediateDirectories: true)
-        acquireInstanceLock()
+        Self.acquireInstanceLock(at: instanceDir)
         if let settingsData {
             try? settingsData.write(to: settingsFile)
         }
@@ -285,15 +308,22 @@ class SettingsService {
         try? "".write(to: appLog, atomically: true, encoding: .utf8)
     }
 
-    private func acquireInstanceLock() {
-        let lockPath = logsFolder.appendingPathComponent(instanceID).appendingPathComponent(".lock").path
-        lockFD = open(lockPath, O_CREAT | O_RDWR, 0o644)
-        if lockFD >= 0 {
-            // Non-blocking: another process holding it means another Pob is
-            // running, which anotherInstanceIsRunning has already turned into
-            // a refusal to launch. Waiting here would hang the app instead.
-            flock(lockFD, LOCK_EX | LOCK_NB)
+    /// Takes the flock, or reports that someone else has it. Already holding
+    /// it counts as success — this process is the someone else.
+    @discardableResult
+    private static func acquireInstanceLock(at instanceDir: URL) -> Bool {
+        if lockFD >= 0 { return true }
+        let fd = open(instanceDir.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, 0o644)
+        // A lock file that won't open is a broken ~/.pob, not a second Pob.
+        // Start anyway rather than refuse over something unrelated.
+        guard fd >= 0 else { return true }
+        // Non-blocking: a held lock is an answer, not something to wait for.
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return false
         }
+        lockFD = fd
+        return true
     }
 
     /// True when a live instance still holds the directory's .lock. Entries
