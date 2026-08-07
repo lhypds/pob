@@ -326,8 +326,8 @@ http://192.168.1.40:8033/pb-a703
 ```
 
 `pob status` prints the address — one line per network the machine is on. The
-instance ID is the one in the toolbar. With a single instance running the path
-can be left off, and the root leads to it.
+instance ID is the one in the toolbar, and the root lists every instance that
+is serving, so the ID is something to recognise rather than remember.
 
 The port is yours to set: `webui_port` in `settings.json`, or `POB_WEBUI_PORT`
 in the environment. It is the same for every instance, so the address can be
@@ -358,8 +358,6 @@ the others' requests to the process that owns them. Close that window and
 another instance takes the port within a few seconds — `pob status` shows
 `holds_port` if you ever need to know which one has it.
 
-With several instances running, the root lists them.
-
 
 ### API
 
@@ -382,10 +380,10 @@ turn, `+` joins keys held together, using the HID names in
 media and brightness keys — is accepted and ignored: the shells post plain key
 events and have nowhere to put a consumer-control usage.
 
-A command posted to the bare root is served where it lands rather than
-redirected, so a client that doesn't follow redirects — or one that would turn
-a redirected POST into a GET, which is most of them — still gets its keystroke
-through.
+The root is always the list, so a command has to name its instance. The one
+exception is a machine running a single instance, where a command posted to the
+bare root is served by it — where it lands, never redirected, since most HTTP
+clients would turn a redirected POST into a GET and lose the keystroke.
 
 
 Pob Keyboard

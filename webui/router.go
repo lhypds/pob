@@ -45,34 +45,28 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	s.dispatch(w, r, id)
 }
 
-// routeRoot answers a request that named no instance. A machine running a
-// single instance has only one thing it can mean, which is what makes the
-// address worth typing without the path when there is nothing to choose
-// between.
+// routeRoot answers a request that named no instance.
 func (s *Server) routeRoot(w http.ResponseWriter, r *http.Request) {
-	var id string
 	peers := s.peers()
-	if len(peers) == 1 {
-		id = peers[0].ID
-	}
-	if id == "" {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			http.Error(w, "name an instance: POST to /<instance>", http.StatusNotFound)
-			return
-		}
+
+	// The root is the address someone types from memory, so it always answers
+	// the same question — which instances are there — rather than sometimes
+	// listing and sometimes jumping straight through to whichever one happened
+	// to be the only one running.
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		s.serveIndex(w, peers)
 		return
 	}
 
-	// The page is redirected so that the path it was served from names the
-	// instance — that path is what its own commands go back to. A command
-	// itself is answered where it landed: a redirect would be turned into a
-	// GET by most HTTP clients, and the keystroke would vanish on the way.
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		http.Redirect(w, r, "/"+id+"/", http.StatusFound)
+	// A command has to reach an instance, and with only one running there is
+	// nothing to choose between, so it is served where it landed rather than
+	// refused. Never redirected: most HTTP clients turn a redirected POST into
+	// a GET, and the keystroke would vanish on the way.
+	if len(peers) == 1 {
+		s.dispatch(w, r, peers[0].ID)
 		return
 	}
-	s.dispatch(w, r, id)
+	http.Error(w, "name an instance: POST to /<instance>", http.StatusNotFound)
 }
 
 // dispatch serves the request here if it belongs to this instance, and hands
@@ -152,9 +146,9 @@ func (s *Server) serveInstance(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveIndex is what a machine running several instances shows at the root:
-// which ones are up, and a way into each. Deliberately plain — it is a
-// signpost, not a screen anyone spends time on.
+// serveIndex is what the root shows: which instances are up, and a way into
+// each. Deliberately plain — it is a signpost, not a screen anyone spends time
+// on.
 func (s *Server) serveIndex(w http.ResponseWriter, peers []peer) {
 	var body strings.Builder
 	body.WriteString(`<!doctype html><html lang="en"><head><meta charset="UTF-8">` +
@@ -169,7 +163,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, peers []peer) {
 	if len(peers) == 0 {
 		body.WriteString(`<h1>Pob</h1><p>No instance is serving.</p>`)
 	} else {
-		body.WriteString(`<h1>Pick an instance</h1>`)
+		body.WriteString(`<h1>Instances</h1>`)
 		for _, p := range peers {
 			id := html.EscapeString(p.ID)
 			fmt.Fprintf(&body, `<a href="/%s/">%s</a>`, id, id)

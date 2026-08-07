@@ -277,13 +277,57 @@ func TestPortIsHandedOn(t *testing.T) {
 		t.Fatal("the remaining instance never took the port")
 	}
 
-	// And with only one instance left, the bare root leads to it.
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
+	// And the root, now served by the instance that took over, lists it.
+	if body := get(t, fmt.Sprintf("http://127.0.0.1:%d/", port)); !bytes.Contains(body, []byte(`href="/pb-bbbb/"`)) {
+		t.Errorf("the root doesn't list the surviving instance: %s", body)
+	}
+}
+
+// The root always answers the same question — which instances are there —
+// rather than jumping through to whichever one happens to be the only one.
+func TestRootAlwaysListsInstances(t *testing.T) {
+	logs := t.TempDir()
+	port := freePort(t)
+
+	only := New("pb-aaaa", logs, &fakeTarget{}, nil)
+	if err := only.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer only.Stop()
+
+	body := get(t, fmt.Sprintf("http://127.0.0.1:%d/", port))
+	if !bytes.Contains(body, []byte(`href="/pb-aaaa/"`)) {
+		t.Errorf("one instance running, root doesn't list it: %s", body)
+	}
+	if bytes.Contains(body, []byte(`id="trackpad"`)) {
+		t.Error("the root served the web UI page instead of the list")
+	}
+
+	// A second one joins and is listed beside it.
+	other := New("pb-bbbb", logs, &fakeTarget{}, nil)
+	if err := other.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer other.Stop()
+
+	body = get(t, fmt.Sprintf("http://127.0.0.1:%d/", port))
+	for _, id := range []string{"pb-aaaa", "pb-bbbb"} {
+		if !bytes.Contains(body, []byte(`href="/`+id+`/"`)) {
+			t.Errorf("root doesn't list %s: %s", id, body)
+		}
+	}
+}
+
+func get(t *testing.T, url string) []byte {
+	t.Helper()
+	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
-	if resp.Request.URL.Path != "/pb-bbbb/" {
-		t.Errorf("/ landed on %q, want /pb-bbbb/", resp.Request.URL.Path)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return body
 }
