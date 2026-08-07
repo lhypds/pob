@@ -27,7 +27,10 @@ public static class AppState
 
     public static bool IsTargeting;
     public static bool IsCropping;
-    public static bool IsClickThrough;
+    // Click-through defaults to ON: the overlay sits on top of the app being
+    // driven, so passing clicks through is the useful resting state. The
+    // toolbar window stays interactive either way.
+    public static bool IsClickThrough = true;
     public static bool IsLocked;
     public static bool IsRecording;
     public static bool IsExecuting;

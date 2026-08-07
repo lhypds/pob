@@ -629,8 +629,11 @@ static void build_headerbar(void) {
     g_state.target_btn = icon_button(ICONS_TARGET, "Target");
     g_state.crop_btn = icon_button(ICONS_CROP, "Crop");
     GtkWidget *screenshot_btn = icon_button(ICONS_SCREENSHOT, "Screenshot");
-    g_state.clickthrough_btn = icon_button(ICONS_HAND, "Click-Through Off (click to enable)");
-    set_clickthrough_icon(); // initial OFF state shows the slashed hand
+    g_state.clickthrough_btn = icon_button(ICONS_HAND,
+                                           g_state.is_click_through
+                                               ? "Click-Through On (click to disable)"
+                                               : "Click-Through Off (click to enable)");
+    set_clickthrough_icon(); // slashed hand only when starting OFF
     // Re-render once realized so the slash picks up the final theme color.
     g_signal_connect(g_state.clickthrough_btn, "realize",
                      G_CALLBACK(on_clickthrough_realize), NULL);
@@ -861,6 +864,11 @@ int main(int argc, char **argv) {
     gdk_set_allowed_backends("x11");
 
     memset(&g_state, 0, sizeof(g_state));
+    // Click-through defaults to ON: the overlay sits on top of the app being
+    // driven, so passing clicks through is the useful resting state. The
+    // headerbar stays interactive (input shape) and the toolbar button starts
+    // in its ON look.
+    g_state.is_click_through = TRUE;
 
     GtkApplication *app = gtk_application_new("jp.co.linktivity.pob",
                                               G_APPLICATION_NON_UNIQUE);

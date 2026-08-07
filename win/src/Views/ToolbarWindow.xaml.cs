@@ -39,6 +39,7 @@ public partial class ToolbarWindow : Window
     {
         InitializeComponent();
         Title = $"Pob {AppState.Version}";
+        SetClickThroughVisual(AppState.IsClickThrough);
     }
 
     private ContentView? Content2 => AppState.Overlay?.ContentView;

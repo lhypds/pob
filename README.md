@@ -144,7 +144,7 @@ Toolbar buttons (left to right):
 | 8 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
 | 9 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
 | 10 | Screenshot | Capture the content area to `logs/<instance>/screenshots/`; while recording, also appends `take_screenshot()` to the macro |
-| 11 | Click-Through | Toggle whether clicks pass through the window to apps behind it |
+| 11 | Click-Through | Toggle whether clicks pass through the window to apps behind it (on by default) |
 | 12 | Lock | Lock the window to prevent moving or resizing |
 | 13 | Clear | Clear instruction, macro, logs, or all |
 

@@ -65,21 +65,21 @@ class SettingsService {
         let logs = root.appendingPathComponent("logs")
         try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
 
-        // Reserve logs/<unixtime>/ exclusively; if another instance grabbed
-        // the same second, bump until a free one is found (mirrors the Go
-        // core's newInstanceID).
-        var id = Int(Date().timeIntervalSince1970)
+        // Reserve logs/pb-<uid>/ exclusively; on the rare collision with an
+        // existing directory, draw another ID (mirrors the Go core's
+        // newInstanceID).
+        var id = Self.newInstanceID()
         while true {
             do {
-                try fileManager.createDirectory(at: logs.appendingPathComponent(String(id)), withIntermediateDirectories: false)
+                try fileManager.createDirectory(at: logs.appendingPathComponent(id), withIntermediateDirectories: false)
                 break
             } catch CocoaError.fileWriteFileExists {
-                id += 1
+                id = Self.newInstanceID()
             } catch {
                 break
             }
         }
-        instanceID = String(id)
+        instanceID = id
         acquireInstanceLock()
 
         // Seed this instance's settings.json from the root template.
@@ -90,6 +90,14 @@ class SettingsService {
         {
             try? fileManager.copyItem(at: rootSettings, to: instanceSettings)
         }
+    }
+
+    /// `pb-<4 hex>` — the last two bytes of a fresh UID as lowercase hex,
+    /// the same scheme the pico-hid firmware uses for its `ph-` board id.
+    /// Shown in the overlay's top-right corner and used as the logs directory
+    /// name, so the badge on screen names the directory to look in.
+    private static func newInstanceID() -> String {
+        "pb-" + UUID().uuidString.suffix(4).lowercased()
     }
 
     deinit {

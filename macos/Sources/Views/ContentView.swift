@@ -48,7 +48,7 @@ struct InstanceContentView: View {
     @State private var isCropping = false
     @State private var cropStart: CGPoint? = nil
     @State private var cropCurrent: CGPoint? = nil
-    @State private var isClickThrough = false
+    @State private var isClickThrough = true
     @State private var isLocked = false
     @State private var isRecording = false
     @State private var showMacroChoice = false

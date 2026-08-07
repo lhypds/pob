@@ -61,6 +61,10 @@ public partial class App : Application
         overlay.Show();
         toolbar.Activate();
 
+        // WS_EX_TRANSPARENT needs the overlay HWND, so apply the initial
+        // click-through state (ON by default) only once both windows exist.
+        AppState.UpdateClickThrough();
+
         // Glue: the toolbar is the titlebar, the overlay hangs directly below;
         // moving or resizing either keeps the pair together.
         toolbar.LocationChanged += (_, _) =>
