@@ -23,9 +23,9 @@ It allows AI to:
 - Record and replay operation macros
 - Work with MCP-compatible AI clients
 
-The same bridge works for people, not only for AI: every instance serves a web
-page you can open on your phone, and a desktop app with a full-size keyboard
-and a trackpad — see [Web UI](#web-ui) and [Pob Keyboard](#pob-keyboard).
+The same bridge works for people, not only for AI: Pob serves a web page you
+can open on your phone, and a desktop app with a full-size keyboard and a
+trackpad — see [Web UI](#web-ui) and [Pob Keyboard](#pob-keyboard).
 
 
 Architecture
@@ -51,13 +51,12 @@ win/     The same hands and eyes for Windows (C# / WPF). Identical UI and
          See win/README.md.
 
 webui/   The remote control (Go, zero dependencies), compiled into pob-core
-         and started with the app: an HTTP server on one shared port serving
-         index.html — a text field, a keyboard-mirror button and a trackpad —
-         routing /<instance> to the process that owns it.
+         and started with the app: an HTTP server serving index.html — a text
+         field, a keyboard-mirror button and a trackpad.
 
 keyboard/  Pob Keyboard (Go + Fyne), a separate desktop app: a full-size
-           on-screen keyboard and a trackpad in their own window, driving an
-           instance through the same web UI API. Run it with ./keyboard.sh.
+           on-screen keyboard and a trackpad in their own window, driving Pob
+           through the same web UI API. Run it with ./keyboard.sh.
 ```
 
 The shell spawns `pob-core` as a child process and the two talk over
@@ -105,12 +104,12 @@ Structure
 
 ```
 ~/.pob/logs/  
-    +--- pb-<uid>/                                one directory per app launch (multi-instance support).
+    +--- pb-<uid>/                                the machine's instance directory, the same one every run.
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
-         +--- settings.json                       the per-instance settings file (copied from the root `settings.json`).
+         +--- settings.json                       this instance's settings file (copied from the root `settings.json`).
          +--- instance.json                       instance start/end times, etc.
          +--- control.json                        written while the instance runs; advertises the control API port used by the `pob` CLI.
-         +--- .lock                               held locked while the instance runs; Clear Logs skips locked (running) instances.
+         +--- .lock                               held locked while Pob runs; this is what a second launch trips over, and what Clear Logs checks.
 
          +--- <session>/ (instruction)            session executed from instruction.  
               +--- instruction.txt
@@ -133,11 +132,12 @@ Structure
               +--- screenshots/                   screenshots taken during the session with `take_screenshot()` tool.
 ```
 
-`<instance>` is a unique instance ID of the form `pb-<4 hex>` (the last two bytes of a fresh UID in
-lowercase hex), created when the app starts and shown in the toolbar beside the window buttons — so
-the ID on screen names the directory to look in. Each running app instance writes to its own
-directory, so multiple instances can run side by side without their logs colliding (if the drawn ID
-is already taken, another one is drawn).  
+`<instance>` is the instance ID, of the form `pb-<4 hex>` (the last two bytes of a fresh UID in
+lowercase hex). It is shown in the toolbar beside the window buttons — so the ID on screen names the
+directory to look in — and a machine keeps the same one for good: it is worked out on first run and
+recorded in `~/.pob/instance`, so every session ever run lands in the same directory. A machine
+upgrading from the versions that took a fresh ID per launch adopts the `pb-*` directory it used
+last; the others stay where they are as history.  
 `<session>` is a unique session ID named as a unixtime.  
 `<plan>` is a unique plan ID named as a unixtime.  
 `<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  
@@ -217,14 +217,11 @@ MCP Server
 ----------
 
 The MCP server is built into `pob-core` (SSE transport). It does not start
-with the app — start it from the CLI. The target is the only running
-instance, or an explicit `--instance` when several are running. The port
-defaults to `8032`; pass a different one after `start` when running several
-instances:
+with the app — start it from the CLI. The port defaults to `8032`; pass a
+different one after `start` if something else has it:
 
 ```
 pob mcp start [port]
-pob --instance <id> mcp start [port]
 ```
 
 `mcp start` also registers the server (as `pob`) in the user settings of any
@@ -318,20 +315,20 @@ on an Apple board.
 Web UI
 ------
 
-Every instance serves a remote control page, started with the app. One port
-serves the whole machine and the path says which instance:
+Pob serves a remote control page, started with the app:
 
 ```
 http://192.168.1.40:8033/pb-a703
 ```
 
 `pob status` prints the address — one line per network the machine is on. The
-instance ID is the one in the toolbar. With a single instance running the path
-can be left off, and the root leads to it.
+instance ID is the one in the toolbar, and since a machine keeps it for good
+the address is worth writing down. The bare root is the same page, so
+`http://192.168.1.40:8033` does just as well.
 
 The port is yours to set: `webui_port` in `settings.json`, or `POB_WEBUI_PORT`
-in the environment. It is the same for every instance, so the address can be
-typed from memory instead of looked up per window.
+in the environment. It is the same on every machine unless someone changes it,
+so the address can be typed from memory.
 
 The page is three controls:
 
@@ -345,20 +342,7 @@ The page is three controls:
 **The page is served on every network interface**, so anyone on the same
 network who knows the address can move this machine's pointer and type on it.
 That is the point of it — but it is also why `"webui": false` in
-`settings.json` turns it off, per instance.
-
-
-### How one port serves every instance
-
-Only one process can hold a port, and every window is its own instance with
-its own `pob-core`. So each instance binds a private loopback port and
-publishes it in `logs/<instance>/webui.json`, and whichever instance gets the
-shared port becomes the front door: it serves its own page directly and hands
-the others' requests to the process that owns them. Close that window and
-another instance takes the port within a few seconds — `pob status` shows
-`holds_port` if you ever need to know which one has it.
-
-With several instances running, the root lists them.
+`settings.json` turns it off.
 
 
 ### API
@@ -382,10 +366,10 @@ turn, `+` joins keys held together, using the HID names in
 media and brightness keys — is accepted and ignored: the shells post plain key
 events and have nowhere to put a consumer-control usage.
 
-A command posted to the bare root is served where it lands rather than
-redirected, so a client that doesn't follow redirects — or one that would turn
-a redirected POST into a GET, which is most of them — still gets its keystroke
-through.
+The bare root works for commands too — there is one instance to reach, so a
+POST to `http://192.168.1.40:8033/` lands the same way. It is served where it
+lands, never redirected, since most HTTP clients would turn a redirected POST
+into a GET and lose the keystroke.
 
 
 Pob Keyboard
@@ -418,7 +402,7 @@ Debian/Ubuntu.
 CLI
 ---
 
-The `pob` command controls and inspects instances from the terminal.
+The `pob` command controls and inspects Pob from the terminal.
 
 On macOS the packaged app ships the CLI inside the bundle
 (`Pob.app/Contents/Helpers/pob`) — use **Pob → Install 'pob' Command…** in the
@@ -430,27 +414,24 @@ or call it by path).
 All project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
 live in `~/.pob`, created on first use and shared by the app and the CLI.
 
-Every running instance serves a small control API on an ephemeral localhost
-port, advertised in `~/.pob/logs/<instance>/control.json`; the CLI scans that
-directory to discover instances and talks to that API. Log and session
-inspection reads the log tree directly, so it also works for stopped
-instances.
+A running Pob serves a small control API on an ephemeral localhost port,
+advertised in `~/.pob/logs/<instance>/control.json`; the CLI reads that file
+and talks to that API. Log and session inspection reads the log tree directly,
+so it also works when the app is not running.
 
 ```
 Usage: pob [flags] [command] [args]
 
 Flags:
-  --instance <id>    Target instance (default: the only running one)
   --session <id>     Target session; with no command, shows its details
 ```
 
 | Command | Description |
 |---------|-------------|
-| *(none)* | List running instances; with `--instance` show that instance; with `--session` show that session |
-| `list [--all]` | List running instances with status, times and session count; `--all` includes stopped ones |
-| `launch` | Start a new app instance and print its ID (alias: `new`). The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
-| `status` | Live status of the target instance (executing, recording, model, MCP, web UI address) |
-| `sessions` | List the target instance's sessions with duration and token usage |
+| *(none)* | Show the instance and its sessions; with `--session` show that session |
+| `launch` | Start the app (alias: `new`); fails if it is already running. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
+| `status` | Live status (executing, recording, model, MCP, web UI address) |
+| `sessions` | List sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
 | `run <text...>` | Replace `instruction.txt` with `<text>`, then execute it |
 | `macro` | Execute `macro.txt` |
@@ -461,33 +442,26 @@ Flags:
 | `mcp stop` | Stop the MCP server and remove those registrations |
 | `version` | Print the Pob version |
 
-With no `--instance` the commands target the only running instance; when
-several are running the choice must be explicit, so an instruction never
-lands on an instance you didn't pick. `pob launch` starts a fresh instance
-and prints its ID.
-
 Examples:
 
 ```
 pob                                      # what's running?
-pob launch                               # start a new app instance
+pob launch                               # start the app
 pob run "click Save and close the dialog"
-pob --instance 1752712345 start          # run instruction.txt on that instance
-pob --instance 1752712345 --session 1752712400   # session detail: plans, steps, usage
-pob --instance 1752712345 mcp start      # start MCP and print the connection info
+pob start                                # run instruction.txt
+pob --session 1752712400                 # session detail: plans, steps, usage
+pob mcp start                            # start MCP and print the connection info
 ```
 
 
 Settings
 --------
 
-`~/.pob/settings.json` is the shared template. When an instance starts it
-copies the template to its own `~/.pob/logs/<instance>/settings.json`, and
-both the shell and the Go core read and edit that per-instance copy from
-then on — so multiple instances can run with independent settings (the
-Settings menu opens the instance's copy). Edit the root file to change the
-defaults new instances start with. `instruction.txt` and `macro.txt` stay
-shared at `~/.pob`.
+`~/.pob/settings.json` is the template. The first time the instance starts it
+copies the template to `~/.pob/logs/<instance>/settings.json`, and both the
+shell and the Go core read and edit that copy from then on — it is what the
+Settings menu opens. Edit the root file to change what a fresh instance
+starts from. `instruction.txt` and `macro.txt` stay shared at `~/.pob`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -501,8 +475,8 @@ shared at `~/.pob`.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
-| `webui` | `true` | Serve the [Web UI](#web-ui) remote control page. `false` stops this instance accepting pointer and keyboard commands from the network |
-| `webui_port` | `8033` | The one port every instance on this machine is reached through; the instance is named in the path. `POB_WEBUI_PORT` overrides it |
+| `webui` | `true` | Serve the [Web UI](#web-ui) remote control page. `false` stops Pob accepting pointer and keyboard commands from the network |
+| `webui_port` | `8033` | The port the [Web UI](#web-ui) is reached through. `POB_WEBUI_PORT` overrides it |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |

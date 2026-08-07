@@ -1,22 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// Root view of every window in the WindowGroup. Owns one PobInstance for
-/// the window's lifetime (the VSCode model: one process, one instance per
-/// window) and attaches it to the hosting NSWindow once that exists.
+/// Root view of the window. Owns the PobInstance for the window's lifetime
+/// and attaches it to the hosting NSWindow once that exists.
 struct ContentView: View {
     @StateObject private var instance = PobInstance()
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         InstanceContentView(instance: instance, bridge: instance.bridge, mouseService: instance.mouse)
             .background(WindowAccessor { window in
                 instance.attach(window: window)
             })
-            .onAppear {
-                // Give the AppKit menu a way to open WindowGroup windows.
-                AppDelegate.openNewInstanceWindow = { openWindow(id: "instance") }
-            }
     }
 }
 

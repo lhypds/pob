@@ -1,6 +1,5 @@
-// Package webui serves the phone-in-your-hand remote control for a Pob
-// instance: a text field, a keyboard-mirror button and a trackpad, on a page
-// reachable at
+// Package webui serves the phone-in-your-hand remote control for Pob: a text
+// field, a keyboard-mirror button and a trackpad, on a page reachable at
 //
 //	http://192.168.1.40:8033/pb-a703
 //
@@ -9,12 +8,11 @@
 // that HTTP API, translated in command.go into the same cursor and keyboard
 // calls the MCP server makes.
 //
-// One server runs per instance, started with the app, and every instance
-// shares one port — the one in settings.json, the same on every machine unless
-// someone changes it, so the address can be typed from memory. Sharing it
-// takes two listeners: a private one on loopback that only this instance
-// answers on, and the shared public one, which exactly one instance holds and
-// uses to hand each request to the instance the path names (see router.go).
+// One server runs with the app, on the port in settings.json — the same on
+// every machine unless someone changes it, so the address can be typed from
+// memory. The instance id is kept in the path so an address that names it
+// stays valid, but the bare root is the same page: there is one instance to
+// reach (see router.go).
 package webui
 
 import (
@@ -28,15 +26,10 @@ import (
 	"time"
 )
 
-// DefaultPort is where every instance on a machine is reached. Port 80 would
-// let the address be typed without one, but binding it needs root on macOS and
-// Linux, which a desktop app has no business asking for.
+// DefaultPort is where Pob is reached. Port 80 would let the address be typed
+// without one, but binding it needs root on macOS and Linux, which a desktop
+// app has no business asking for.
 const DefaultPort = 8033
-
-// claimInterval is how often an instance that didn't get the shared port tries
-// again. It matters when the instance holding it is closed: the next request
-// after that has to find somebody still listening.
-const claimInterval = 5 * time.Second
 
 // idleAfter is how long the page must be quiet before the virtual cursor is
 // allowed to go back into hiding. Long enough that putting the phone down
@@ -53,47 +46,43 @@ var page []byte
 
 type Server struct {
 	instance string
-	registry string // the logs directory the instances publish themselves in
 	ctl      *controller
 	target   Target
 	logf     func(string, ...any)
 
-	mu          sync.Mutex
-	running     bool
-	port        int          // the shared port, held by one instance for all
-	privatePort int          // this instance's own, on loopback only
-	private     *http.Server // always ours
-	shared      *http.Server // set only while this instance is the front door
-	stopping    chan struct{}
-	active      bool
-	idle        *time.Timer
+	mu      sync.Mutex
+	running bool
+	port    int
+	server  *http.Server
+	active  bool
+	idle    *time.Timer
 }
 
-// New prepares the server for one instance. instance is the instance id, which
-// is also the path it answers on: "pb-a703" serves at "/pb-a703".
-// registryDir is the logs directory holding every instance's directory, which
-// is how the instances find each other. Nothing is bound until Start.
-func New(instance, registryDir string, target Target, logf func(string, ...any)) *Server {
+// New prepares the server. instance is the instance id, which is also a path
+// it answers on: "pb-a703" serves at "/pb-a703" as well as at "/". Nothing is
+// bound until Start.
+func New(instance string, target Target, logf func(string, ...any)) *Server {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
 	return &Server{
 		instance: instance,
-		registry: registryDir,
 		ctl:      newController(target, logf),
 		target:   target,
 		logf:     logf,
 	}
 }
 
-// Start binds this instance's private port and takes the shared port if no
-// other instance has it. Starting an already-running server is a no-op.
+// Start binds the port and serves. Starting an already-running server is a
+// no-op. A port already in use is returned as an error rather than worked
+// around: only one instance runs, so something else has it, and quietly
+// serving nowhere would be worse than saying so.
 //
-// The shared listener is on every interface on purpose — a page only reachable
-// from the machine it drives would have no point — so anyone on the same
-// network who knows the address can move this machine's pointer and type on
-// it. That is the same bargain the pico-hid board makes, and the reason
-// "webui" is a setting that can be turned off.
+// The listener is on every interface on purpose — a page only reachable from
+// the machine it drives would have no point — so anyone on the same network
+// who knows the address can move this machine's pointer and type on it. That
+// is the same bargain the pico-hid board makes, and the reason "webui" is a
+// setting that can be turned off.
 func (s *Server) Start(port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,87 +93,27 @@ func (s *Server) Start(port int) error {
 		port = DefaultPort
 	}
 
-	// Loopback and an ephemeral port: this listener is never the way in from
-	// the network, only the way the front door reaches this instance, so it
-	// can neither clash with anything nor be reached from outside.
-	private, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		return err
 	}
-	s.privatePort = private.Addr().(*net.TCPAddr).Port
-	s.private = &http.Server{Handler: http.HandlerFunc(s.route)}
 	s.port = port
 	s.running = true
-	s.stopping = make(chan struct{})
-	go s.serve(s.private, private, "private listener")
+	s.server = &http.Server{Handler: http.HandlerFunc(s.route)}
+	go func(server *http.Server) {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			s.logf("WebUI: listener failed: %v", err)
+		}
+	}(s.server)
 
-	s.publish(s.privatePort)
-
-	s.claimLocked()
 	// urlsLocked, not URLs: the lock is already held here, and sync.Mutex is
 	// not reentrant — taking it again would wedge the instance before it ever
 	// served a page.
-	where := strings.Join(s.urlsLocked(), " ")
-	if s.shared == nil {
-		// Another instance already has the port and will pass requests along,
-		// which is the ordinary case for a second window.
-		s.logf("WebUI: serving at %s (port %d held by another instance)", where, port)
-		go s.reclaim()
-	} else {
-		s.logf("WebUI: serving at %s", where)
-	}
+	s.logf("WebUI: serving at %s", strings.Join(s.urlsLocked(), " "))
 	return nil
 }
 
-// claimLocked tries to take the shared port, and serves the front door if it
-// gets it. Failing is normal — it means another instance has it.
-func (s *Server) claimLocked() {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
-	if err != nil {
-		return
-	}
-	s.shared = &http.Server{Handler: http.HandlerFunc(s.route)}
-	go s.serve(s.shared, listener, "shared listener")
-}
-
-// reclaim keeps trying for the shared port until this instance gets it or
-// stops. The instance holding it is a window like any other, and when it is
-// closed somebody has to take over or nothing on the machine is reachable.
-func (s *Server) reclaim() {
-	ticker := time.NewTicker(claimInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-s.stopping:
-			return
-		case <-ticker.C:
-			s.mu.Lock()
-			if !s.running {
-				s.mu.Unlock()
-				return
-			}
-			if s.shared == nil {
-				s.claimLocked()
-			}
-			took := s.shared != nil
-			s.mu.Unlock()
-			if took {
-				s.logf("WebUI: took over port %d", s.Port())
-				return
-			}
-		}
-	}
-}
-
-func (s *Server) serve(server *http.Server, listener net.Listener, what string) {
-	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		s.logf("WebUI: %s failed: %v", what, err)
-	}
-}
-
-// Stop closes both listeners and takes this instance out of the registry —
-// which also frees the shared port for whichever instance is still waiting on
-// it.
+// Stop closes the listener and frees the port.
 func (s *Server) Stop() {
 	s.mu.Lock()
 	if !s.running {
@@ -192,49 +121,35 @@ func (s *Server) Stop() {
 		return
 	}
 	s.running = false
-	private, shared, idle, stopping := s.private, s.shared, s.idle, s.stopping
-	s.private, s.shared, s.idle = nil, nil, nil
+	server, idle := s.server, s.idle
+	s.server, s.idle = nil, nil
 	wasActive := s.active
 	s.active = false
 	s.mu.Unlock()
 
-	close(stopping)
-	s.unpublish()
 	if idle != nil {
 		idle.Stop()
 	}
 	if wasActive {
 		s.target.SetRemoteActive(false)
 	}
-	if shared != nil {
-		_ = shared.Close()
-	}
-	if private != nil {
-		_ = private.Close()
+	if server != nil {
+		_ = server.Close()
 	}
 }
 
-// Running reports whether this instance is serving.
+// Running reports whether the server is serving.
 func (s *Server) Running() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running
 }
 
-// Port is the shared port every instance on this machine is reached through.
+// Port is the port Pob is reached through.
 func (s *Server) Port() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.port
-}
-
-// HoldsPort reports whether this instance is the one serving the shared port
-// for the machine. Nothing depends on which instance it is — it is worth
-// knowing only when working out why nothing is reachable.
-func (s *Server) HoldsPort() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.shared != nil
 }
 
 // URL is the address to open, or "" when the server isn't running. Where the
@@ -246,9 +161,10 @@ func (s *Server) URL() string {
 	return ""
 }
 
-// URLs is every address this instance can be reached at: one per network the
-// machine is on, each naming this instance in the path, since one port serves
-// them all.
+// URLs is every address the page can be reached at: one per network the
+// machine is on. Each names the instance in the path — the bare root serves
+// the same page, but an address that says which machine it drives is the one
+// worth writing down, and it is what Pob Keyboard is given.
 func (s *Server) URLs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

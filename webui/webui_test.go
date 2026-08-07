@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestPobKey(t *testing.T) {
@@ -202,88 +201,99 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// Two instances share one port: whichever binds it must serve both, handing
-// the other's requests to the process that owns it.
-func TestSharedPortServesEveryInstance(t *testing.T) {
-	logs := t.TempDir()
+// The bare root and the path naming the instance are the same page, so an
+// address written down before and one typed from memory both arrive.
+func TestRootAndInstancePathBothServeThePage(t *testing.T) {
 	port := freePort(t)
-
-	first, second := &fakeTarget{}, &fakeTarget{}
-	a := New("pb-aaaa", logs, first, nil)
-	b := New("pb-bbbb", logs, second, nil)
-	if err := a.Start(port); err != nil {
+	server := New("pb-aaaa", &fakeTarget{}, nil)
+	if err := server.Start(port); err != nil {
 		t.Fatal(err)
 	}
-	defer a.Stop()
-	if err := b.Start(port); err != nil {
-		t.Fatal(err)
-	}
-	defer b.Stop()
-
-	if !a.HoldsPort() || b.HoldsPort() {
-		t.Fatalf("expected the first instance to hold the port (a=%v b=%v)", a.HoldsPort(), b.HoldsPort())
-	}
+	defer server.Stop()
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
-	for _, id := range []string{"pb-aaaa", "pb-bbbb"} {
-		resp, err := http.Get(base + "/" + id + "/")
-		if err != nil {
-			t.Fatalf("GET /%s/: %v", id, err)
+	for _, path := range []string{"/", "/pb-aaaa", "/pb-aaaa/"} {
+		if body := get(t, base+path); !bytes.Contains(body, []byte(`id="trackpad"`)) {
+			t.Errorf("GET %s did not serve the web UI page: %.80s", path, body)
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != 200 || !bytes.Contains(body, []byte("id=\"trackpad\"")) {
-			t.Errorf("GET /%s/ = %d, %d bytes — not the web UI page", id, resp.StatusCode, len(body))
-		}
-	}
-
-	// A command for the second instance must reach the second instance, not
-	// the one that happens to be holding the port.
-	resp, err := http.Post(base+"/pb-bbbb/", "text/plain", strings.NewReader("typing=hello"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if len(first.calls) != 0 {
-		t.Errorf("the front-door instance ran it instead: %q", first.calls)
-	}
-	if want := []string{"active true", "type hello"}; !reflect.DeepEqual(second.calls, want) {
-		t.Errorf("second instance got %q, want %q", second.calls, want)
 	}
 }
 
-// Closing the instance that holds the port must not take the machine off the
-// air: another one takes over.
-func TestPortIsHandedOn(t *testing.T) {
-	logs := t.TempDir()
+// Nothing else is here, so a path naming another instance is a mistake worth
+// saying out loud rather than quietly serving this one.
+func TestOtherInstanceIDIsNotFound(t *testing.T) {
 	port := freePort(t)
-
-	a := New("pb-aaaa", logs, &fakeTarget{}, nil)
-	b := New("pb-bbbb", logs, &fakeTarget{}, nil)
-	if err := a.Start(port); err != nil {
+	server := New("pb-aaaa", &fakeTarget{}, nil)
+	if err := server.Start(port); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Start(port); err != nil {
-		t.Fatal(err)
-	}
-	defer b.Stop()
+	defer server.Stop()
 
-	a.Stop()
-	deadline := time.Now().Add(claimInterval * 3)
-	for !b.HoldsPort() && time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !b.HoldsPort() {
-		t.Fatal("the remaining instance never took the port")
-	}
-
-	// And with only one instance left, the bare root leads to it.
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/pb-bbbb/", port))
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.Request.URL.Path != "/pb-bbbb/" {
-		t.Errorf("/ landed on %q, want /pb-bbbb/", resp.Request.URL.Path)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET /pb-bbbb/ = %d, want 404", resp.StatusCode)
 	}
+}
+
+// A command posted to the bare root reaches the machine — served where it
+// lands, never redirected, since most clients would turn a redirected POST
+// into a GET and the keystroke would be lost on the way.
+func TestCommandAtRootReachesTheMachine(t *testing.T) {
+	port := freePort(t)
+	target := &fakeTarget{}
+	server := New("pb-aaaa", target, nil)
+	if err := server.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer server.Stop()
+
+	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", port),
+		"text/plain", strings.NewReader("typing=hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if want := []string{"active true", "type hello"}; !reflect.DeepEqual(target.calls, want) {
+		t.Errorf("got %q, want %q", target.calls, want)
+	}
+}
+
+// One instance runs, so a taken port means something else has it. Reporting
+// that beats starting a server nobody can reach.
+func TestPortAlreadyTakenIsAnError(t *testing.T) {
+	port := freePort(t)
+	// The same address the server binds. Holding only 127.0.0.1 would not
+	// collide: SO_REUSEADDR lets a 0.0.0.0 bind through beside it.
+	held, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+
+	server := New("pb-aaaa", &fakeTarget{}, nil)
+	if err := server.Start(port); err == nil {
+		server.Stop()
+		t.Fatal("Start on a port already in use reported success")
+	}
+	if server.Running() {
+		t.Error("Start failed but the server reports it is running")
+	}
+}
+
+func get(t *testing.T, url string) []byte {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
 }

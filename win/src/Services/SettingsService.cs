@@ -42,20 +42,25 @@ public static class SettingsService
 
     /// <summary>
     /// Exclusive handle on logs/&lt;InstanceId&gt;/.lock, held for the process
-    /// lifetime so ClearLogs (from this or another process) can tell the
-    /// directory belongs to a running instance.
+    /// lifetime. It marks the directory as belonging to a running Pob, which
+    /// is what ClearLogs checks — and taking it is also how a second Pob is
+    /// detected, see ClaimInstance.
+    ///
+    /// Opened exactly once. The share mode is enforced per handle, not per
+    /// process, so opening this same file a second time would be refused by
+    /// the handle this process already holds — Pob would find itself and
+    /// conclude it was already running.
     /// </summary>
     private static FileStream? _instanceLock;
+
+    private const string InstancePrefix = "pb-";
 
     private static string AllocateInstance()
     {
         string logs = RootPath("logs");
         Directory.CreateDirectory(logs);
 
-        // Reserve logs/pb-<uid>/, drawing another ID if that one is taken
-        // (mirrors the Go core's newInstanceID).
-        string id = NewInstanceId();
-        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        string id = ResolveInstanceId(logs);
         string dir = Path.Combine(logs, id);
         Directory.CreateDirectory(dir);
         AcquireInstanceLock(dir);
@@ -75,12 +80,123 @@ public static class SettingsService
     }
 
     /// <summary>
-    /// pb-&lt;4 hex&gt; — the last two bytes of a fresh UID as lowercase hex, the
-    /// same scheme the pico-hid firmware uses for its ph- board id. The
-    /// toolbar shows it beside the window buttons, so the id on screen names
-    /// the logs directory to look in.
+    /// The machine's instance id — the same one on every run, recorded in
+    /// ~/.pob/instance the first time it is worked out. This mirrors the Go
+    /// core's ResolveInstanceID because either side can get there first: the
+    /// shell resolves it to show in the toolbar and passes it to pob-core
+    /// with --instance, but the CLI can reach ~/.pob without a shell at all.
+    ///
+    /// A machine upgrading from the versions that took a fresh id per launch
+    /// has a logs/ full of pb-* directories. Rather than add one more, the one
+    /// used last is adopted; the rest stay where they are as history.
     /// </summary>
-    private static string NewInstanceId() => "pb-" + Guid.NewGuid().ToString("N")[28..];
+    private static string ResolveInstanceId(string logs)
+    {
+        string pointer = RootPath("instance");
+        try
+        {
+            string id = File.ReadAllText(pointer).Trim();
+            // Anything that isn't an instance id — a truncated or hand-edited
+            // file — sends us back to working it out, rather than into a
+            // directory named after junk.
+            if (id.StartsWith(InstancePrefix, StringComparison.Ordinal) &&
+                id.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0)
+            {
+                return id;
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        string resolved = MostRecentInstance(logs) ?? ReserveInstanceId(logs);
+        try
+        {
+            File.WriteAllText(pointer, resolved + Environment.NewLine);
+        }
+        catch (IOException)
+        {
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// The pb-* directory written to last, or null when there are none. By
+    /// last-write time rather than by name: the directory is touched every
+    /// time a session is written into it, so the newest is the one that was
+    /// actually in use.
+    /// </summary>
+    private static string? MostRecentInstance(string logs)
+    {
+        string[] dirs;
+        try
+        {
+            dirs = Directory.GetDirectories(logs, InstancePrefix + "*");
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+
+        string? newest = null;
+        DateTime newestAt = DateTime.MinValue;
+        foreach (string dir in dirs)
+        {
+            DateTime at;
+            try
+            {
+                at = Directory.GetLastWriteTimeUtc(dir);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+            if (newest == null || at > newestAt)
+            {
+                newest = Path.GetFileName(dir);
+                newestAt = at;
+            }
+        }
+        return newest;
+    }
+
+    /// <summary>
+    /// Reserves a fresh pb-&lt;4 hex&gt; directory — the last two bytes of a new
+    /// UID as lowercase hex, the same scheme the pico-hid firmware uses for
+    /// its ph- board id. The toolbar shows it beside the window buttons, so
+    /// the id on screen names the logs directory to look in.
+    /// </summary>
+    private static string ReserveInstanceId(string logs)
+    {
+        string id = NewInstanceId();
+        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        return id;
+    }
+
+    private static string NewInstanceId() => InstancePrefix + Guid.NewGuid().ToString("N")[28..];
+
+    /// <summary>
+    /// Claims this machine's instance for this process and reports whether it
+    /// was free; false means another Pob already holds it. Called at launch,
+    /// before any window is built, since only one Pob drives a desktop.
+    ///
+    /// Claiming and asking are the same operation on purpose. Asking first
+    /// and taking it after would leave a gap for a second Pob to slip
+    /// through — and, because the share mode belongs to the handle rather
+    /// than the process, the asking itself would collide with the handle this
+    /// process had already opened.
+    /// </summary>
+    public static bool ClaimInstance()
+    {
+        string logs = RootPath("logs");
+        Directory.CreateDirectory(logs);
+        string dir = Path.Combine(logs, ResolveInstanceId(logs));
+        Directory.CreateDirectory(dir);
+        return AcquireInstanceLock(dir);
+    }
 
     private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
 
@@ -331,15 +447,31 @@ public static class SettingsService
         TryTruncate(RootPath("app.log"));
     }
 
-    private static void AcquireInstanceLock(string instanceDir)
+    /// <summary>
+    /// Takes the lock handle, or reports that someone else has it. Already
+    /// holding it counts as success — this process is the someone else.
+    /// </summary>
+    private static bool AcquireInstanceLock(string instanceDir)
     {
+        if (_instanceLock != null) return true;
         try
         {
             _instanceLock = new FileStream(Path.Combine(instanceDir, ".lock"),
-                FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return true;
         }
         catch (IOException)
         {
+            // A sharing violation is another Pob. Anything else here is a
+            // broken ~/.pob, but both look the same from out here and
+            // refusing to start is the safer reading of the two.
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Permissions, not a second Pob. Start anyway rather than refuse
+            // over something unrelated.
+            return true;
         }
     }
 

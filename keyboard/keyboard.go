@@ -6,8 +6,8 @@
 //
 // It is the pico-hid board's keyboard client pointed at Pob instead: the same
 // board, the same trackpad, the same wire protocol. Only the address differs —
-// a Pob instance is reached at http://<machine>:<port>/<instance>, since every
-// instance on a machine shares the one port and the path says which it is.
+// Pob is reached at http://<machine>:<port>/<instance>, the address `pob
+// status` prints.
 //
 // The address is set under Settings… in the menu bar and remembered between
 // runs. It can also come from -url or POB_SERVER_URL (or .env).
@@ -69,14 +69,14 @@ const (
 	prefTarget       = "target-os"
 )
 
-// A Pob instance is addressed by the machine it runs on and the id of the
-// instance itself:
+// Pob is addressed by the machine it runs on and the id of the instance
+// there:
 //
 //	http://192.168.1.40:8033/pb-a703
 //
-// Every instance on a machine shares the one port, so the path is what says
-// which of them this is. The id is the four hex digits the app shows in its
-// toolbar and `pob list` prints; `pob status` prints the whole address.
+// A machine runs one instance and it keeps its id, so this address is worth
+// saving — it stays right across restarts. The id is the four hex digits the
+// app shows in its toolbar; `pob status` prints the whole address.
 const (
 	instanceIDPrefix = "pb-"
 	instanceIDHint   = "xxxx"
@@ -84,8 +84,8 @@ const (
 	// An id is always this long: Pob builds it from two bytes of a fresh UID
 	// as lowercase hex.
 	instanceIDLength = 4
-	// The port every instance on a machine is reached through, unless someone
-	// has changed webui_port — which is why it is editable at all.
+	// The port Pob is reached through, unless someone has changed webui_port
+	// — which is why it is editable at all.
 	defaultPort = 8033
 )
 

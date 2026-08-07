@@ -1,15 +1,15 @@
 import AppKit
 import Combine
 
-/// One running Pob instance inside this process — the VSCode model: a single
-/// app process owns many windows, and each window is a full instance with its
-/// own logs/<instance>/ directory, settings.json copy, Go core child process
-/// and virtual cursor. Created by ContentView as a @StateObject, so its
-/// lifetime is the window's lifetime: closing the window releases the
-/// instance, which stops its pob-core.
+/// The running Pob instance: its logs/<instance>/ directory, settings.json,
+/// Go core child process and virtual cursor. Created by ContentView as a
+/// @StateObject, so its lifetime is the window's lifetime — closing the
+/// window releases the instance, which stops its pob-core.
 final class PobInstance: NSObject, ObservableObject {
-    /// All live instances (weak). Used for the app-wide mouse-move monitors
-    /// (click-through), window cascading and shutdown on app termination.
+    /// The live instance (weak), for the app-wide mouse-move monitors
+    /// (click-through) and shutdown on app termination. A table rather than a
+    /// single reference because SwiftUI can hold a replaced @StateObject
+    /// briefly, and a stale one must not be the one the monitors drive.
     private static let registry = NSHashTable<PobInstance>.weakObjects()
     static var all: [PobInstance] { registry.allObjects }
 
@@ -31,6 +31,13 @@ final class PobInstance: NSObject, ObservableObject {
         recorder = UserMacroRecorder(settings: settings)
         super.init()
         PobInstance.registry.add(self)
+
+        // SwiftUI builds this scene before the app delegate can refuse a
+        // second launch, so the refusal has to be honoured here too: without
+        // the machine's instance lock, starting a core would leave a
+        // pob-core, a control port and a claim on the web UI port behind for
+        // the few moments before the app quits.
+        guard SettingsService.holdsInstanceLock else { return }
         bridge.start()
     }
 
@@ -72,9 +79,8 @@ final class PobInstance: NSObject, ObservableObject {
         window.level = .floating
         window.ignoresMouseEvents = false
         // macOS remembers the app's window set at quit (per bundle id) and
-        // recreates every window on the next launch — each one a full
-        // instance here, so a run that quit with 3 windows would start with
-        // 3. Opt out: always start with exactly one window.
+        // recreates it on the next launch. Opt out: always start with exactly
+        // one window, whatever the last run left behind.
         window.isRestorable = false
 
         if let savedFrame = settings.getWindowFrame() {
@@ -82,16 +88,6 @@ final class PobInstance: NSObject, ObservableObject {
         } else {
             window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
             window.center()
-        }
-
-        // Later windows restore the same template frame — cascade them so
-        // they don't stack exactly on top of each other.
-        let siblings = PobInstance.all.filter { $0 !== self && $0.window != nil }.count
-        if siblings > 0 {
-            var frame = window.frame
-            frame.origin.x += CGFloat(28 * siblings)
-            frame.origin.y -= CGFloat(28 * siblings)
-            window.setFrame(frame, display: true)
         }
 
         // Observe rather than replace window.delegate: the delegate belongs

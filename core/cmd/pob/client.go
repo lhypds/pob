@@ -1,9 +1,9 @@
-// Instance discovery and the HTTP client for the pob-core control API.
+// The machine's instance and the HTTP client for the pob-core control API.
 //
-// Every running core writes logs/<instance>/control.json with its pid and
-// control port. An instance counts as running only when GET /status on that
-// port answers with the matching instance ID — stale control.json files
-// (crashed instances, recycled ports) are thereby ignored.
+// A running core writes logs/<instance>/control.json with its pid and control
+// port. It counts as running only when GET /status on that port answers with
+// the matching instance ID — a stale control.json (a crashed instance, a
+// recycled port) is thereby ignored.
 package main
 
 import (
@@ -12,12 +12,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
+
+	"pob/core/internal/storage"
 )
 
 type Instance struct {
@@ -29,31 +29,16 @@ type Instance struct {
 	Running   bool
 }
 
-// discoverInstances scans logs/ for instance directories, newest first.
-func discoverInstances(root string) []*Instance {
-	logsDir := filepath.Join(root, "logs")
-	entries, err := os.ReadDir(logsDir)
-	if err != nil {
-		return nil
+// theInstance loads the machine's instance, running or not. It resolves the
+// id the same way the app does, so the CLI and the app always mean the same
+// instance — and asking for it on a machine that has never run Pob answers
+// with the id it would use, rather than nothing.
+func theInstance(root string) *Instance {
+	id := storage.ResolveInstanceID(root)
+	if inst := loadInstance(root, id); inst != nil {
+		return inst
 	}
-	var instances []*Instance
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if inst := loadInstance(root, entry.Name()); inst != nil {
-			instances = append(instances, inst)
-		}
-	}
-	// IDs are random (pb-<uid>), so order by the recorded start time and fall
-	// back to the ID for entries whose instance.json is missing a start time.
-	sort.Slice(instances, func(i, j int) bool {
-		if instances[i].StartTime != instances[j].StartTime {
-			return instances[i].StartTime > instances[j].StartTime
-		}
-		return instances[i].ID > instances[j].ID
-	})
-	return instances
+	return &Instance{ID: id, Dir: filepath.Join(root, "logs", id)}
 }
 
 // loadInstance reads one logs/<id> directory and probes its control port.

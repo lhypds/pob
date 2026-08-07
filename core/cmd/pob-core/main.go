@@ -28,7 +28,7 @@ import (
 
 func main() {
 	root := flag.String("root", "", "project root holding settings.json, instruction.txt, macro.txt and logs/")
-	instance := flag.String("instance", "", "logs/<instance> directory allocated by the shell; holds this instance's settings.json and session logs")
+	instance := flag.String("instance", "", "logs/<instance> directory resolved by the shell; holds this instance's settings.json and session logs")
 	flag.Parse()
 	if *root == "" {
 		home, err := os.UserHomeDir()
@@ -38,9 +38,18 @@ func main() {
 		*root = filepath.Join(home, ".pob")
 	}
 
+	// A machine has one instance and it keeps its id for good. The shell
+	// resolves it before spawning us, because it needs it for the toolbar;
+	// without one — running headless, or from the CLI — it is worked out here
+	// the same way, and both arrive at the same answer.
+	instanceID := *instance
+	if instanceID == "" {
+		instanceID = storage.ResolveInstanceID(*root)
+	}
+
 	applog.Init(*root)
-	cfg := config.New(*root, *instance)
-	store := storage.New(cfg.LogsDir(), *instance, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
+	cfg := config.New(*root, instanceID)
+	store := storage.New(cfg.LogsDir(), instanceID, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
 
 	client := ipc.NewStdio()
 	br := bridge.New(client)
@@ -67,16 +76,13 @@ func main() {
 	})
 
 	// The MCP server never starts with the app — it is started on demand via
-	// `pob mcp --instance <id> start` (see internal/ctlserver).
+	// `pob mcp start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
 
 	// The web UI does start with the app, so that reaching for a phone is all
-	// it takes: it serves at http://<machine>:<port>/<instance> for anyone on
-	// the same network, which is why "webui": false in settings.json turns it
-	// off. Every instance shares that one port and is told apart by the path,
-	// so they have to be able to find each other — which is what the logs
-	// directory is for.
-	web := webui.New(store.InstanceID(), cfg.LogsDir(), br.Remote(), applog.Logf)
+	// it takes: it serves at http://<machine>:<port> for anyone on the same
+	// network, which is why "webui": false in settings.json turns it off.
+	web := webui.New(store.InstanceID(), br.Remote(), applog.Logf)
 	if cfg.WebUI() {
 		if err := web.Start(cfg.WebUIPort()); err != nil {
 			applog.Logf("WebUI: not started: %v", err)
