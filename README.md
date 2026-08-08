@@ -37,8 +37,8 @@ Getting started
 ./start.sh      # run it
 ```
 
-Put your API key and model in `~/.pob/<instance>/settings.json`, write what you
-want done in the `instruction.txt` beside it, and press Execute in the toolbar — or drive the
+Put your API key and model in `~/.pob/settings.json`, write what you
+want done in the instance's `instruction.txt` below it, and press Execute in the toolbar — or drive the
 machine yourself from a phone, a terminal, or another computer.
 
 

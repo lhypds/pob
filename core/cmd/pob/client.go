@@ -25,8 +25,9 @@ type Instance struct {
 	// Name is what `pob new` called it, "" for an instance that was never
 	// given one.
 	Name string
-	// Dir is <root>/<id>, holding instance.json, settings.json, instruction.txt
-	// and macro.txt; LogsDir is its logs/ subdirectory, holding the sessions.
+	// Dir is <root>/<id>, holding instance.json, instruction.txt and macro.txt
+	// — settings.json is the machine's, at the root beside INSTANCE. LogsDir is
+	// its logs/ subdirectory, holding the sessions.
 	Dir       string
 	LogsDir   string
 	StartTime int64

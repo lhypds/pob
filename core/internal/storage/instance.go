@@ -61,6 +61,27 @@ func ReadInstance(root, id string) InstanceInfo {
 	}
 }
 
+// FillInstance records fields in <root>/<id>/instance.json that are not there
+// yet, keeping everything already written — including any of these fields the
+// instance has already recorded for itself. It is for filling a gap, not for
+// overruling what the file says: the window frame arrives this way when it is
+// carried over from settings.json, where it used to be kept.
+func FillInstance(root, id string, fields map[string]any) {
+	path := filepath.Join(root, id, "instance.json")
+	entry := readJSONFile(path)
+	changed := false
+	for key, value := range fields {
+		if _, taken := entry[key]; taken {
+			continue
+		}
+		entry[key] = value
+		changed = true
+	}
+	if changed {
+		writeJSON(path, entry)
+	}
+}
+
 // ListInstances returns every pb-* directory under root, most recently run
 // first, with the never-run ones after them.
 func ListInstances(root string) []InstanceInfo {

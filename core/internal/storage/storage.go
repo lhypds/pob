@@ -129,8 +129,8 @@ func (s *Storage) InstanceDir() string { return filepath.Join(s.root, s.instance
 func (s *Storage) LogsDir() string { return filepath.Join(s.InstanceDir(), "logs") }
 
 // instanceFile is <root>/<instance>/instance.json — who this instance is (its
-// id and the name it was given) and when it last ran. It sits beside the
-// instance's settings rather than inside logs/, because it says what the
+// id and the name it was given) and when it last ran. It sits at the top of the
+// instance directory rather than inside logs/, because it says what the
 // directory is rather than what happened in it.
 func (s *Storage) instanceFile() string {
 	return filepath.Join(s.InstanceDir(), "instance.json")

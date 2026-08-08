@@ -12,8 +12,9 @@ build it to `core/bin/pob` next to `pob-core` (add that folder to your `PATH`,
 or call it by path).
 
 Everything lives in `~/.pob`, created on first use and shared by the app and
-the CLI: `INSTANCE` names the instance directory, and that directory holds its
-`settings.json`, `instruction.txt`, `macro.txt`, `instance.json` and `logs/`.
+the CLI: `settings.json` is the machine's, `INSTANCE` names the instance
+directory, and that directory holds its `instruction.txt`, `macro.txt`,
+`instance.json` and `logs/`.
 
 A running Pob serves a small control API on an ephemeral localhost port,
 advertised in `~/.pob/<instance>/control.json`; the CLI reads that file
@@ -31,7 +32,7 @@ Flags:
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
-| `new [name]` | Create an instance — its own `settings.json`, `instruction.txt`, `macro.txt` and `logs/` — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
+| `new [name]` | Create an instance — its own `instruction.txt`, `macro.txt` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, model, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |

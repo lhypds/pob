@@ -2,14 +2,20 @@
 Settings
 ========
 
-`~/.pob/<instance>/settings.json` is this instance's settings file — the one
-the Settings menu opens, and the one both the shell and the Go core read and
-edit. It is created from the defaults below the first time that instance
-starts, alongside its `instruction.txt`, `macro.txt` and `logs/`.
+`~/.pob/settings.json` is this machine's settings file — the one the Settings
+menu opens, and the one both the shell and the Go core read and edit. It is
+created from the defaults below the first time Pob starts.
 
-Nothing is shared between instance IDs: pointing [`~/.pob/INSTANCE`](05_Logs.md)
-at another one starts Pob from the defaults again, so the API key has to be set
-for it — copy the file across if you want the same configuration.
+It sits at the root rather than inside an instance directory because it is how
+the machine works, not what one instance is doing with it: the API key, the
+model and the port are the same whichever instance is running. Pointing
+[`~/.pob/INSTANCE`](05_Logs.md) at another id therefore starts Pob on a clean
+`instruction.txt` and `macro.txt`, on a machine that is already set up.
+
+A settings file from an older Pob — one per instance, inside its directory — is
+moved up to the root on the next run, so a machine that was set up stays set
+up. Only the first one moves: if several instances were configured separately,
+the rest are left where they are to be copied across by hand.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -25,10 +31,12 @@ for it — copy the file across if you want the same configuration.
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
 | `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_WebUI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
-| `window_x` | — | Window position X (auto-saved) |
-| `window_y` | — | Window position Y (auto-saved) |
-| `window_width` | — | Window width (auto-saved) |
-| `window_height` | — | Window height (auto-saved) |
+Everything here is something you set, and it applies to the machine. Where the
+window was last left is neither — it is written by the shell as `window_x`,
+`window_y`, `window_width` and `window_height` in
+[`instance.json`](05_Logs.md), per instance, with the rest of what an instance
+records about itself. A settings file still holding those keys has them moved
+across on the next run.
 
 Example:
 

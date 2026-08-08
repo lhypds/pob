@@ -1,16 +1,16 @@
 import AppKit
 import Foundation
 
-/// UI-side view of an instance's files. The Go core (pob-core) owns
+/// UI-side view of the files Pob works with. The Go core (pob-core) owns
 /// settings.json defaults, instruction.txt, macro.txt and the logs tree;
 /// this service only resolves the project root, opens files in the user's
 /// editor, persists the window frame and clears user files on request.
 ///
 /// A machine has one instance and it keeps its id for good: the same
 /// ~/.pob/<instance>/ directory every run, holding that instance's
-/// settings.json, instruction.txt, macro.txt and logs/. Nothing is shared
-/// between ids — pointing ~/.pob/INSTANCE at another one starts Pob from a
-/// clean set of files.
+/// instruction.txt, macro.txt and logs/. settings.json sits above them at
+/// ~/.pob and is shared — pointing ~/.pob/INSTANCE at another id starts Pob
+/// on a clean instruction and macro, on a machine that is already set up.
 class SettingsService {
     private let fileManager = FileManager.default
 
@@ -48,8 +48,20 @@ class SettingsService {
         projectRoot.appendingPathComponent(instanceID)
     }
 
+    /// The machine's settings, shared by every instance: the API key, the model
+    /// and the port are how this machine works whichever instance it is
+    /// running, so moving ~/.pob/INSTANCE does not mean setting them again.
     private var settingsFile: URL {
-        instanceDir.appendingPathComponent("settings.json")
+        projectRoot.appendingPathComponent("settings.json")
+    }
+
+    /// What this instance is, rather than how it is configured: its id, the
+    /// name `pob new` gave it, when it last ran, and — while it runs — the pid
+    /// and control port. The Go core owns it; the window frame is the shell's
+    /// one entry, since where the window was is a property of the machine and
+    /// not something anybody sets.
+    private var instanceFile: URL {
+        instanceDir.appendingPathComponent("instance.json")
     }
 
     private var instructionFile: URL {
@@ -178,27 +190,31 @@ class SettingsService {
         loadJSON(key: "terminal") as? String ?? "system"
     }
 
+    /// The frame the window was last left at, from instance.json — or from
+    /// settings.json, where it used to be kept. Both are read because either
+    /// side can get here first on the run that moves it: pob-core carries the
+    /// frame over at startup, and this is called as the window is built. The
+    /// fallback goes quiet once core has run, which drops it from settings.json.
     func getWindowFrame() -> NSRect? {
-        guard let x = loadJSON(key: "window_x") as? Double,
-              let y = loadJSON(key: "window_y") as? Double,
-              let w = loadJSON(key: "window_width") as? Double,
-              let h = loadJSON(key: "window_height") as? Double else { return nil }
+        readFrame(loadJSON(instanceFile)) ?? readFrame(loadJSON(settingsFile))
+    }
+
+    private func readFrame(_ json: [String: Any]) -> NSRect? {
+        guard let x = json["window_x"] as? Double,
+              let y = json["window_y"] as? Double,
+              let w = json["window_width"] as? Double,
+              let h = json["window_height"] as? Double else { return nil }
         return NSRect(x: x, y: y, width: w, height: h)
     }
 
     func saveWindowFrame(_ frame: NSRect) {
-        var json: [String: Any] = [:]
-        if let data = try? Data(contentsOf: settingsFile),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
-            json = existing
-        }
+        var json = loadJSON(instanceFile)
         json["window_x"] = Double(frame.origin.x)
         json["window_y"] = Double(frame.origin.y)
         json["window_width"] = Double(frame.size.width)
         json["window_height"] = Double(frame.size.height)
         if let string = serializeJSON(json) {
-            try? string.write(to: settingsFile, atomically: true, encoding: .utf8)
+            try? string.write(to: instanceFile, atomically: true, encoding: .utf8)
         }
     }
 
@@ -309,8 +325,12 @@ class SettingsService {
     }
 
     private func loadJSON(key: String) -> Any? {
-        guard let data = try? Data(contentsOf: settingsFile),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return json[key]
+        loadJSON(settingsFile)[key]
+    }
+
+    private func loadJSON(_ file: URL) -> [String: Any] {
+        guard let data = try? Data(contentsOf: file),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return json
     }
 }

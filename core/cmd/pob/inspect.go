@@ -141,7 +141,7 @@ func showInstance(root string) {
 		fmt.Printf("Ended:      %s\n", formatTime(inst.EndTime))
 	}
 
-	settings := readJSONFile(filepath.Join(inst.Dir, "settings.json"))
+	settings := readJSONFile(filepath.Join(root, "settings.json"))
 	if model, ok := settings["model"].(string); ok && !inst.Running {
 		fmt.Printf("Model:      %s\n", model)
 	}

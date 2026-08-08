@@ -34,8 +34,9 @@ func cmdNew(root, name string) {
 	if err != nil {
 		fail("could not create the instance: %v", err)
 	}
-	// Seed its settings.json, instruction.txt and macro.txt, so the directory
-	// is ready to be opened and edited before the app has ever started it.
+	// Seed its instruction.txt and macro.txt, so the directory is ready to be
+	// opened and edited before the app has ever started it. Settings are the
+	// machine's and are already there — a new instance starts configured.
 	config.New(root, info.ID)
 
 	running := theInstance(root)

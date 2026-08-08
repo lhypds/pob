@@ -3,6 +3,9 @@
 // macro.txt and the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
+//
+// settings.json is the machine's, at ~/.pob; instruction.txt, macro.txt and
+// logs/ belong to the instance, under ~/.pob/<instance>/.
 #ifndef POB_SETTINGS_SERVICE_H
 #define POB_SETTINGS_SERVICE_H
 
@@ -13,8 +16,8 @@ const char *settings_project_root(void);
 
 // The machine's ~/.pob/<instance> directory id — the same one on every run
 // (cached after first call, never freed). That directory holds this instance's
-// settings.json, instruction.txt, macro.txt and logs/; the id is passed to
-// pob-core via --instance.
+// instruction.txt, macro.txt and logs/; the id is passed to pob-core via
+// --instance.
 const char *settings_instance_id(void);
 
 // Claims this machine's instance for this process; FALSE means another Pob
@@ -22,7 +25,8 @@ const char *settings_instance_id(void);
 // the window is built. Claiming is also the check — see the implementation.
 gboolean settings_claim_instance(void);
 
-// Saved window frame from settings.json (window_x/y/width/height).
+// Saved window frame from instance.json (window_x/y/width/height), falling
+// back to settings.json where it used to be kept.
 // Returns FALSE when any key is missing.
 gboolean settings_get_window_frame(int *x, int *y, int *w, int *h);
 void settings_save_window_frame(int x, int y, int w, int h);

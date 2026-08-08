@@ -33,8 +33,8 @@ var version = "dev"
 const usage = `pob — control and inspect Pob from the command line
 
 Everything lives in ~/.pob, created on first use and shared with the Pob app:
-INSTANCE names the instance directory, and that directory holds its
-settings.json, instruction.txt, macro.txt and logs/.
+settings.json is the machine's, INSTANCE names the instance directory, and that
+directory holds its instruction.txt, macro.txt and logs/.
 
 Usage: pob [flags] [command] [args]
 

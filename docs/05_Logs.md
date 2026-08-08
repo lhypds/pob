@@ -6,12 +6,12 @@ Structure
 
 ```
 ~/.pob/  
-    +--- INSTANCE                                 names the instance directory below; the only thing above it, apart from app.log.
+    +--- INSTANCE                                 names the instance directory below.
+    +--- settings.json                            this machine's [settings](06_Settings.md), shared by every instance.
     +--- app.log                                  the app's own log, across instances.
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
-         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, and when it last ran. While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
-         +--- settings.json                       this instance's settings.
+         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and where the shell last left the window (`window_x`, `window_y`, `window_width`, `window_height`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
          +--- instruction.txt                     what Execute runs.
          +--- macro.txt                           what Record writes and Play replays.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
@@ -45,12 +45,16 @@ lowercase hex). It is shown in the toolbar beside the window buttons — so the 
 directory to look in — and a machine keeps the same one for good: it is worked out on first run and
 recorded in `~/.pob/INSTANCE`, so every session ever run lands in the same directory.
 
-Everything an instance works with is inside its own directory and nothing is shared between IDs.
+What an instance works on is inside its own directory and nothing of it is shared between IDs.
 Point `INSTANCE` at another one — write a different `pb-<4 hex>` into it, or delete the file to have
-one drawn — and Pob starts from clean settings, an empty instruction and an empty macro, with the
-old directory left untouched beside it. That is what changing it is for: `INSTANCE` is the only
-thing that says which directory is in use, so deleting it always starts a new instance rather than
-picking up one of the directories already there.
+one drawn — and Pob starts from an empty instruction and an empty macro, with the old directory left
+untouched beside it. That is what changing it is for: `INSTANCE` is the only thing that says which
+directory is in use, so deleting it always starts a new instance rather than picking up one of the
+directories already there.
+
+The [settings](06_Settings.md) are the exception, and sit at the root for it: the API key, the model
+and the port are how the machine works whichever instance is running, so a new instance is a clean
+sheet of work rather than a machine to set up again.
 
 `pob new "Work laptop"` is that move done for you: it creates the directory, records the name in
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
@@ -67,4 +71,4 @@ See also
 - [UI](02_UI.md) — the toolbar buttons that open this tree
 - [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
 - [Control API](11_Control%20API.md) — what `instance.json` advertises while it runs
-- [Settings](06_Settings.md) — the `settings.json` kept in the instance directory
+- [Settings](06_Settings.md) — the `settings.json` kept at the root, shared by every instance

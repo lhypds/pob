@@ -1,12 +1,12 @@
-// UI-side view of an instance's files, mirroring the macOS/Linux
+// UI-side view of the files Pob works with, mirroring the macOS/Linux
 // SettingsService. The Go core owns settings.json defaults, instruction.txt,
 // macro.txt and the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
 //
-// Everything an instance owns lives under ~/.pob/<instance>/. Nothing is
-// shared between ids — pointing ~/.pob/INSTANCE at another one starts Pob
-// from a clean set of files.
+// What an instance owns lives under ~/.pob/<instance>/; settings.json sits
+// above them at ~/.pob and is shared — pointing ~/.pob/INSTANCE at another id
+// starts Pob on a clean instruction and macro, on a machine already set up.
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -39,8 +39,8 @@ public static class SettingsService
 
     /// <summary>
     /// ~/.pob/&lt;InstanceId&gt;, everything this instance owns: its
-    /// settings.json, instruction.txt, macro.txt and logs/. Passed to pob-core
-    /// via --instance.
+    /// instruction.txt, macro.txt and logs/. Passed to pob-core via
+    /// --instance.
     /// </summary>
     public static string InstanceId => _instanceId ??= AllocateInstance();
 
@@ -158,15 +158,33 @@ public static class SettingsService
         return AcquireInstanceLock(dir);
     }
 
-    private static string SettingsFilePath() => InstancePath("settings.json");
+    /// <summary>
+    /// The machine's settings, shared by every instance: the API key, the model
+    /// and the port are how this machine works whichever instance it is
+    /// running, so moving ~/.pob/INSTANCE does not mean setting them again.
+    /// </summary>
+    private static string SettingsFilePath() => Path.Combine(ProjectRoot, "settings.json");
+
+    /// <summary>
+    /// What this instance is rather than how it is configured: its id, the name
+    /// `pob new` gave it, when it last ran and, while it runs, the pid and
+    /// control port. The Go core owns the file; the window frame is the shell's
+    /// one entry, since where the window was is a property of the machine
+    /// rather than something anybody sets.
+    /// </summary>
+    private static string InstanceFilePath() => InstancePath("instance.json");
 
     // ── settings.json helpers ───────────────────────────────────────────────
 
-    private static JsonObject? LoadSettings()
+    private static JsonObject? LoadSettings() => LoadJson(SettingsFilePath());
+
+    private static JsonObject? LoadInstance() => LoadJson(InstanceFilePath());
+
+    private static JsonObject? LoadJson(string path)
     {
         try
         {
-            return JsonNode.Parse(File.ReadAllText(SettingsFilePath())) as JsonObject;
+            return JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
         }
         catch
         {
@@ -183,12 +201,24 @@ public static class SettingsService
         return fallback;
     }
 
+    /// <summary>
+    /// The frame comes from instance.json, or from settings.json where it used
+    /// to be kept. Both are read because either side can get here first on the
+    /// run that moves it: pob-core carries the frame over at startup, and this
+    /// is called as the window is built. The fallback goes quiet once core has
+    /// run, which drops the keys from settings.json.
+    /// </summary>
     public static bool GetWindowFrame(out int x, out int y, out int w, out int h)
+    {
+        if (ReadFrame(LoadInstance(), out x, out y, out w, out h)) return true;
+        return ReadFrame(LoadSettings(), out x, out y, out w, out h);
+    }
+
+    private static bool ReadFrame(JsonObject? obj, out int x, out int y, out int w, out int h)
     {
         x = y = 0;
         w = 600;
         h = 400;
-        JsonObject? obj = LoadSettings();
         if (obj == null) return false;
         if (!TryGetInt(obj, "window_x", out x) || !TryGetInt(obj, "window_y", out y) ||
             !TryGetInt(obj, "window_width", out w) || !TryGetInt(obj, "window_height", out h))
@@ -211,14 +241,14 @@ public static class SettingsService
     public static void SaveWindowFrame(int x, int y, int w, int h)
     {
         // Preserve every existing key, only replace the frame values.
-        JsonObject obj = LoadSettings() ?? new JsonObject();
+        JsonObject obj = LoadInstance() ?? new JsonObject();
         obj["window_x"] = (double)x;
         obj["window_y"] = (double)y;
         obj["window_width"] = (double)w;
         obj["window_height"] = (double)h;
         try
         {
-            File.WriteAllText(SettingsFilePath(),
+            File.WriteAllText(InstanceFilePath(),
                 obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (IOException)

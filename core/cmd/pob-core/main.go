@@ -40,7 +40,7 @@ func (m macroRecorder) AppendToMacro(line string) { m.cfg.AppendToMacro(line) }
 
 func main() {
 	root := flag.String("root", "", "project root holding INSTANCE and the <instance>/ directories")
-	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's settings.json, instruction.txt, macro.txt and logs/")
+	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's instruction.txt, macro.txt and logs/")
 	flag.Parse()
 	if *root == "" {
 		home, err := os.UserHomeDir()

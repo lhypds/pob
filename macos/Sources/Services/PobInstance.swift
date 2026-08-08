@@ -1,10 +1,10 @@
 import AppKit
 import Combine
 
-/// The running Pob instance: its ~/.pob/<instance>/ directory, settings.json,
-/// Go core child process and virtual cursor. Created by ContentView as a
-/// @StateObject, so its lifetime is the window's lifetime — closing the
-/// window releases the instance, which stops its pob-core.
+/// The running Pob instance: its ~/.pob/<instance>/ directory, the machine's
+/// settings.json, Go core child process and virtual cursor. Created by
+/// ContentView as a @StateObject, so its lifetime is the window's lifetime —
+/// closing the window releases the instance, which stops its pob-core.
 final class PobInstance: NSObject, ObservableObject {
     /// The live instance (weak), for the app-wide mouse-move monitors
     /// (click-through) and shutdown on app termination. A table rather than a
@@ -61,7 +61,7 @@ final class PobInstance: NSObject, ObservableObject {
     /// Called once the SwiftUI window hosting this instance's ContentView
     /// exists: applies the overlay styling (previously done by AppDelegate
     /// for the single window) and restores the saved frame from this
-    /// instance's settings.
+    /// instance's instance.json.
     func attach(window: NSWindow) {
         guard self.window !== window else { return }
         self.window = window

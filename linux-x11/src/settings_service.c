@@ -134,8 +134,9 @@ gboolean settings_claim_instance(void) {
     return claimed;
 }
 
-// This instance's ~/.pob/<instance>/ directory, holding its settings.json,
-// instruction.txt, macro.txt and logs/. Nothing is shared between ids.
+// This instance's ~/.pob/<instance>/ directory, holding its instruction.txt,
+// macro.txt and logs/. The machine's settings.json sits above them, at the
+// root, and is the one thing every id shares.
 const char *settings_instance_id(void) {
     static gchar *instance_id = NULL;
     if (instance_id) return instance_id;
@@ -161,14 +162,26 @@ static gchar *instance_path(const char *name) {
     return g_build_filename(settings_project_root(), settings_instance_id(), name, NULL);
 }
 
+// The machine's settings, shared by every instance: the API key, the model and
+// the port are how this machine works whichever instance it is running, so
+// moving ~/.pob/INSTANCE does not mean setting them again.
 static gchar *settings_file_path(void) {
-    return instance_path("settings.json");
+    return root_path("settings.json");
+}
+
+// What this instance is rather than how it is configured: its id, the name
+// `pob new` gave it, when it last ran and, while it runs, the pid and control
+// port. The Go core owns the file; the window frame is the shell's one entry,
+// since where the window was is a property of the machine rather than
+// something anybody sets.
+static gchar *instance_file_path(void) {
+    return instance_path("instance.json");
 }
 
 // ── settings.json helpers ───────────────────────────────────────────────────
 
-static JsonObject *load_settings(JsonParser **parser_out) {
-    gchar *path = settings_file_path();
+// Takes ownership of path.
+static JsonObject *load_json_file(gchar *path, JsonParser **parser_out) {
     JsonParser *parser = json_parser_new();
     JsonObject *obj = NULL;
     if (json_parser_load_from_file(parser, path, NULL)) {
@@ -185,6 +198,14 @@ static JsonObject *load_settings(JsonParser **parser_out) {
     return obj;
 }
 
+static JsonObject *load_settings(JsonParser **parser_out) {
+    return load_json_file(settings_file_path(), parser_out);
+}
+
+static JsonObject *load_instance(JsonParser **parser_out) {
+    return load_json_file(instance_file_path(), parser_out);
+}
+
 static gchar *load_string_key(const char *key, const char *fallback) {
     JsonParser *parser = NULL;
     JsonObject *obj = load_settings(&parser);
@@ -199,31 +220,43 @@ static gchar *load_string_key(const char *key, const char *fallback) {
     return value;
 }
 
+static gboolean read_frame(JsonObject *obj, int *x, int *y, int *w, int *h) {
+    if (!obj ||
+        !json_object_has_member(obj, "window_x") ||
+        !json_object_has_member(obj, "window_y") ||
+        !json_object_has_member(obj, "window_width") ||
+        !json_object_has_member(obj, "window_height"))
+        return FALSE;
+    *x = (int)json_object_get_double_member_with_default(obj, "window_x", 0);
+    *y = (int)json_object_get_double_member_with_default(obj, "window_y", 0);
+    *w = (int)json_object_get_double_member_with_default(obj, "window_width", 600);
+    *h = (int)json_object_get_double_member_with_default(obj, "window_height", 400);
+    return TRUE;
+}
+
+// The frame comes from instance.json, or from settings.json where it used to
+// be kept. Both are read because either side can get here first on the run
+// that moves it: pob-core carries the frame over at startup, and this is
+// called as the window is built. The fallback goes quiet once core has run,
+// which drops the keys from settings.json.
 gboolean settings_get_window_frame(int *x, int *y, int *w, int *h) {
     JsonParser *parser = NULL;
-    JsonObject *obj = load_settings(&parser);
-    gboolean ok = FALSE;
-    if (obj &&
-        json_object_has_member(obj, "window_x") &&
-        json_object_has_member(obj, "window_y") &&
-        json_object_has_member(obj, "window_width") &&
-        json_object_has_member(obj, "window_height")) {
-        *x = (int)json_object_get_double_member_with_default(obj, "window_x", 0);
-        *y = (int)json_object_get_double_member_with_default(obj, "window_y", 0);
-        *w = (int)json_object_get_double_member_with_default(obj, "window_width", 600);
-        *h = (int)json_object_get_double_member_with_default(obj, "window_height", 400);
-        ok = TRUE;
-    }
+    gboolean ok = read_frame(load_instance(&parser), x, y, w, h);
+    if (parser) g_object_unref(parser);
+    if (ok) return TRUE;
+
+    parser = NULL;
+    ok = read_frame(load_settings(&parser), x, y, w, h);
     if (parser) g_object_unref(parser);
     return ok;
 }
 
 void settings_save_window_frame(int x, int y, int w, int h) {
-    gchar *path = settings_file_path();
+    gchar *path = instance_file_path();
 
     // Preserve every existing key, only replace the frame values.
     JsonParser *parser = NULL;
-    JsonObject *existing = load_settings(&parser);
+    JsonObject *existing = load_instance(&parser);
 
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);

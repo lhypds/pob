@@ -1,13 +1,15 @@
-// Package config reads and maintains an instance's settings.json,
-// instruction.txt and macro.txt. It mirrors the behavior of the old Swift
-// SettingsService: defaults are created on first run and missing keys are
+// Package config reads and maintains the machine's settings.json and an
+// instance's instruction.txt and macro.txt. It mirrors the behavior of the old
+// Swift SettingsService: defaults are created on first run and missing keys are
 // backfilled into an existing settings file. Values are re-read from disk on
 // every access so edits take effect without restarting.
 //
-// Everything an instance owns lives under <root>/<instance>/ — its three
-// files and its logs/ tree. Nothing is shared between instance ids and there
-// is no template above them: pointing <root>/INSTANCE at a new id gives a
-// machine a clean set of files, which is what changing it is for.
+// settings.json sits at <root>, shared by every instance: the API key, the
+// model and the port are how a machine works, not what one instance is doing
+// with it, so moving <root>/INSTANCE to another id does not mean setting them
+// again. What an instance owns is its own — instruction.txt, macro.txt and its
+// logs/ tree, under <root>/<instance>/ — and pointing INSTANCE at a new id
+// gives a machine a clean set of those, which is what changing it is for.
 package config
 
 import (
@@ -66,18 +68,36 @@ func New(root, instanceID string) *Config {
 // InstanceDir is <root>/<instance>, everything this instance owns.
 func (c *Config) InstanceDir() string { return filepath.Join(c.Root, c.InstanceID) }
 
-func (c *Config) settingsFile() string    { return filepath.Join(c.InstanceDir(), "settings.json") }
+// settingsFile is <root>/settings.json — the machine's settings, not one
+// instance's. The API key, the model and the server port are how this machine
+// works whichever instance it is running, so switching instances no longer
+// means setting them again.
+func (c *Config) settingsFile() string { return filepath.Join(c.Root, "settings.json") }
+
+// legacySettingsFile is <root>/<instance>/settings.json, where settings used
+// to be kept — one file per instance. See migrateSettingsToRoot.
+func (c *Config) legacySettingsFile() string {
+	return filepath.Join(c.InstanceDir(), "settings.json")
+}
+
 func (c *Config) instructionFile() string { return filepath.Join(c.InstanceDir(), "instruction.txt") }
 func (c *Config) macroFile() string       { return filepath.Join(c.InstanceDir(), "macro.txt") }
 
 func (c *Config) ensureFiles() {
 	// The instance directory must exist before any file below is written —
-	// the CLI resolves to a not-yet-created ~/.pob.
+	// the CLI resolves to a not-yet-created ~/.pob. Making it makes the root.
 	_ = os.MkdirAll(c.InstanceDir(), 0o755)
+
+	// Before the settings move up: the frame belongs to this instance, and
+	// only one instance's settings can become the machine's.
+	c.migrateWindowFrame(c.legacySettingsFile())
+	c.migrateSettingsToRoot()
+
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
 	} else {
 		migrateLegacyKeys(c.settingsFile())
+		c.migrateWindowFrame(c.settingsFile())
 		settings := c.readSettings()
 		changed := false
 		for key, value := range defaults {
@@ -118,6 +138,51 @@ func migrateLegacyKeys(path string) {
 	if changed {
 		writeSettingsFile(path, settings)
 	}
+}
+
+// windowFrameKeys are where the shell last had the window. They are not
+// settings — nobody edits them and nothing about the app follows from them —
+// so they live in instance.json with the rest of what an instance records
+// about itself, and the shells read and write them there.
+var windowFrameKeys = []string{"window_x", "window_y", "window_width", "window_height"}
+
+// migrateWindowFrame carries the frame over from a settings file, where it
+// used to be kept, so a window does not jump on the first run after the move.
+// The keys are dropped from that file either way: once they are out of it
+// nothing reads them from there, and leaving them behind would only leave
+// something stale in a file people open to edit.
+func (c *Config) migrateWindowFrame(path string) {
+	settings := readSettingsFile(path)
+	frame := map[string]any{}
+	for _, key := range windowFrameKeys {
+		if value, ok := settings[key]; ok {
+			frame[key] = value
+			delete(settings, key)
+		}
+	}
+	if len(frame) == 0 {
+		return
+	}
+	storage.FillInstance(c.Root, c.InstanceID, frame)
+	writeSettingsFile(path, settings)
+}
+
+// migrateSettingsToRoot moves an instance's settings.json up to <root>, which
+// is where the machine's settings now live.
+//
+// Only the first one moves. A machine that already has its settings keeps
+// them, and the instance file left behind is a leftover rather than something
+// to fold in — two instances configured differently cannot both win, and
+// guessing which should would be worse than leaving the older one where it is
+// for its owner to copy across.
+func (c *Config) migrateSettingsToRoot() {
+	if _, err := os.Stat(c.legacySettingsFile()); err != nil {
+		return
+	}
+	if _, err := os.Stat(c.settingsFile()); err == nil {
+		return
+	}
+	_ = os.Rename(c.legacySettingsFile(), c.settingsFile())
 }
 
 func (c *Config) readSettings() map[string]any { return readSettingsFile(c.settingsFile()) }
