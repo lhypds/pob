@@ -37,7 +37,7 @@ Structure
 `<instance>` is the instance ID, of the form `pb-<4 hex>` (the last two bytes of a fresh UID in
 lowercase hex). It is shown in the toolbar beside the window buttons — so the ID on screen names the
 directory to look in — and a machine keeps the same one for good: it is worked out on first run and
-recorded in `~/.pob/instance`, so every session ever run lands in the same directory. A machine
+recorded in `~/.pob/INSTANCE`, so every session ever run lands in the same directory. A machine
 upgrading from the versions that took a fresh ID per launch adopts the `pb-*` directory it used
 last; the others stay where they are as history.  
 `<session>` is a unique session ID named as a unixtime.  

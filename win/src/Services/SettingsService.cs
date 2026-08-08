@@ -55,6 +55,13 @@ public static class SettingsService
 
     private const string InstancePrefix = "pb-";
 
+    /// <summary>
+    /// The file under ~/.pob holding the machine's one instance id. Named in
+    /// capitals like VERSION and SYSTEM: a marker the programs write and read,
+    /// not a file to edit.
+    /// </summary>
+    private const string InstancePointer = "INSTANCE";
+
     private static string AllocateInstance()
     {
         string logs = RootPath("logs");
@@ -81,7 +88,7 @@ public static class SettingsService
 
     /// <summary>
     /// The machine's instance id — the same one on every run, recorded in
-    /// ~/.pob/instance the first time it is worked out. This mirrors the Go
+    /// ~/.pob/INSTANCE the first time it is worked out. This mirrors the Go
     /// core's ResolveInstanceID because either side can get there first: the
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
@@ -92,7 +99,7 @@ public static class SettingsService
     /// </summary>
     private static string ResolveInstanceId(string logs)
     {
-        string pointer = RootPath("instance");
+        string pointer = RootPath(InstancePointer);
         try
         {
             string id = File.ReadAllText(pointer).Trim();

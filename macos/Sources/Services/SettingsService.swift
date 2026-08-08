@@ -91,8 +91,13 @@ class SettingsService {
     /// Every instance id starts with this.
     private static let instancePrefix = "pb-"
 
+    /// The file under ~/.pob holding the machine's one instance id. Named in
+    /// capitals like VERSION and SYSTEM: a marker the programs write and read,
+    /// not a file to edit.
+    private static let instancePointer = "INSTANCE"
+
     /// The machine's instance id — the same one on every run, recorded in
-    /// ~/.pob/instance the first time it is worked out. This mirrors the Go
+    /// ~/.pob/INSTANCE the first time it is worked out. This mirrors the Go
     /// core's ResolveInstanceID because either side can get there first: the
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
@@ -101,7 +106,7 @@ class SettingsService {
     /// has a logs/ full of pb-* directories. Rather than add one more, the one
     /// used last is adopted; the rest stay where they are as history.
     private static func resolveInstanceID(_ fileManager: FileManager, root: URL, logs: URL) -> String {
-        let pointer = root.appendingPathComponent("instance")
+        let pointer = root.appendingPathComponent(instancePointer)
 
         if let contents = try? String(contentsOf: pointer, encoding: .utf8) {
             let id = contents.trimmingCharacters(in: .whitespacesAndNewlines)

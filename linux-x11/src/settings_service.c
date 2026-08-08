@@ -77,6 +77,11 @@ static gboolean instance_is_running(const char *dir_path) {
 
 #define INSTANCE_PREFIX "pb-"
 
+// The file under ~/.pob holding the machine's one instance id. Named in
+// capitals like VERSION and SYSTEM: a marker the programs write and read, not
+// a file to edit.
+#define INSTANCE_POINTER "INSTANCE"
+
 // Reserves a fresh logs/pb-<uid>/, drawing another ID if that one is taken.
 // The ID is "pb-<4 hex>", the same scheme the pico-hid firmware uses for its
 // "ph-" board id. The headerbar shows it beside the window buttons.
@@ -118,7 +123,7 @@ static gchar *most_recent_instance(const char *logs) {
 }
 
 // The machine's instance id — the same one on every run, recorded in
-// ~/.pob/instance the first time it is worked out. This mirrors the Go core's
+// ~/.pob/INSTANCE the first time it is worked out. This mirrors the Go core's
 // ResolveInstanceID because either side can get there first: the shell
 // resolves it to show in the headerbar and passes it to pob-core with
 // --instance, but the CLI can reach ~/.pob without a shell at all.
@@ -127,7 +132,7 @@ static gchar *most_recent_instance(const char *logs) {
 // logs/ full of pb-* directories. Rather than add one more, the one used last
 // is adopted; the rest stay where they are as history.
 static gchar *resolve_instance_id(const char *logs) {
-    gchar *pointer = root_path("instance");
+    gchar *pointer = root_path(INSTANCE_POINTER);
     gchar *contents = NULL;
     if (g_file_get_contents(pointer, &contents, NULL, NULL)) {
         gchar *id = g_strstrip(contents);

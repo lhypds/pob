@@ -31,8 +31,9 @@ const InstancePrefix = "pb-"
 // instancePointer holds the machine's one instance id. It sits beside logs/
 // rather than inside it, so clearing the logs doesn't change which instance
 // this machine is — the id is in the toolbar and in the web UI address, and
-// both should survive a tidy-up.
-const instancePointer = "instance"
+// both should survive a tidy-up. Named in capitals like VERSION and SYSTEM:
+// a marker the programs write and read, not a file to edit.
+const instancePointer = "INSTANCE"
 
 // New creates logs/<instance>/ for this process; every session it writes
 // lives under that directory. instanceID is the one the shell resolved and
@@ -54,7 +55,7 @@ func New(logsDir, instanceID string, settingsDict func() map[string]any, instruc
 }
 
 // ResolveInstanceID returns the machine's instance id, the same one on every
-// run. It is recorded in <root>/instance the first time it is worked out.
+// run. It is recorded in <root>/INSTANCE the first time it is worked out.
 //
 // A machine upgrading from the versions that started a fresh instance per
 // launch has a logs/ full of pb-* directories. Rather than add one more, the
@@ -81,7 +82,7 @@ func ResolveInstanceID(root string) string {
 	return id
 }
 
-// readInstancePointer reads <root>/instance, ignoring anything that isn't an
+// readInstancePointer reads <root>/INSTANCE, ignoring anything that isn't an
 // instance id — a truncated or hand-edited file should send the machine back
 // to working the id out rather than into a directory named after junk.
 func readInstancePointer(path string) string {
