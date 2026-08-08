@@ -1,7 +1,7 @@
 // pob is the command-line interface to Pob. A machine runs one instance at a
 // time — the one ~/.pob/INSTANCE names — and the commands drive it over the
 // localhost control API served by pob-core (see internal/ctlserver), found
-// through <instance>/logs/control.json. Log and session inspection reads the
+// through <instance>/instance.json. Log and session inspection reads the
 // logs/ tree directly, so it also works when the app is not running.
 //
 // `pob new` makes another instance and `pob launch` picks which one to start;

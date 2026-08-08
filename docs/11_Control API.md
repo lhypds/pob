@@ -18,14 +18,16 @@ HTTP API on an ephemeral `127.0.0.1` port, alongside the bridge.
 Finding it
 ----------
 
-The port is advertised in `~/.pob/<instance>/logs/control.json`, written when
-the instance starts and removed when it stops:
+The port is advertised in `~/.pob/<instance>/instance.json`, written when the
+instance starts and cleared when it stops:
 
 ```json
 {
+  "id": "pb-b424",
+  "name": "Work laptop",
+  "start_time": 1752712400,
   "pid": 4711,
-  "port": 57259,
-  "start_time": 1752712400
+  "port": 57259
 }
 ```
 
@@ -91,4 +93,4 @@ See also
 - [Operation API](10_Operation%20API.md) — the other API: operating the machine
 - [MCP Server](08_MCP.md) — what `POST /mcp/start` brings up
 - [Pob Server](09_Server.md) — what `GET /server` describes
-- [Logs](05_Logs.md) — where `control.json` lives
+- [Logs](05_Logs.md) — where `instance.json` lives

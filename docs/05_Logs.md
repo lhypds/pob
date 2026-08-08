@@ -10,7 +10,7 @@ Structure
     +--- app.log                                  the app's own log, across instances.
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
-         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, and when it last ran.
+         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, and when it last ran. While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
          +--- settings.json                       this instance's settings.
          +--- instruction.txt                     what Execute runs.
          +--- macro.txt                           what Record writes and Play replays.
@@ -18,7 +18,6 @@ Structure
 
          +--- logs/
               +--- screenshots/                   screenshots taken with the toolbar Screenshot button.
-              +--- control.json                   written while the instance runs; advertises the [Control API](11_Control%20API.md) port used by the `pob` CLI.
 
               +--- <session>/ (instruction)       session executed from instruction.  
                    +--- instruction.txt
@@ -67,5 +66,5 @@ See also
 
 - [UI](02_UI.md) — the toolbar buttons that open this tree
 - [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
-- [Control API](11_Control%20API.md) — what `control.json` advertises
+- [Control API](11_Control%20API.md) — what `instance.json` advertises while it runs
 - [Settings](06_Settings.md) — the `settings.json` kept in the instance directory

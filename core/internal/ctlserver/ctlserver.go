@@ -1,8 +1,8 @@
 // Package ctlserver exposes a small localhost HTTP control API so the `pob`
 // CLI can drive a running instance. Unlike the MCP server it always starts,
-// on an ephemeral 127.0.0.1 port, and advertises itself by writing
-// <instance>/logs/control.json ({pid, port}) which the CLI scans to discover
-// live instances. Endpoints:
+// on an ephemeral 127.0.0.1 port, and advertises itself by writing its pid and
+// port into <instance>/instance.json, which the CLI reads to discover live
+// instances. Endpoints:
 //
 //	GET  /status           — instance id, executing/recording state, MCP and Pob server state
 //	GET  /mcp              — MCP server info (running, port, url, tools)
@@ -21,8 +21,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
-	"time"
 
 	"pob/core/internal/agent"
 	"pob/core/internal/applog"
@@ -49,12 +47,8 @@ func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *
 	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, pob: pob, br: br}
 }
 
-func (s *Server) controlFile() string {
-	return filepath.Join(s.store.LogsDir(), "control.json")
-}
-
-// Start binds an ephemeral localhost port, writes control.json and serves in
-// a background goroutine.
+// Start binds an ephemeral localhost port, advertises it in instance.json and
+// serves in a background goroutine.
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", s.handleStatus)
@@ -74,14 +68,7 @@ func (s *Server) Start() error {
 	}
 	s.port = listener.Addr().(*net.TCPAddr).Port
 
-	data, _ := storage.PrettyJSON(map[string]any{
-		"pid":        os.Getpid(),
-		"port":       s.port,
-		"start_time": time.Now().Unix(),
-	})
-	if err := os.WriteFile(s.controlFile(), data, 0o644); err != nil {
-		applog.Logf("CtlServer: cannot write control.json: %v", err)
-	}
+	s.store.WriteControl(os.Getpid(), s.port)
 
 	s.server = &http.Server{Handler: mux}
 	go func() {
@@ -93,10 +80,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Stop closes the listener and removes control.json so the instance stops
-// advertising itself.
+// Stop closes the listener and clears the advertised port so the instance
+// stops advertising itself.
 func (s *Server) Stop() {
-	_ = os.Remove(s.controlFile())
+	s.store.ClearControl()
 	if s.server != nil {
 		_ = s.server.Close()
 	}

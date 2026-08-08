@@ -21,7 +21,7 @@ func cmdKill(root string) {
 		return
 	}
 
-	// Ask the instance itself for the pid rather than trusting control.json:
+	// Ask the instance itself for the pid rather than trusting instance.json:
 	// the same answer that established it is running.
 	status, err := inst.get("/status", 3*time.Second)
 	if err != nil {

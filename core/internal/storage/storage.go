@@ -155,6 +155,27 @@ func (s *Storage) WriteInstanceEnd() {
 	writeJSON(s.instanceFile(), entry)
 }
 
+// WriteControl records the process id and the control API port, which is how a
+// running instance advertises itself to the `pob` CLI. It goes into
+// instance.json rather than a file of its own: the port is one more thing about
+// this instance, and one file is one thing for the CLI to read.
+func (s *Storage) WriteControl(pid, port int) {
+	entry := readJSONFile(s.instanceFile())
+	entry["id"] = s.instanceID
+	entry["pid"] = pid
+	entry["port"] = port
+	writeJSON(s.instanceFile(), entry)
+}
+
+// ClearControl drops the pid and port so a stopped instance no longer
+// advertises itself, keeping the rest of what instance.json records.
+func (s *Storage) ClearControl() {
+	entry := readJSONFile(s.instanceFile())
+	delete(entry, "pid")
+	delete(entry, "port")
+	writeJSON(s.instanceFile(), entry)
+}
+
 func (s *Storage) sessionDir(sessionID string) string {
 	return filepath.Join(s.LogsDir(), sessionID)
 }

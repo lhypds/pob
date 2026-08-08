@@ -107,7 +107,7 @@ func main() {
 	br.NotifyServerState(srv.Running(), srv.URL())
 
 	// The control server lets the `pob` CLI drive this instance; it always
-	// runs, on an ephemeral port advertised in <instance>/logs/control.json.
+	// runs, on an ephemeral port advertised in <instance>/instance.json.
 	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br)
 	_ = ctl.Start()
 

@@ -1,9 +1,9 @@
 // The machine's instance and the HTTP client for the pob-core control API.
 //
-// A running core writes <instance>/logs/control.json with its pid and control
-// port. It counts as running only when GET /status on that port answers with
-// the matching instance ID — a stale control.json (a crashed instance, a
-// recycled port) is thereby ignored.
+// A running core writes its pid and control port into <instance>/instance.json.
+// It counts as running only when GET /status on that port answers with the
+// matching instance ID — a stale port (a crashed instance, a recycled port) is
+// thereby ignored.
 package main
 
 import (
@@ -25,9 +25,8 @@ type Instance struct {
 	// Name is what `pob new` called it, "" for an instance that was never
 	// given one.
 	Name string
-	// Dir is <root>/<id>, holding settings.json, instruction.txt and macro.txt;
-	// LogsDir is its logs/ subdirectory, holding the sessions and the two JSON
-	// files a running instance advertises itself with.
+	// Dir is <root>/<id>, holding instance.json, settings.json, instruction.txt
+	// and macro.txt; LogsDir is its logs/ subdirectory, holding the sessions.
 	Dir       string
 	LogsDir   string
 	StartTime int64
@@ -53,19 +52,18 @@ func newInstance(root, id string) *Instance {
 	return &Instance{ID: id, Dir: dir, LogsDir: filepath.Join(dir, "logs")}
 }
 
-// loadInstance reads one <id>/logs directory and probes its control port.
+// loadInstance reads one <root>/<id> directory and probes its control port.
 // Returns nil when the directory doesn't look like an instance.
 func loadInstance(root, id string) *Instance {
 	inst := newInstance(root, id)
 	instanceJSON := readJSONFile(filepath.Join(inst.Dir, "instance.json"))
-	controlJSON := readJSONFile(filepath.Join(inst.LogsDir, "control.json"))
-	if instanceJSON == nil && controlJSON == nil {
+	if instanceJSON == nil {
 		return nil
 	}
 	inst.Name, _ = instanceJSON["name"].(string)
 	inst.StartTime = intField(instanceJSON, "start_time")
 	inst.EndTime = intField(instanceJSON, "end_time")
-	inst.Port = int(intField(controlJSON, "port"))
+	inst.Port = int(intField(instanceJSON, "port"))
 	inst.probe()
 	return inst
 }
