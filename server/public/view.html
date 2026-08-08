@@ -61,7 +61,19 @@
         -webkit-user-select: none;
         -webkit-touch-callout: none; /* no long-press callout on iOS */
         -webkit-tap-highlight-color: transparent;
-        cursor: crosshair;
+        /* The crosshair is drawn here rather than asked for by name. The
+           system one is a thin 15 px cross on macOS and a 32 px pointer with
+           arms across the whole square on Windows, which over a picture of a
+           screen covers the thing being aimed at. This is the same 21 px cross
+           on every machine: black over a white halo, so it stays visible
+           whatever the frame underneath happens to be showing, and open in the
+           middle so the pixel under the hotspot is one of the ones you can
+           see. The keyword stays behind it for anything that won't take an SVG
+           cursor. */
+        cursor:
+          url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='21'%20height='21'%20viewBox='0%200%2021%2021'%3E%3Cpath%20d='M10.5%201.5v5M10.5%2014.5v5M1.5%2010.5h5M14.5%2010.5h5'%20fill='none'%20stroke='%23fff'%20stroke-width='3'%20stroke-linecap='square'/%3E%3Cpath%20d='M10.5%201.5v5M10.5%2014.5v5M1.5%2010.5h5M14.5%2010.5h5'%20fill='none'%20stroke='%23000'/%3E%3C/svg%3E")
+            10 10,
+          crosshair;
       }
 
       /* One canvas, drawn over and over. See the script for why it is a canvas
