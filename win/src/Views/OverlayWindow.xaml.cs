@@ -42,12 +42,27 @@ public partial class OverlayWindow : Window
     private bool _edgeHot;
     private DispatcherTimer? _edgeWatch;
 
+    // Matches the Root border's CornerRadius — see ClipContentToCorners.
+    private const double CornerRadius = 3;
+
     public OverlayWindow()
     {
         InitializeComponent();
         PreviewMouseLeftButtonDown += OnPreviewLeftButtonDown;
         PreviewMouseMove += OnPreviewMove;
         PreviewMouseLeftButtonUp += OnPreviewLeftButtonUp;
+        ContentArea.SizeChanged += (_, e) => ClipContentToCorners(e.NewSize);
+    }
+
+    // A Border rounds the background it paints, not what a child draws over it
+    // — so the content area gets a clip of its own, or the screenshot flash and
+    // the crop overlay would square the corners off again. The clip starts one
+    // radius above the top edge: rounding is wanted along the bottom only, and
+    // up there the toolbar window is glued on, where a notch would show.
+    private void ClipContentToCorners(Size size)
+    {
+        var area = new Rect(0, -CornerRadius, size.Width, size.Height + CornerRadius);
+        ContentArea.Clip = new RectangleGeometry(area, CornerRadius, CornerRadius);
     }
 
     // ── extended-style flags ────────────────────────────────────────────────

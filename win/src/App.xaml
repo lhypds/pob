@@ -38,33 +38,13 @@
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
-        <!-- Native-style caption buttons (Minimize/Maximize/Close), matching
-             the system titlebar: 46 px wide, full bar height, 10 px chrome
-             glyphs, flat gray hover/press. -->
-        <Style x:Key="CaptionButton" TargetType="Button">
-            <Setter Property="Width" Value="46"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="#FF000000"/>
-            <Setter Property="Focusable" Value="False"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" Background="{TemplateBinding Background}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#1A000000"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#33000000"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <!-- Window controls (Minimize/Maximize/Close). Not the system titlebar's
+             46 px × full-height slabs: this is a 32 px compact bar like the
+             macOS and Linux ones, where a button that tall towers over the
+             toolbar icons next to it. Same 22×22 square as those instead, so
+             the right end reads as one row of controls. Only Close differs,
+             below, and only in its hover. -->
+        <Style x:Key="CaptionButton" TargetType="Button" BasedOn="{StaticResource ToolButton}"/>
         <!-- Close gets the system red hover (#E81123) with a white glyph. -->
         <Style x:Key="CaptionCloseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
             <Setter Property="Template">
@@ -89,7 +69,10 @@
         </Style>
         <!-- Caption glyphs: Segoe Fluent Icons on Windows 11 (rounded, matches
              the system chrome), falling back to Segoe MDL2 Assets on Windows 10
-             — the codepoints are identical. 10 px is the system glyph size. -->
+             — the codepoints are identical. 10 px is the system glyph size, and
+             it stays that inside the smaller button: these are full-width
+             shapes (a line, a box, a cross) and carry as much ink at 10 as the
+             toolbar's icons do at 12. -->
         <Style x:Key="CaptionIcon" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="10"/>

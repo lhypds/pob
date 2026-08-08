@@ -12,10 +12,13 @@
     <!-- Compact titlebar, same layout as the macOS toolbar: the instance id
          at the leading edge beside the window buttons, then everything else
          packed right — file group, actions, window controls. -->
+    <!-- The two windows are glued into one shape, so the rounding is split
+         between them: the top corners here, the bottom ones on the overlay. -->
     <Border x:Name="Bar"
             Background="#F2F2F2"
             BorderBrush="#33000000"
             BorderThickness="0,0,0,1"
+            CornerRadius="3,3,0,0"
             MouseLeftButtonDown="OnBarLeftButtonDown">
         <Border.ContextMenu>
             <ContextMenu>
@@ -24,7 +27,7 @@
                 <MenuItem Header="Quit Pob" Click="OnQuitClicked"/>
             </ContextMenu>
         </Border.ContextMenu>
-        <DockPanel LastChildFill="False" Margin="4,0,0,0">
+        <DockPanel LastChildFill="False" Margin="4,0,4,0">
             <!-- Instance id (pb-xxxx): names this instance's logs directory;
                  click to copy the dashboard it answers at. Small monospaced
                  text, like the macOS badge — Background is Transparent rather
@@ -35,10 +38,10 @@
                 <TextBlock x:Name="InstanceIdText" FontFamily="Consolas" FontSize="11"
                            FontWeight="Bold" Foreground="#FF404040"/>
             </Border>
-            <!-- Window controls: native caption buttons — full-height, flush
-                 with the window's right edge, system chrome glyphs. Docked
-                 before the action buttons so they stay rightmost. -->
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+            <!-- Window controls: same square as the toolbar buttons, system
+                 chrome glyphs. Docked before the action buttons so they stay
+                 rightmost. -->
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                 <Button x:Name="MinimizeBtn" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimizeClicked">
                     <TextBlock Style="{StaticResource CaptionIcon}" Text="&#xE921;"/>
                 </Button>

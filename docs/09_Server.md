@@ -11,11 +11,12 @@ http://192.168.1.40:8033/pb-a703
 
 `pob status` prints it — one line per network the machine is on. The instance
 ID is the one in the toolbar, and since a machine keeps it for good the address
-is worth writing down. Clicking the instance badge in the toolbar copies the
-whole address.
+is worth writing down.
 
-If all you remember is the machine, `http://192.168.1.40:8033` opens the index:
-what is running here, and this address to go on with.
+`http://192.168.1.40:8033`, the same address without the instance, opens the
+index: what is running here, and this address to go on with. That is what
+clicking the instance badge in the toolbar copies — it is the one to hand to a
+phone, since everything else is a click away from it.
 
 The port is yours to set: `server_port` in `settings.json`, or
 `POB_SERVER_PORT` in the environment. It is the same on every machine unless

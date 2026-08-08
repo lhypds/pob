@@ -12,8 +12,11 @@
         ResizeMode="NoResize"
         MinWidth="400"
         MinHeight="300">
-    <!-- Translucent gray background: SwiftUI Color.gray.opacity(0.2). -->
-    <Grid x:Name="Root" Background="#338E8E93">
+    <!-- Translucent gray background: SwiftUI Color.gray.opacity(0.2). The
+         bottom corners are rounded to finish the shape the toolbar window
+         starts; the content is clipped to match in the code-behind, since a
+         Border rounds its own background but not what is drawn inside it. -->
+    <Border x:Name="Root" Background="#338E8E93" CornerRadius="0,0,3,3">
         <views:ContentView x:Name="ContentArea"/>
-    </Grid>
+    </Border>
 </Window>

@@ -262,7 +262,10 @@ public class ContentView : FrameworkElement
         // starts driving it.
         double vx = _animX / scale, vy = _animY / scale;
         dc.PushTransform(new TranslateTransform(vx, vy)); // hotspot = (0, 0)
-        CursorArrow.Draw(dc);
+        // Scaled about that hotspot, so the tip stays on the pixel it points at.
+        dc.PushTransform(new ScaleTransform(CursorArrow.OverlayScale, CursorArrow.OverlayScale));
+        CursorArrow.DrawOverlay(dc);
+        dc.Pop();
         dc.Pop();
 
         // Screenshot flash.
