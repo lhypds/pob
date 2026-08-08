@@ -4,12 +4,22 @@ CLI
 
 The `pob` command controls and inspects Pob from the terminal.
 
-On macOS the packaged app ships the CLI inside the bundle
-(`Pob.app/Contents/Helpers/pob`) — use **Pob → Install 'pob' Command…** in the
-app menu to symlink it at `/usr/local/bin/pob` (asks for an admin password
-when needed; the same menu item uninstalls it again). The dev scripts also
-build it to `core/bin/pob` next to `pob-core` (add that folder to your `PATH`,
-or call it by path).
+Every release ships the CLI beside the app in a `Helpers` folder — the app's
+own executable is called `pob` too on Linux and `Pob.exe` on Windows, and a
+case-insensitive filesystem cannot hold both in one directory. How it gets on
+the `PATH` differs by platform:
+
+| Platform | Install | What it does |
+|----------|---------|--------------|
+| macOS | **Pob → Install 'pob' Command…** in the app menu | Symlinks `Pob.app/Contents/Helpers/pob` at `/usr/local/bin/pob` (asks for an admin password when needed; the same menu item uninstalls it again) |
+| Linux | `./install.sh` in the unzipped folder | Copies the app to `~/.local/share/pob` and links the CLI at `~/.local/bin/pob` — or `/opt/pob` and `/usr/local/bin/pob` under `sudo`. `--prefix` / `--bin` override both, `--uninstall` reverses it |
+| Windows | `powershell -ExecutionPolicy Bypass -File install.ps1` | Copies the app to `%LOCALAPPDATA%\Programs\Pob`, adds its `Helpers` folder to the user `PATH` and puts Pob in the Start menu. No administrator prompt; `-Uninstall` reverses it, `-InstallDir` moves it |
+
+Neither installer touches `~/.pob`, so settings, instances and logs survive an
+uninstall and a reinstall.
+
+The dev scripts build the CLI to `core/bin/pob` next to `pob-core` instead
+(add that folder to your `PATH`, or call it by path).
 
 Everything lives in `~/.pob`, created on first use and shared by the app and
 the CLI: `settings.json` is the machine's, `INSTANCE` names the instance
@@ -31,7 +41,7 @@ Flags:
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
-| `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
+| `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
 | `new [name]` | Create an instance — its own `instruction.txt`, `macro.txt` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, model, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |

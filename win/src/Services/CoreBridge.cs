@@ -189,6 +189,18 @@ public static class CoreBridge
                 AppState.SetExecuting(MemberBool(parameters, "executing", false));
                 break;
 
+            case "mcp.state":
+                AppState.SetMcpDriving(MemberBool(parameters, "active", false));
+                break;
+
+            case "server.state":
+            {
+                bool running = MemberBool(parameters, "running", false);
+                string url = MemberString(parameters, "url", "");
+                AppState.SetServerUrl(running && url.Length > 0 ? url : null);
+                break;
+            }
+
             case "screenshot.capture":
             {
                 if (id == null) return;

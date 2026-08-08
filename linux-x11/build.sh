@@ -44,8 +44,10 @@ if [ -n "$MISSING" ]; then
 fi
 
 # ── build core (Go) ──────────────────────────────────────────────────────────
-echo "Building pob-core (Go)…"
-(cd "$ROOT_DIR/core" && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core)
+echo "Building pob-core and pob CLI (Go)…"
+(cd "$ROOT_DIR/core" \
+  && go build -trimpath -ldflags="-s -w" -o bin/pob-core ./cmd/pob-core \
+  && go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o bin/pob ./cmd/pob)
 
 # ── build shell (C/GTK) ──────────────────────────────────────────────────────
 echo "Building Linux shell (release)…"
@@ -57,6 +59,12 @@ rm -rf "$SCRIPT_DIR/dist"
 mkdir -p "$DIST_DIR"
 cp "$SCRIPT_DIR/bin/pob" "$DIST_DIR/pob"
 cp "$ROOT_DIR/core/bin/pob-core" "$DIST_DIR/pob-core"
+# The CLI goes to Helpers/, the same place the macOS bundle keeps it — and the
+# one directory the installer puts on the PATH, so the app's own `pob` never
+# shadows it.
+mkdir -p "$DIST_DIR/Helpers"
+cp "$ROOT_DIR/core/bin/pob" "$DIST_DIR/Helpers/pob"
+cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
 cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
 echo "Creating ${ZIP_PATH}…"
@@ -68,4 +76,5 @@ echo "Done: $DIST_DIR"
 echo "  Version : $VERSION"
 echo "  Zip     : $ZIP_PATH"
 echo ""
-echo "Run with:  $DIST_DIR/pob"
+echo "Run with:      $DIST_DIR/pob"
+echo "Or install it: $DIST_DIR/install.sh   (puts \`pob\` on the PATH)"

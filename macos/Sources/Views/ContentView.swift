@@ -299,8 +299,8 @@ struct InstanceContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         // macOS 26 draws a light capsule behind every toolbar item; hidden for
-        // the badge, whose own pill would otherwise sit inside it with the
-        // capsule's edge peeking out below as a white rim.
+        // the badge, which is a label rather than a control — the id reads as
+        // the window's name, not as a button waiting to be pressed.
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .automatic) { instanceBadge }
                 .sharedBackgroundVisibility(.hidden)
@@ -312,19 +312,31 @@ struct InstanceContentView: View {
         toolbarActionItems
     }
 
-    /// What the badge puts on the pasteboard: this instance's address on the
-    /// network, which is what a phone's browser or Pob Keyboard has to be
-    /// pointed at and the only part of it worth typing by hand. With the
-    /// server off there is no address, and the id it shows is copied instead —
-    /// the name of its ~/.pob/<instance>/ directory, and what `pob show <id>`
-    /// takes.
+    /// The dashboard: the server's bare root, which answers with the index page
+    /// — what is running here, and links on to the control and view pages. The
+    /// instance address the server reports names the machine in its path, and a
+    /// GET there is a picture of the screen rather than somewhere to land, so
+    /// the path is dropped and the origin is what gets handed out.
+    private var dashboardURL: String? {
+        guard let url = bridge.serverURL, var parts = URLComponents(string: url) else { return bridge.serverURL }
+        parts.path = ""
+        parts.query = nil
+        parts.fragment = nil
+        return parts.string
+    }
+
+    /// What the badge puts on the pasteboard: the dashboard's address on the
+    /// network, which is what a phone's browser has to be pointed at and the
+    /// only part of it worth typing by hand. With the server off there is no
+    /// address, and the id it shows is copied instead — the name of its
+    /// ~/.pob/<instance>/ directory, and what `pob show <id>` takes.
     private var badgeCopyText: String {
-        bridge.serverURL ?? instance.settings.instanceID
+        dashboardURL ?? instance.settings.instanceID
     }
 
     /// Names this window's ~/.pob/<instance>/ directory, so the id on screen is
-    /// the directory to look in. Click to copy the address it answers on, like
-    /// the targeting and crop labels copy what they point at.
+    /// the directory to look in. Click to copy the dashboard it is reachable
+    /// at, like the targeting and crop labels copy what they point at.
     private var instanceBadge: some View {
         Button(action: {
             let text = badgeCopyText
@@ -337,13 +349,10 @@ struct InstanceContentView: View {
                 .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary.opacity(0.08))
-                )
+                .contentShape(Rectangle()) // no background now, so the padding is still the click
         }
         .buttonStyle(.plain)
-        .help(bridge.serverURL.map { "Instance \(instance.settings.instanceID) — click to copy \($0)" }
+        .help(dashboardURL.map { "Instance \(instance.settings.instanceID) — click to copy \($0)" }
             ?? "Instance \(instance.settings.instanceID) — click to copy")
     }
 

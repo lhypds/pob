@@ -3,8 +3,9 @@ Development
 ===========
 
 Requirements: Go, plus the platform shell's toolchain — Xcode Command Line
-Tools (Swift) on macOS, or GTK 3 development libraries on Linux (see
-[linux-x11/README.md](../linux-x11/README.md)).
+Tools (Swift) on macOS, GTK 3 development libraries on Linux (see
+[linux-x11/README.md](../linux-x11/README.md)), or the .NET 8 SDK on Windows
+(see [win/README.md](../win/README.md)).
 
 ```
 ./setup.sh      # select your OS (recorded in the SYSTEM file), then
@@ -21,6 +22,10 @@ The root scripts are dispatchers: `setup.sh` writes your choice (`macos` or
 `linux-x11`) to the `SYSTEM` file, and the others read it and forward to the
 matching folder's script (`macos/*.sh` or `linux-x11/*.sh`), which can also
 be run directly.
+
+Windows has no bash to dispatch from, so it runs its own scripts directly —
+`win\setup.ps1`, `win\start.ps1`, `win\restart.ps1`, `win\stop.ps1`,
+`win\build.ps1` — one per root script, doing the same job.
 
 
 Release
@@ -43,6 +48,11 @@ Update `VERSION`, then run `release.sh`. What it builds follows the
     `WIN_ARCHS="amd64 arm64"`)
 - `SYSTEM=linux-*` — builds `Pob-<version>-linux-<arch>.zip` natively via
   `linux-x11/build.sh` for the host architecture only
+
+Every zip has the same shape as the macOS bundle: the shell app, `pob-core`
+beside it, the `pob` CLI in `Helpers/`, and an installer that puts the app
+somewhere permanent and the CLI on the PATH — `install.sh` on Linux,
+`install.ps1` on Windows (see [CLI](07_CLI.md)).
 
 
 See also

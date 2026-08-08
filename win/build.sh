@@ -38,10 +38,13 @@ for ARCH in $WIN_ARCHS; do
     esac
 
     # ── build core (Go, cross-compiled) ──────────────────────────────────────
-    echo "Building pob-core (Go, windows/$ARCH)…"
+    echo "Building pob-core and pob CLI (Go, windows/$ARCH)…"
     (cd "$ROOT_DIR/core" && \
         GOOS=windows GOARCH="$ARCH" CGO_ENABLED=0 \
         go build -trimpath -ldflags="-s -w" -o bin/pob-core.exe ./cmd/pob-core)
+    (cd "$ROOT_DIR/core" && \
+        GOOS=windows GOARCH="$ARCH" CGO_ENABLED=0 \
+        go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o bin/pob.exe ./cmd/pob)
 
     # ── build shell (C#/WPF, self-contained single file) ─────────────────────
     echo "Building Windows shell (release, $RID)…"
@@ -55,9 +58,15 @@ for ARCH in $WIN_ARCHS; do
     ZIP_PATH="$ROOT_DIR/Pob-${VERSION}-windows-${ARCH}.zip"
     echo "Assembling dist/Pob ($ARCH)…"
     rm -rf "$SCRIPT_DIR/dist"
-    mkdir -p "$DIST_DIR"
+    mkdir -p "$DIST_DIR/Helpers"
     cp "$SCRIPT_DIR/publish-$ARCH/Pob.exe" "$DIST_DIR/Pob.exe"
     cp "$ROOT_DIR/core/bin/pob-core.exe" "$DIST_DIR/pob-core.exe"
+    # The CLI goes to Helpers\, the same place the macOS bundle keeps it: on a
+    # case-insensitive filesystem its pob.exe and the app's Pob.exe are the
+    # same filename, so they cannot share a directory. Helpers\ is what the
+    # installer puts on the PATH.
+    cp "$ROOT_DIR/core/bin/pob.exe" "$DIST_DIR/Helpers/pob.exe"
+    cp "$SCRIPT_DIR/install.ps1" "$DIST_DIR/install.ps1"
     cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
     echo "Creating ${ZIP_PATH}…"
@@ -70,4 +79,4 @@ done
 
 echo ""
 echo "Version: $VERSION"
-echo "Unzip on a Windows machine and run Pob.exe."
+echo "Unzip on a Windows machine and run Pob.exe — or install.ps1 to put \`pob\` on the PATH."

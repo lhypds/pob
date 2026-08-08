@@ -42,6 +42,19 @@ working files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`,
 `app.log`) are created in `%USERPROFILE%\.pob\` — set `openai_api_key` in
 `settings.json` there.
 
+To keep it somewhere permanent and get the `pob` command in the terminal,
+install it instead of running it in place:
+
+```
+powershell -ExecutionPolicy Bypass -File install.ps1              # %LOCALAPPDATA%\Programs\Pob + Start menu
+powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   # %USERPROFILE%\.pob is left alone
+```
+
+Everything is per-user, so there is no administrator prompt: the `PATH` entry
+is the user's, and it points at the `Helpers` folder holding the CLI — `pob`
+to see what is running, `pob launch` to start the app. Open a new terminal
+afterwards for the `PATH` to take. See [CLI](../docs/07_CLI.md).
+
 
 Run from source (on Windows)
 ----------------------------
@@ -72,9 +85,10 @@ The WPF shell can be *compiled* (not run) on Unix — the .NET SDK supports
 ./win/build_docker.sh   # needs go + Docker (shell compiles in mcr.microsoft.com/dotnet/sdk:8.0)
 ```
 
-Both produce `win/dist/Pob/` and `Pob-<version>-windows-<arch>.zip` in the
-project root. Default target is `amd64`; use `WIN_ARCHS="amd64 arm64"` to
-build both.
+Both produce `win/dist/Pob/` (`Pob.exe` + `pob-core.exe` side by side, the
+`pob.exe` CLI in `Helpers\`, and `install.ps1`) and
+`Pob-<version>-windows-<arch>.zip` in the project root. Default target is
+`amd64`; use `WIN_ARCHS="amd64 arm64"` to build both.
 
 
 Source layout

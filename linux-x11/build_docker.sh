@@ -40,9 +40,11 @@ if ! command -v zip &> /dev/null; then
 fi
 
 # ── build core (Go, cross-compiled on the host) ─────────────────────────────
-echo "Building pob-core (Go, linux/$ARCH)…"
+echo "Building pob-core and pob CLI (Go, linux/$ARCH)…"
 (cd "$ROOT_DIR/core" && GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 \
     go build -trimpath -ldflags="-s -w" -o "bin/pob-core-linux-$ARCH" ./cmd/pob-core)
+(cd "$ROOT_DIR/core" && GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 \
+    go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o "bin/pob-linux-$ARCH" ./cmd/pob)
 
 # ── build shell (C/GTK, inside a Debian container) ──────────────────────────
 echo "Building Linux shell in Docker (linux/$ARCH)…"
@@ -62,6 +64,12 @@ rm -rf "$SCRIPT_DIR/dist"
 mkdir -p "$DIST_DIR"
 cp "$SCRIPT_DIR/bin/pob" "$DIST_DIR/pob"
 cp "$ROOT_DIR/core/bin/pob-core-linux-$ARCH" "$DIST_DIR/pob-core"
+# The CLI goes to Helpers/, the same place the macOS bundle keeps it — and the
+# one directory the installer puts on the PATH, so the app's own `pob` never
+# shadows it.
+mkdir -p "$DIST_DIR/Helpers"
+cp "$ROOT_DIR/core/bin/pob-linux-$ARCH" "$DIST_DIR/Helpers/pob"
+cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
 cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
 echo "Creating ${ZIP_PATH}…"

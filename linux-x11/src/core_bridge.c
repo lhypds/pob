@@ -228,6 +228,26 @@ static void dispatch(JsonObject *msg) {
             json_object_get_boolean_member_with_default(params, "executing", FALSE);
         app_set_executing(executing);
 
+    } else if (g_str_equal(method, "mcp.state")) {
+        gboolean active = params &&
+            json_object_get_boolean_member_with_default(params, "active", FALSE);
+        // Park the cursor at its home position so it is visible the moment the
+        // server comes up, rather than sitting on the top-left corner where it
+        // reads as "no cursor at all" — and start the overlay there too, so it
+        // does not sit at a stale spot until the client's first move.
+        if (active) {
+            mouse_reset_cursor();
+            content_view_reset_anim();
+        }
+
+    } else if (g_str_equal(method, "server.state")) {
+        gboolean running = params &&
+            json_object_get_boolean_member_with_default(params, "running", FALSE);
+        const gchar *url = params
+            ? json_object_get_string_member_with_default(params, "url", NULL)
+            : NULL;
+        app_set_server_url(running ? url : NULL);
+
     } else if (g_str_equal(method, "screenshot.capture")) {
         if (!id) return;
         gboolean with_cursor = params

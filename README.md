@@ -29,10 +29,24 @@ with a full-size keyboard and a trackpad — see [Pob Server](docs/09_Server.md)
 Getting started
 ---------------
 
+From a checkout:
+
 ```
 ./setup.sh      # select your OS, check toolchains, build core + shell
 ./start.sh      # run it
 ```
+
+From a release zip, unzip it and install — the app goes somewhere permanent
+and the `pob` command lands on your `PATH`:
+
+```
+./install.sh                                              # Linux
+powershell -ExecutionPolicy Bypass -File install.ps1      # Windows
+```
+
+On macOS drag `Pob.app` to Applications and use **Pob → Install 'pob'
+Command…** in the app menu. See [CLI](docs/07_CLI.md) for the details of all
+three.
 
 Put your API key and model in `~/.pob/settings.json`, write what you
 want done in the instance's `instruction.txt` below it, and press Execute in the toolbar — or drive the

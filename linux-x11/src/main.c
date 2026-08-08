@@ -657,18 +657,64 @@ static GtkWidget *build_applog_button(void) {
     return btn;
 }
 
-// This instance's id (pb-xxxx) as a small monospaced pill — the same badge the
+// This instance's id (pb-xxxx) as small monospaced text — the same badge the
 // macOS toolbar shows beside the window buttons. It names the instance's
-// ~/.pob/<instance>/ directory; clicking copies it, like the coordinate labels.
+// ~/.pob/<instance>/ directory; clicking copies the dashboard it answers at,
+// like the coordinate labels copy what they point at.
+static GtkWidget *instance_id_btn;
+
+// Where this instance answers on the network, as the core reports it, or NULL
+// while the server is off.
+static gchar *server_url;
+
+// The dashboard: the server's bare root, which answers with the index page —
+// what is running here, and links on to the control and view pages. The
+// address the core reports names the machine in its path, and a GET there is a
+// picture of the screen rather than somewhere to land, so the path is dropped
+// and the origin is what gets handed out. Caller frees.
+static gchar *dashboard_url(void) {
+    if (!server_url) return NULL;
+    const char *scheme = strstr(server_url, "://");
+    const char *host = scheme ? scheme + 3 : server_url;
+    const char *slash = strchr(host, '/');
+    return slash ? g_strndup(server_url, (gsize)(slash - server_url))
+                 : g_strdup(server_url);
+}
+
+// With the server off there is no address, and the id shown is copied instead
+// — the name of its ~/.pob/<instance>/ directory, and what `pob show <id>`
+// takes.
 static void on_instance_id_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    const char *id = settings_instance_id();
+    gchar *dashboard = dashboard_url();
+    const char *text = dashboard ? dashboard : settings_instance_id();
     GtkClipboard *cb = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-    gtk_clipboard_set_text(cb, id, -1);
+    gtk_clipboard_set_text(cb, text, -1);
     gtk_clipboard_store(cb);
-    gchar *msg = g_strdup_printf("Copied %s", id);
+    gchar *msg = g_strdup_printf("Copied %s", text);
     content_view_show_message(msg);
     g_free(msg);
+    g_free(dashboard);
+}
+
+// The tooltip says what a click would put on the clipboard, so it follows the
+// server up and down.
+static void sync_instance_id_tooltip(void) {
+    if (!instance_id_btn) return;
+    gchar *dashboard = dashboard_url();
+    gchar *tip = dashboard
+        ? g_strdup_printf("Instance %s — click to copy %s",
+                          settings_instance_id(), dashboard)
+        : g_strdup_printf("Instance %s — click to copy", settings_instance_id());
+    gtk_widget_set_tooltip_text(instance_id_btn, tip);
+    g_free(tip);
+    g_free(dashboard);
+}
+
+void app_set_server_url(const char *url) {
+    g_free(server_url);
+    server_url = (url && *url) ? g_strdup(url) : NULL;
+    sync_instance_id_tooltip();
 }
 
 static GtkWidget *build_instance_id_button(void) {
@@ -676,10 +722,8 @@ static GtkWidget *build_instance_id_button(void) {
     gtk_style_context_add_class(gtk_widget_get_style_context(btn),
                                 "pob-instance-id");
     gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
-    gchar *tip = g_strdup_printf("Instance %s — click to copy",
-                                 settings_instance_id());
-    gtk_widget_set_tooltip_text(btn, tip);
-    g_free(tip);
+    instance_id_btn = btn;
+    sync_instance_id_tooltip();
     g_signal_connect(btn, "clicked", G_CALLBACK(on_instance_id_clicked), NULL);
     return btn;
 }
@@ -851,15 +895,14 @@ static void install_css(void) {
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
-        // Instance id pill, matching the macOS badge. Selector is qualified
-        // past the compact-button rule below, which would otherwise win on
-        // specificity and square the corners.
+        // Instance id, matching the macOS badge: bare text, with the theme's
+        // button background taken off it. Selector is qualified past the
+        // compact-button rule below, which would otherwise win on specificity.
         "window.pob-window headerbar button.pob-instance-id {\n"
         "  font-family: monospace; font-size: 8pt; font-weight: bold;\n"
         "  min-width: 0; min-height: 0; padding: 2px 6px; margin-right: 4px;\n"
-        "  border: none; box-shadow: none; border-radius: 5px;\n"
-        "  background-image: none;\n"
-        "  background-color: rgba(128, 128, 128, 0.16);\n"
+        "  border: none; box-shadow: none;\n"
+        "  background-image: none; background-color: transparent;\n"
         "}\n"
         // Compact titlebar: kill the theme's headerbar min-height/padding
         // and the 6px margins it puts on headerbar buttons.

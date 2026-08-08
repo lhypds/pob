@@ -21,10 +21,12 @@ $DistDir = Join-Path $ScriptDir "dist\Pob"
 $ZipPath = Join-Path $RootDir "Pob-$Version-windows-$Arch.zip"
 
 # ── build core (Go) ──────────────────────────────────────────────────────────
-Write-Host "Building pob-core (Go)…"
+Write-Host "Building pob-core and pob CLI (Go)…"
 Push-Location (Join-Path $RootDir "core")
 try {
     go build -trimpath -ldflags="-s -w" -o bin\pob-core.exe .\cmd\pob-core
+    if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+    go build -trimpath -ldflags="-s -w -X main.version=$Version" -o bin\pob.exe .\cmd\pob
     if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 } finally {
     Pop-Location
@@ -41,9 +43,15 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 # ── assemble ─────────────────────────────────────────────────────────────────
 Write-Host "Assembling dist\Pob…"
 Remove-Item -Recurse -Force (Join-Path $ScriptDir "dist") -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $DistDir "Helpers") | Out-Null
 Copy-Item (Join-Path $PublishDir "Pob.exe") $DistDir
 Copy-Item (Join-Path $RootDir "core\bin\pob-core.exe") $DistDir
+# The CLI goes to Helpers\, the same place the macOS bundle keeps it: on a
+# case-insensitive filesystem its pob.exe and the app's Pob.exe are the same
+# filename, so they cannot share a directory. Helpers\ is what the installer
+# puts on the PATH.
+Copy-Item (Join-Path $RootDir "core\bin\pob.exe") (Join-Path $DistDir "Helpers\pob.exe")
+Copy-Item (Join-Path $ScriptDir "install.ps1") (Join-Path $DistDir "install.ps1")
 if (Test-Path $VersionFile) { Copy-Item $VersionFile (Join-Path $DistDir "VERSION") }
 
 Write-Host "Creating $ZipPath…"
@@ -55,4 +63,5 @@ Write-Host "Done: $DistDir"
 Write-Host "  Version : $Version"
 Write-Host "  Zip     : $ZipPath"
 Write-Host ""
-Write-Host "Run with:  $DistDir\Pob.exe"
+Write-Host "Run with:      $DistDir\Pob.exe"
+Write-Host "Or install it: powershell -ExecutionPolicy Bypass -File $DistDir\install.ps1   (puts ``pob`` on the PATH)"

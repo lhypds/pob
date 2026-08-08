@@ -40,7 +40,7 @@ public partial class ToolbarWindow : Window
         InitializeComponent();
         Title = $"Pob {AppState.Version}";
         InstanceIdText.Text = SettingsService.InstanceId;
-        InstanceIdBadge.ToolTip = $"Instance {SettingsService.InstanceId} — click to copy";
+        SyncInstanceBadge();
         SetClickThroughVisual(AppState.IsClickThrough);
     }
 
@@ -101,12 +101,26 @@ public partial class ToolbarWindow : Window
 
     // ── toolbar actions ─────────────────────────────────────────────────────
 
-    // Copies the instance id, like the coordinate labels do. Handled so the
-    // click doesn't also start a titlebar drag.
+    // The tooltip says what a click would put on the clipboard, so it follows
+    // the server up and down.
+    public void SyncInstanceBadge()
+    {
+        string? dashboard = AppState.DashboardUrl;
+        InstanceIdBadge.ToolTip = dashboard == null
+            ? $"Instance {SettingsService.InstanceId} — click to copy"
+            : $"Instance {SettingsService.InstanceId} — click to copy {dashboard}";
+    }
+
+    // Copies the dashboard this instance answers at, like the coordinate labels
+    // copy what they point at. With the server off there is no address, and the
+    // id shown is copied instead — the name of its ~/.pob/<instance>/
+    // directory, and what `pob show <id>` takes. Handled so the click doesn't
+    // also start a titlebar drag.
     private void OnInstanceIdClicked(object sender, MouseButtonEventArgs e)
     {
-        ContentView.CopyToClipboard(SettingsService.InstanceId);
-        Content2?.ShowMessage($"Copied {SettingsService.InstanceId}");
+        string text = AppState.DashboardUrl ?? SettingsService.InstanceId;
+        ContentView.CopyToClipboard(text);
+        Content2?.ShowMessage($"Copied {text}");
         e.Handled = true;
     }
 

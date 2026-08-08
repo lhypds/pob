@@ -44,9 +44,23 @@ func launchInstance(root string) *Instance {
 	return nil
 }
 
-// findApp locates the Pob app relative to this CLI binary: the packaged
-// macOS CLI lives at Pob.app/Contents/Helpers/pob, the dev CLI at
-// <repo>/core/bin/pob next to the shell build outputs.
+// shellName is what the shell app is built as beside an installed CLI:
+// Pob.app on macOS, and a bare executable on the other two — capitalized on
+// Windows, where the CLI's own pob.exe would otherwise be the same filename.
+func shellName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "Pob.exe"
+	default:
+		return "pob"
+	}
+}
+
+// findApp locates the Pob app relative to this CLI binary. Installed, the CLI
+// lives in a Helpers/ directory beside the app on every platform —
+// Pob.app/Contents/Helpers/pob in the macOS bundle, <install>/Helpers/pob and
+// <install>\Helpers\pob.exe in the Linux and Windows trees. In a checkout it
+// is <repo>/core/bin/pob, next to the shell build outputs.
 func findApp() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -58,8 +72,13 @@ func findApp() (string, error) {
 	dir := filepath.Dir(exe)
 
 	if filepath.Base(dir) == "Helpers" {
+		// macOS: Pob.app/Contents/Helpers/pob — the app is the bundle itself.
 		if bundle := filepath.Dir(filepath.Dir(dir)); strings.HasSuffix(bundle, ".app") {
 			return bundle, nil
+		}
+		// Linux and Windows: the shell sits one level up, beside Helpers/.
+		if app := filepath.Join(filepath.Dir(dir), shellName()); exists(app) {
+			return app, nil
 		}
 	}
 
@@ -73,14 +92,30 @@ func findApp() (string, error) {
 			filepath.Join(repo, "macos", "macos_app", "Pob.app"),
 		}
 	case "linux":
-		candidates = []string{filepath.Join(repo, "linux-x11", "bin", "pob")}
+		candidates = []string{
+			filepath.Join(repo, "linux-x11", "bin", "pob"),
+			filepath.Join(repo, "linux-x11", "dist", "Pob", "pob"),
+		}
+	case "windows":
+		// The dev build (dotnet build) and the packaged one (dotnet publish),
+		// in the order a developer would want them picked.
+		candidates = []string{
+			filepath.Join(repo, "win", "bin", "Debug", "net8.0-windows", "Pob.exe"),
+			filepath.Join(repo, "win", "bin", "Release", "net8.0-windows", "Pob.exe"),
+			filepath.Join(repo, "win", "dist", "Pob", "Pob.exe"),
+		}
 	}
 	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
+		if exists(candidate) {
 			return candidate, nil
 		}
 	}
 	return "", fmt.Errorf("no Pob app found near %s — build it first (./start.sh) or use the packaged app's CLI", dir)
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // startApp launches the app fully detached from this CLI: .app bundles go

@@ -61,6 +61,19 @@ cd Pob
 just the GTK 3 libraries, preinstalled on mainstream desktops
 (`sudo apt install libgtk-3-0 libjson-glib-1.0-0 libxtst6` if missing).
 
+To keep it somewhere permanent and get the `pob` command in the terminal,
+install it instead of running it in place:
+
+```
+./install.sh              # ~/.local/share/pob + ~/.local/bin/pob
+sudo ./install.sh         # /opt/pob + /usr/local/bin/pob
+./install.sh --uninstall  # ~/.pob is left alone
+```
+
+The command that lands on the `PATH` is the CLI from `Helpers/` — `pob` to
+see what is running, `pob launch` to start the app. See
+[CLI](../docs/07_CLI.md).
+
 On first run the working files (`settings.json`, `instruction.txt`,
 `macro.txt`, `logs/`, `app.log`) are created in `~/.pob/` —
 set `openai_api_key` in `settings.json` there.
@@ -94,7 +107,8 @@ directly:
 ```
 
 Both build scripts produce `linux-x11/dist/Pob/` (`pob` + `pob-core` side by
-side) and `Pob-<version>-linux-<arch>.zip` at the project root.
+side, the `pob` CLI in `Helpers/`, and `install.sh`) and
+`Pob-<version>-linux-<arch>.zip` at the project root.
 
 Project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
 always live in `~/.pob` (same rule as macOS).

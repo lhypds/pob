@@ -28,15 +28,20 @@ if (-not (Test-Path (Join-Path $RootDir "settings.json")) -and
 }
 
 Write-Host "🔨 Building core (Go)..."
+$Version = "dev"
+$VersionFile = Join-Path $RootDir "VERSION"
+if (Test-Path $VersionFile) { $Version = (Get-Content $VersionFile -Raw).Trim() }
 Push-Location (Join-Path $RootDir "core")
 try {
     go mod download
     go build -o bin\pob-core.exe .\cmd\pob-core
     if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+    go build -ldflags "-X main.version=$Version" -o bin\pob.exe .\cmd\pob
+    if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 } finally {
     Pop-Location
 }
-Write-Host "✅ core build successful"
+Write-Host "✅ core build successful (pob-core.exe and the pob CLI)"
 
 Write-Host "🔨 Building Windows shell (C#/WPF)..."
 dotnet build (Join-Path $ScriptDir "Pob.csproj") -c Debug

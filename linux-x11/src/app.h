@@ -49,6 +49,9 @@ extern AppState g_state;
 void app_update_click_through(void);
 void app_update_window_lock(void);
 void app_set_executing(gboolean executing);  // called from core_bridge (main thread)
+// Where this instance answers on the network, or NULL/"" while the server is
+// off — what the instance badge hands out. Also from core_bridge.
+void app_set_server_url(const char *url);
 void app_set_targeting(gboolean targeting);  // also syncs toolbar + click-through
 void app_set_cropping(gboolean cropping);
 void app_show_max_step_dialog(void); // "Max step exceed." Continue/Stop

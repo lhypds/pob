@@ -28,6 +28,11 @@ things happened. The MCP tools that take an absolute `(x, y)` are written down a
 relative `move(dx, dy)` this vocabulary replays, so a recording made through MCP plays
 back like any other.
 
+Your own mouse and keyboard are recorded on macOS only, for now — watching the
+input of other applications is a different mechanism on each system, and the
+Linux and Windows shells do not have it yet. On those two the record button
+still captures everything the AI session and MCP clients drive.
+
 
 Functions
 ---------

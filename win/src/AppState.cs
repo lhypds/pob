@@ -119,6 +119,38 @@ public static class AppState
         Overlay?.ContentView.InvalidateVisual();
     }
 
+    // Something outside the agent loop — an MCP client, a browser on the Pob
+    // server — has started driving this instance.
+    public static void SetMcpDriving(bool driving)
+    {
+        // Park the cursor at its home position so it is visible the moment the
+        // server comes up, rather than sitting on the top-left corner where it
+        // reads as "no cursor at all" — and start the overlay there too, so it
+        // does not sit at a stale spot until the client's first move.
+        if (!driving) return;
+        MouseService.ResetCursor();
+        Overlay?.ContentView.ResetAnim();
+    }
+
+    // ── server address ──────────────────────────────────────────────────────
+
+    // The dashboard: the server's bare root, which answers with the index page
+    // — what is running here, and links on to the control and view pages. The
+    // address the core reports names the machine in its path, and a GET there
+    // is a picture of the screen rather than somewhere to land, so the path is
+    // dropped and the origin is what the instance badge hands out. Null while
+    // the server is off.
+    public static string? DashboardUrl { get; private set; }
+
+    public static void SetServerUrl(string? url)
+    {
+        DashboardUrl = url == null ? null
+            : Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+                ? parsed.GetLeftPart(UriPartial.Authority)
+                : url;
+        Toolbar?.SyncInstanceBadge();
+    }
+
     // ── dialogs ─────────────────────────────────────────────────────────────
 
     public static void ShowMaxStepDialog()
