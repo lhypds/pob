@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -197,7 +198,7 @@ func TestEveryAdvertisedToolIsDispatched(t *testing.T) {
 func TestServerAnnouncesMCPStateOnClientConnectAndDisconnect(t *testing.T) {
 	srv, shell := newTestServer(t)
 
-	if err := srv.Start(0); err != nil { // port 0: let the OS pick a free one
+	if err := srv.Start(DefaultHost, 0); err != nil { // port 0: let the OS pick a free one
 		t.Fatalf("start: %v", err)
 	}
 	defer srv.Stop()
@@ -239,7 +240,7 @@ func TestServerAnnouncesMCPStateOnClientConnectAndDisconnect(t *testing.T) {
 func TestStoppingTheServerReleasesTheCursor(t *testing.T) {
 	srv, shell := newTestServer(t)
 
-	if err := srv.Start(0); err != nil {
+	if err := srv.Start(DefaultHost, 0); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	defer connectSSE(t, srv.Port())()
@@ -253,13 +254,97 @@ func TestStoppingTheServerReleasesTheCursor(t *testing.T) {
 	}
 }
 
+// A machine driven from another one binds "0.0.0.0", and the client already
+// pointed at localhost has to keep working — a wildcard bind holds 127.0.0.1
+// alongside every other address, so opening the server to the network is not a
+// move away from the local client.
+func TestWildcardBindAnswersLoopbackAndTheNetwork(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start("0.0.0.0", 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.Stop()
+	port := srv.Port()
+
+	// The local client's address, unchanged by the move to a wildcard bind.
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/sse", port))
+	if err != nil {
+		t.Fatalf("loopback did not answer a wildcard-bound server: %v", err)
+	}
+	resp.Body.Close()
+
+	// And a routable address of this machine — the one another machine dials.
+	// Skipped rather than failed when there is none: a sandbox off every
+	// network has nothing to answer on, which says nothing about the bind.
+	ip := routableIPv4()
+	if ip == "" {
+		t.Skip("no non-loopback IPv4 address on this machine")
+	}
+	resp, err = http.Get(fmt.Sprintf("http://%s/sse", net.JoinHostPort(ip, strconv.Itoa(port))))
+	if err != nil {
+		t.Fatalf("%s did not answer a wildcard-bound server: %v", ip, err)
+	}
+	resp.Body.Close()
+}
+
+// The default bind is loopback, so a machine that says nothing about it is not
+// quietly reachable from the network — the tools type on its keyboard.
+func TestDefaultBindIsLoopbackOnly(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start(DefaultHost, 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.Stop()
+
+	ip := routableIPv4()
+	if ip == "" {
+		t.Skip("no non-loopback IPv4 address on this machine")
+	}
+	addr := net.JoinHostPort(ip, strconv.Itoa(srv.Port()))
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err == nil {
+		conn.Close()
+		t.Errorf("%s answered a loopback-bound server, want nothing listening there", addr)
+	}
+}
+
+// routableIPv4 is an address of this machine another machine could dial, or ""
+// when it is on no network. Link-local is left out: nothing routes to it.
+func routableIPv4() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, ifi := range interfaces {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if ip4 := ipnet.IP.To4(); ip4 != nil && !ip4.IsLinkLocalUnicast() {
+				return ip4.String()
+			}
+		}
+	}
+	return ""
+}
+
 // The port a client is handed has to be the port it can reach, so a server
 // asked for another one moves rather than quietly staying where it was —
 // `pob mcp start <port>` always arrives at a server that is already running.
 func TestStartMovesARunningServerToANewPort(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	if err := srv.Start(0); err != nil {
+	if err := srv.Start(DefaultHost, 0); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	firstPort := srv.Port()
@@ -268,14 +353,14 @@ func TestStartMovesARunningServerToANewPort(t *testing.T) {
 	}
 
 	// Starting on the port it is already on changes nothing.
-	if err := srv.Start(firstPort); err != nil {
+	if err := srv.Start(DefaultHost, firstPort); err != nil {
 		t.Fatalf("restart on the same port: %v", err)
 	}
 	if srv.Port() != firstPort {
 		t.Errorf("Port() = %d after a same-port start, want %d", srv.Port(), firstPort)
 	}
 
-	if err := srv.Start(0); err != nil { // another OS-picked port
+	if err := srv.Start(DefaultHost, 0); err != nil { // another OS-picked port
 		t.Fatalf("start on a new port: %v", err)
 	}
 	defer srv.Stop()
@@ -294,7 +379,7 @@ func TestStartMovesARunningServerToANewPort(t *testing.T) {
 	}
 	defer taken.Close()
 	movedTo := srv.Port()
-	if err := srv.Start(taken.Addr().(*net.TCPAddr).Port); err == nil {
+	if err := srv.Start(DefaultHost, taken.Addr().(*net.TCPAddr).Port); err == nil {
 		t.Error("Start() on a taken port returned nil, want the bind error")
 	}
 	if srv.Port() != movedTo || !srv.Running() {

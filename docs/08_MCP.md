@@ -19,6 +19,49 @@ waiting for someone to remember a command. `mcp_port` in
 closed on a machine that does not want it open.
 
 
+Driving one machine from another
+--------------------------------
+
+The server binds loopback by default, so it answers only the machine it runs
+on: the tools move that machine's pointer and type on its keyboard, and nothing
+on the network is asked whether it should be allowed to. A client on another
+machine gets no connection at all — not a refusal it can report, since a
+firewall in the way drops the packets rather than answering them.
+
+To let another machine drive it, bind every interface in
+[`settings.json`](06_Settings.md):
+
+```json
+{
+  "mcp_host": "0.0.0.0"
+}
+```
+
+Loopback keeps working — a wildcard bind holds `127.0.0.1` alongside every
+other address — so a client already pointed at `localhost` never notices, and
+the same machine can be driven from itself and from another one at once. The
+remote client is given the machine's own address instead:
+
+```json
+{
+  "mcpServers": {
+    "pob": {
+      "type": "sse",
+      "url": "http://192.168.0.60:8032/sse"
+    }
+  }
+}
+```
+
+Two things to know before opening it. The host firewall has to allow the port —
+on macOS the application firewall drops the connection silently, which looks
+exactly like a server that is not running. And the endpoints take no
+credentials: anyone who can reach the port can move the pointer, type, and read
+the screen through `take_screenshot`. That is the same posture as the
+[Pob Server](09_Server.md) on `8033`, which is open to the network by default —
+both belong on a network you trust, and `"mcp": false` closes this one again.
+
+
 Registering it with a client
 ----------------------------
 

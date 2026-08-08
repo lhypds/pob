@@ -47,6 +47,7 @@ var defaults = map[string]any{
 	"server_port":         server.DefaultPort,
 	"mcp":                 true,
 	"mcp_port":            mcpserver.DefaultPort,
+	"mcp_host":            mcpserver.DefaultHost,
 }
 
 // legacyKeys are settings renamed since they were written, mapped old to new.
@@ -300,6 +301,18 @@ func (c *Config) MCPEnabled() bool { return c.boolVal("mcp", true) }
 // for a shell that wants to pick one per launch.
 func (c *Config) MCPPort() int {
 	return c.portVal("mcp_port", "POB_MCP_PORT", mcpserver.DefaultPort)
+}
+
+// MCPHost is the interface the MCP server binds. Loopback by default, so the
+// tools answer only this machine; "0.0.0.0" opens it to the network, for a
+// client running on another machine. Loopback keeps working either way, so
+// opening it costs the local client nothing. POB_MCP_HOST overrides the
+// setting, the same way POB_MCP_PORT overrides the port.
+func (c *Config) MCPHost() string {
+	if v := strings.TrimSpace(os.Getenv("POB_MCP_HOST")); v != "" {
+		return v
+	}
+	return c.str("mcp_host", mcpserver.DefaultHost)
 }
 
 func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }

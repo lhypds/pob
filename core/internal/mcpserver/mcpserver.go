@@ -32,6 +32,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]chan []byte
 	server   *http.Server
+	host     string
 	port     int
 }
 
@@ -46,6 +47,14 @@ type MacroRecorder interface {
 
 // DefaultPort is used when `pob mcp start` is not given an explicit port.
 const DefaultPort = 8032
+
+// DefaultHost is the interface bound when settings name none. Loopback, so the
+// tools — which move this machine's pointer and type on its keyboard — answer
+// only the machine they run on. A machine that wants to be driven from another
+// one sets `mcp_host` to "0.0.0.0" in settings.json, which keeps loopback
+// working too: a wildcard bind takes 127.0.0.1 along with every other address,
+// so a client already pointed at localhost never notices the move.
+const DefaultHost = "127.0.0.1"
 
 func New(br *bridge.Bridge) *Server {
 	return &Server{br: br, sessions: map[string]chan []byte{}}
@@ -79,14 +88,18 @@ func (s *Server) originForMove() (bridge.Point, bool) {
 
 // Start binds the listener synchronously (so callers see port conflicts) and
 // serves in a background goroutine. Starting a server that is already up on
-// the same port is a no-op; asked for another one it moves, since the port that
-// was asked for is the port a client is about to be handed — and with the
-// server starting with the instance, `pob mcp start <port>` always arrives at
-// one that is already running.
-func (s *Server) Start(port int) error {
+// the same host and port is a no-op; asked for another one it moves, since the
+// address that was asked for is the address a client is about to be handed —
+// and with the server starting with the instance, `pob mcp start <port>` always
+// arrives at one that is already running. An empty host means DefaultHost, so a
+// settings file written before `mcp_host` existed still binds where it did.
+func (s *Server) Start(host string, port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.server != nil && s.port == port {
+	if host == "" {
+		host = DefaultHost
+	}
+	if s.server != nil && s.port == port && s.host == host {
 		return nil
 	}
 
@@ -94,7 +107,7 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/sse", s.handleSSE)
 	mux.HandleFunc("/messages", s.handleMessages)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		applog.Logf("MCPServer: listen failed: %v", err)
 		return err
@@ -106,12 +119,13 @@ func (s *Server) Start(port int) error {
 
 	server := &http.Server{Handler: withCORS(mux)}
 	s.server = server
+	s.host = host
 	// The bound port, not the requested one: port 0 means "any free port", and
 	// the address handed to a client has to be the one it can reach.
 	s.port = listener.Addr().(*net.TCPAddr).Port
 	bound := s.port
 	go func() {
-		applog.Logf("MCPServer: listening on port %d", bound)
+		applog.Logf("MCPServer: listening on %s", net.JoinHostPort(host, strconv.Itoa(bound)))
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			applog.Logf("MCPServer: listener failed: %v", err)
 		}

@@ -179,7 +179,7 @@ func (s *Server) handleMCPStart(w http.ResponseWriter, r *http.Request) {
 	if port <= 0 {
 		port = s.cfg.MCPPort()
 	}
-	if err := s.mcp.Start(port); err != nil {
+	if err := s.mcp.Start(s.cfg.MCPHost(), port); err != nil {
 		writeError(w, http.StatusConflict, fmt.Sprintf("MCP server failed to start: %v", err))
 		return
 	}

@@ -103,7 +103,7 @@ func main() {
 	mcp := mcpserver.New(br)
 	mcp.SetRecorder(macroRecorder{runner: runner, cfg: cfg})
 	if cfg.MCPEnabled() {
-		if err := mcp.Start(cfg.MCPPort()); err != nil {
+		if err := mcp.Start(cfg.MCPHost(), cfg.MCPPort()); err != nil {
 			applog.Logf("MCPServer: not started: %v", err)
 		}
 	}
