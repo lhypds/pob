@@ -53,13 +53,60 @@ remote client is given the machine's own address instead:
 }
 ```
 
+The setting is read when the server starts, so the app has to be restarted
+after it changes — and a `settings.json` written before `mcp_host` existed has
+the key added on the next launch, set to loopback, which is where that machine
+was already bound. `POB_MCP_HOST=0.0.0.0` sets it for one launch without
+touching the file.
+
 Two things to know before opening it. The host firewall has to allow the port —
-on macOS the application firewall drops the connection silently, which looks
-exactly like a server that is not running. And the endpoints take no
-credentials: anyone who can reach the port can move the pointer, type, and read
-the screen through `take_screenshot`. That is the same posture as the
-[Pob Server](09_Server.md) on `8033`, which is open to the network by default —
-both belong on a network you trust, and `"mcp": false` closes this one again.
+it drops the connection rather than refusing it, which looks exactly like a
+server that is not running. And the endpoints take no credentials: anyone who
+can reach the port can move the pointer, type, and read the screen through
+`take_screenshot`. That is the same posture as the [Pob Server](09_Server.md)
+on `8033`, which is open to the network by default — both belong on a network
+you trust, and `"mcp": false` closes this one again.
+
+
+A client that will not connect
+------------------------------
+
+Two things stop it, and they are told apart by what the failed connection does.
+Ask the machine that is meant to be driven where its server is:
+
+```
+pob mcp status
+```
+
+It reports the bind alongside the addresses, and the bind is the first thing to
+check:
+
+```
+MCP server: running
+URL:        http://127.0.0.1:8032/sse
+            http://192.168.0.60:8032/sse
+Host:       0.0.0.0 (every interface — reachable from the network)
+```
+
+A `Host:` of `127.0.0.1` is a server that answers only its own machine, whatever
+the client is pointed at. That is `mcp_host` — set it and restart the app. The
+index page on [`8033`](09_Server.md) reports the same list, so a machine with no
+terminal on it can be asked from a browser.
+
+With the bind open and the client still hanging, it is the firewall. A
+connection **refused** straight away means nothing is listening on that address
+— the bind again. A connection that **hangs and times out** means the packets
+are being dropped, which is what a firewall does:
+
+```
+curl -v http://192.168.0.60:8032/sse
+```
+
+Allow the port on the machine being driven — Windows Defender Firewall inbound
+rule, `ufw allow 8032/tcp`, or the macOS application firewall, which allows per
+program rather than per port and so covers `8033` and `8032` together. That the
+Pob server on `8033` is reachable says nothing about `8032`: a rule was allowed
+for one port, not for the app.
 
 
 Registering it with a client

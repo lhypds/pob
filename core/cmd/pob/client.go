@@ -159,7 +159,16 @@ func showStatus(inst *Instance) {
 
 	if mcp, ok := status["mcp"].(map[string]any); ok {
 		if running, _ := mcp["running"].(bool); running {
-			fmt.Printf("MCP:        running — %s\n", mcp["url"])
+			// Every address it answers on, one per line — the same shape as the
+			// Server block below, and for the same reason: which of them works
+			// depends on where the client is.
+			for i, u := range mcpURLs(mcp) {
+				if i == 0 {
+					fmt.Printf("MCP:        running — %s\n", u)
+				} else {
+					fmt.Printf("                      %s\n", u)
+				}
+			}
 		} else {
 			fmt.Printf("MCP:        stopped\n")
 		}
@@ -287,11 +296,46 @@ func cmdMCP(inst *Instance, sub string, port int) {
 	}
 }
 
+// mcpURLs is every address the MCP server answers on, falling back to the
+// single "url" an older instance reports.
+func mcpURLs(info map[string]any) []string {
+	var urls []string
+	if list, ok := info["urls"].([]any); ok {
+		for _, u := range list {
+			if s, _ := u.(string); s != "" {
+				urls = append(urls, s)
+			}
+		}
+	}
+	if len(urls) == 0 {
+		if url, _ := info["url"].(string); url != "" {
+			urls = append(urls, url)
+		}
+	}
+	return urls
+}
+
 func printMCPInfo(info map[string]any) {
 	running, _ := info["running"].(bool)
-	url, _ := info["url"].(string)
+	urls := mcpURLs(info)
 	fmt.Printf("MCP server: %s\n", map[bool]string{true: "running", false: "stopped"}[running])
-	fmt.Printf("URL:        %s\n", url)
+	for i, u := range urls {
+		if i == 0 {
+			fmt.Printf("URL:        %s\n", u)
+		} else {
+			fmt.Printf("            %s\n", u)
+		}
+	}
+	// Spelled out rather than left to be inferred from the addresses above: a
+	// client on another machine connects or does not entirely on this, and a
+	// loopback bind is the reason it cannot when everything else looks right.
+	if host, _ := info["host"].(string); host != "" {
+		note := "this machine only — set \"mcp_host\": \"0.0.0.0\" to open it"
+		if host == "0.0.0.0" || host == "::" {
+			note = "every interface — reachable from the network"
+		}
+		fmt.Printf("Host:       %s (%s)\n", host, note)
+	}
 	if tools, ok := info["tools"].([]any); ok && len(tools) > 0 {
 		names := make([]string, len(tools))
 		for i, t := range tools {
@@ -306,14 +350,23 @@ func printMCPInfo(info map[string]any) {
 		fmt.Println("Start it now with: pob mcp start")
 		return
 	}
+	if len(urls) == 0 {
+		return
+	}
 	fmt.Println("\nMCP client config (e.g. Claude Desktop's claude_desktop_config.json):")
 	fmt.Printf(`
 {
   "mcpServers": {
-    "pob": { "url": "%s" }
+    "pob": { "type": "sse", "url": "%s" }
   }
 }
-`, url)
+`, urls[0])
+	// The snippet above is the local client's; a client on another machine
+	// needs one of the other addresses in its place, and saying so here is
+	// cheaper than working out why localhost did not resolve to this machine.
+	if len(urls) > 1 {
+		fmt.Printf("\nFrom another machine, use %s in place of the address above.\n", urls[1])
+	}
 }
 
 // agentCLIs are the coding-agent CLIs whose user-scope MCP settings track

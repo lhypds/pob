@@ -47,7 +47,7 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | Endpoint | CLI | Description |
 |----------|-----|-------------|
 | `GET /status` | `status` | Instance ID, pid, root, executing and recording state, current session, model, and the `mcp` and `server` blocks below |
-| `GET /mcp` | `mcp status` | `running`, `port`, `url`, `tools` |
+| `GET /mcp` | `mcp status` | `running`, `host`, `port`, `url`, `urls` — one per network when `mcp_host` opens it to them, `url` being the first and the one the local agent CLIs are registered with — and `tools` |
 | `GET /server` | — | The [Pob server](09_Server.md): `running`, `port`, `url`, `urls` — one per network the machine is on. `pob status` reads the same block out of `/status` |
 | `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional, defaulting to the `mcp_port` setting — which is the port it is already on, so this is a no-op unless another one is asked for, and then the server moves there. 409 when the port will not bind |
 | `POST /mcp/stop` | `mcp stop` | Always succeeds |

@@ -110,18 +110,33 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // mcpInfo describes the MCP server. A stopped one — "mcp": false, or a port
-// that would not bind — still reports the port it would take, which is the one
-// in settings.json and the one a client's config already names.
+// that would not bind — still reports the address it would take, which is the
+// one in settings.json and the one a client's config already names.
+//
+// "urls" is every address it answers on and "host" the interface it is bound
+// to, since a client on another machine connects or does not entirely on that:
+// a loopback bind is not a server it can reach, and nothing else about the
+// server says so.
 func (s *Server) mcpInfo() map[string]any {
 	port := s.mcp.Port()
 	if port == 0 {
 		port = s.cfg.MCPPort()
 	}
+	host := s.mcp.Host()
+	if host == "" {
+		host = s.cfg.MCPHost()
+	}
+	urls := mcpserver.URLsFor(host, port)
 	return map[string]any{
 		"running": s.mcp.Running(),
+		"host":    host,
 		"port":    port,
-		"url":     fmt.Sprintf("http://127.0.0.1:%d/sse", port),
-		"tools":   mcpserver.ToolNames(),
+		// The first one is loopback whenever loopback works, and it is what the
+		// agent CLIs on this machine are registered with: an address that keeps
+		// working when the machine changes network.
+		"url":   urls[0],
+		"urls":  urls,
+		"tools": mcpserver.ToolNames(),
 	}
 }
 

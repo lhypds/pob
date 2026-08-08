@@ -8,5 +8,10 @@
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",
-  "stop_hook": ""
+  "stop_hook": "",
+  "mcp": true,
+  "mcp_port": 8032,
+  "mcp_host": "127.0.0.1",
+  "server": true,
+  "server_port": 8033
 }

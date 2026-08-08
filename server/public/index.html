@@ -275,8 +275,12 @@
             ? "yes — session " + escapeText(status.session)
             : yesNo(status.executing));
         $("recording").innerHTML = dot(status.recording) + yesNo(status.recording);
-        $("mcp").innerHTML = status.mcp
-          ? dot(true) + "running — " + escapeText(status.mcp)
+        // One address per network it answers on: a server bound to every
+        // interface has more than one, and this page is read as often from
+        // the machine that needs the second of them as from the first.
+        const mcp = status.mcp || [];
+        $("mcp").innerHTML = mcp.length
+          ? dot(true) + "running — " + mcp.map(escapeText).join(", ")
           : dot(false) + "stopped";
         $("port").innerHTML = dot(true) + "running on port " + escapeText(String(status.port || ""));
 

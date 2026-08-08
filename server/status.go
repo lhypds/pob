@@ -20,8 +20,10 @@ type Status struct {
 	Executing bool   `json:"executing"`
 	Session   string `json:"session"`
 	Recording bool   `json:"recording"`
-	// MCP is the MCP server's address while it runs, empty when it is stopped.
-	MCP string `json:"mcp"`
+	// MCP is every address the MCP server answers on while it runs, empty when
+	// it is stopped. More than one when it is bound to every interface, which
+	// is also the case where this page is the thing that says so.
+	MCP []string `json:"mcp"`
 
 	// Filled in by the server itself, whatever the instance reports.
 	Port int      `json:"port"`

@@ -23,6 +23,9 @@ import (
 
 	"pob/core/internal/applog"
 	"pob/core/internal/bridge"
+	// For the machine's own addresses only — the Pob server answers the same
+	// question for the page it serves, and both mean the same list.
+	"pob/server"
 )
 
 type Server struct {
@@ -168,6 +171,59 @@ func (s *Server) Port() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.port
+}
+
+// Host returns the interface the listener is bound to, or "" before the first
+// start. It is the one fact that decides whether a client on another machine
+// can connect at all, so everything that reports on this server reports it.
+func (s *Server) Host() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.host
+}
+
+// wildcardHosts are the bind addresses that mean "every interface". One of
+// them names no single address, so it is not an address to hand a client:
+// what to report there is where the machine can actually be dialled.
+var wildcardHosts = map[string]bool{"": true, "0.0.0.0": true, "::": true, "[::]": true}
+
+// URLsFor is every address an MCP client can reach a server bound to
+// host:port at.
+//
+// Loopback comes first, and is the whole list for the default bind. A wildcard
+// bind adds one URL per network the machine is on: those are what a client on
+// another machine is given, and printing them is also how someone who has just
+// set `mcp_host` sees that it took — a status line that says 127.0.0.1 while
+// the listener is open to the network, or the reverse, is the one thing a
+// client that will not connect needs to be told.
+func URLsFor(host string, port int) []string {
+	sse := func(host string) string {
+		return "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/sse"
+	}
+	if !wildcardHosts[host] {
+		return []string{sse(host)}
+	}
+	urls := []string{sse(DefaultHost)}
+	for _, ip := range server.Addresses() {
+		// Addresses falls back to loopback on a machine that is on no network,
+		// which is already the first entry.
+		if ip.IsLoopback() {
+			continue
+		}
+		urls = append(urls, sse(ip.String()))
+	}
+	return urls
+}
+
+// URLs is every address this server can be reached at, or nil when it is not
+// running.
+func (s *Server) URLs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.server == nil {
+		return nil
+	}
+	return URLsFor(s.host, s.port)
 }
 
 // ToolNames lists the MCP tool names this server exposes.

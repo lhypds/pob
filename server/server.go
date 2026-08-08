@@ -201,7 +201,7 @@ func (s *Server) urlsLocked() []string {
 		return nil
 	}
 	var urls []string
-	for _, ip := range addresses() {
+	for _, ip := range Addresses() {
 		urls = append(urls, fmt.Sprintf("http://%s/%s",
 			net.JoinHostPort(ip.String(), strconv.Itoa(s.port)), s.instance))
 	}

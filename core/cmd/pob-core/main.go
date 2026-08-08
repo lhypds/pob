@@ -9,7 +9,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -118,17 +117,16 @@ func main() {
 	// here, where it is known — and read on each request, since the whole
 	// point of the page is what is true now.
 	srv.SetStatus(func() server.Status {
-		mcpURL := ""
-		if mcp.Running() {
-			mcpURL = fmt.Sprintf("http://127.0.0.1:%d/sse", mcp.Port())
-		}
 		return server.Status{
 			Root:      cfg.Root,
 			Model:     cfg.Model(),
 			Executing: runner.Running(),
 			Session:   runner.CurrentSession(),
 			Recording: runner.Recording(),
-			MCP:       mcpURL,
+			// Every address it answers on, not a fixed loopback one: this page
+			// is read from another machine as often as from this one, and the
+			// address that machine needs is the address it has to be told.
+			MCP: mcp.URLs(),
 		}
 	})
 	if cfg.ServerEnabled() {

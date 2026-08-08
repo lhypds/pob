@@ -2,14 +2,17 @@ package server
 
 import "net"
 
-// addresses lists the IPv4 addresses this machine can be reached at, so the
+// Addresses lists the IPv4 addresses this machine can be reached at, so a
 // server can print somewhere to actually type. All of them are offered rather
 // than a guess at the best one: which is reachable depends on which network
 // the phone is on, and it can work that out for itself.
 //
 // Link-local addresses are left out — they are what an interface gives itself
 // when nothing handed it an address, so nothing else can route to them.
-func addresses() []net.IP {
+//
+// Exported because the MCP server, which is open to the network on the same
+// terms, has the same question to answer and there is one right answer to it.
+func Addresses() []net.IP {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return []net.IP{net.IPv4(127, 0, 0, 1)}

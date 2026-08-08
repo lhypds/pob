@@ -310,6 +310,69 @@ func TestDefaultBindIsLoopbackOnly(t *testing.T) {
 	}
 }
 
+// What a wildcard-bound server reports is what someone who has just opened
+// `mcp_host` reads to check that it took, and what a client on another machine
+// is given: loopback alone would say the opposite of what is true.
+func TestWildcardBindReportsTheNetworkAddresses(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start("0.0.0.0", 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.Stop()
+
+	urls := srv.URLs()
+	loopback := fmt.Sprintf("http://127.0.0.1:%d/sse", srv.Port())
+	if len(urls) == 0 || urls[0] != loopback {
+		t.Fatalf("URLs() = %v, want %s first — the local client's address", urls, loopback)
+	}
+	if srv.Host() != "0.0.0.0" {
+		t.Errorf("Host() = %q, want the wildcard it was bound to", srv.Host())
+	}
+
+	ip := routableIPv4()
+	if ip == "" {
+		t.Skip("no non-loopback IPv4 address on this machine")
+	}
+	want := fmt.Sprintf("http://%s/sse", net.JoinHostPort(ip, strconv.Itoa(srv.Port())))
+	for _, u := range urls {
+		if u == want {
+			return
+		}
+	}
+	t.Errorf("URLs() = %v, want %s among them — the address another machine dials", urls, want)
+}
+
+// A loopback-bound server reports loopback and nothing else. Reporting an
+// address it does not answer on is worse than saying too little: it sends
+// someone off to debug the network for a server that never opened.
+func TestLoopbackBindReportsOnlyLoopback(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start(DefaultHost, 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.Stop()
+
+	want := []string{fmt.Sprintf("http://127.0.0.1:%d/sse", srv.Port())}
+	if urls := srv.URLs(); len(urls) != 1 || urls[0] != want[0] {
+		t.Errorf("URLs() = %v, want %v", urls, want)
+	}
+}
+
+// Nothing is running, so there is no address to hand anyone.
+func TestAStoppedServerReportsNoURL(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start(DefaultHost, 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	srv.Stop()
+	if urls := srv.URLs(); urls != nil {
+		t.Errorf("URLs() = %v on a stopped server, want none", urls)
+	}
+}
+
 // routableIPv4 is an address of this machine another machine could dial, or ""
 // when it is on no network. Link-local is left out: nothing routes to it.
 func routableIPv4() string {
