@@ -39,13 +39,14 @@ curl -X POST --data 'mouse=CLICK(0,0)'  http://192.168.1.40:8033/pb-a703/
 ```
 
 The protocol is the pico-hid board's, so its clients work against Pob
-unchanged. The full command grammar is in **[API.md](API.md)**.
+unchanged. The full command grammar is in
+**[Operation API](Operation%20API.md)**.
 
 
 See also
 --------
 
-- [Pob Server API](API.md) — the command grammar
+- [Operation API](Operation%20API.md) — the command grammar
 - [Web UI](WebUI.md) — the page this server hosts
 - [Pob Keyboard](Keyboard.md) — a desktop client for the same API
 - [Settings](Settings.md) — `server` and `server_port`

@@ -28,5 +28,5 @@ See also
 --------
 
 - [Pob Server](Server.md) — the address to open, and how to turn it off
-- [Pob Server API](API.md) — what the page sends
+- [Operation API](Operation%20API.md) — what the page sends
 - [Pob Keyboard](Keyboard.md) — the same thing as a desktop app

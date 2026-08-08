@@ -1,11 +1,14 @@
 
-Pob Server API
-==============
+Operation API
+=============
 
-The [Pob server](Server.md) takes its commands as `text/plain`
-POSTs, which is what the [Web UI](WebUI.md) sends and what makes the
-same thing scriptable — anything that can send an HTTP request can move the
-pointer and type on the machine.
+The API that *operates* the machine — pointer, keys, text. The [Pob
+server](Server.md) takes its commands as `text/plain` POSTs, which is what the
+[Web UI](WebUI.md) sends and what makes the same thing scriptable — anything
+that can send an HTTP request can move the pointer and type on the machine.
+
+(The other one is the [Control API](Control%20API.md), which drives the *app* —
+run an instruction, stop a session — and is the `pob` CLI's private channel.)
 
 ```
 curl -X POST --data 'typing=hello'          http://192.168.1.40:8033/pb-a703/
@@ -75,3 +78,4 @@ See also
 - [Pob Keyboard](Keyboard.md) — a desktop client for this API
 - [Key names](Keys.md) — what `keycode` accepts
 - [MCP Server](MCP.md) — the same actions as MCP tools
+- [Control API](Control%20API.md) — the other API: driving the app itself

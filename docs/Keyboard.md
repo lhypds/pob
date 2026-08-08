@@ -34,6 +34,6 @@ See also
 --------
 
 - [Pob Server](Server.md) — what it talks to, and the address to give it
-- [Pob Server API](API.md) — the protocol it speaks
+- [Operation API](Operation%20API.md) — the protocol it speaks
 - [Key names](Keys.md) — what the keys resolve to
 - [Web UI](WebUI.md) — the same thing in a browser

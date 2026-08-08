@@ -93,5 +93,5 @@ See also
 --------
 
 - [Key names](Keys.md) — what `key_press` accepts
-- [Pob Server API](API.md) — the same actions over plain HTTP
+- [Operation API](Operation%20API.md) — the same actions over plain HTTP
 - [CLI](CLI.md) — `pob mcp status` / `start` / `stop`

@@ -33,4 +33,4 @@ See also
 
 - [Macro](Macro.md) — `keyPress` in macros and AI sessions
 - [MCP Server](MCP.md) — `key_press` as an MCP tool
-- [Pob Server API](API.md) — `keycode=`, the HID spelling of the same keys
+- [Operation API](Operation%20API.md) — `keycode=`, the HID spelling of the same keys

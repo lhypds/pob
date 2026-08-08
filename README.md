@@ -56,7 +56,8 @@ Documentation
 | [CLI](docs/CLI.md) | The `pob` command |
 | [MCP Server](docs/MCP.md) | Driving Pob from Claude Code, Claude Desktop, Gemini CLI |
 | [Pob Server](docs/Server.md) | The server every instance runs, and its address |
-| [Pob Server API](docs/API.md) | The HTTP remote-control command grammar |
+| [Operation API](docs/Operation%20API.md) | The HTTP command grammar for driving the machine |
+| [Control API](docs/Control%20API.md) | The localhost API the `pob` CLI drives the app with |
 | [Web UI](docs/WebUI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/Development.md) | Building, the dev scripts, and cutting a release |
