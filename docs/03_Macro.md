@@ -17,6 +17,10 @@ keyPress("return")
 
 Use the record button (⏺) in the toolbar to record actions during an AI session — they are appended to `macro.txt` automatically. Use the play button (▶) to run the macro directly without the AI.
 
+Starting a recording while `macro.txt` still holds actions asks what to do with them first: clear
+them, or keep them and record after them. Keeping them writes a `resetCursor()` between the old
+lines and the new ones, since every move recorded next is relative to the origin a replay starts at.
+
 Recording captures every action that drives the machine, whichever one of the three is
 driving it: your own mouse and keyboard, the AI session's tool calls, and the tools an
 [MCP](08_MCP.md) client calls. They all append to the same `macro.txt`, in the order

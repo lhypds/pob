@@ -376,6 +376,22 @@ public static class SettingsService
         }
     }
 
+    // Appends one action line, keeping the file newline-terminated. Read-
+    // modify-write like the macOS shell's appendToMacro: macro.txt is small
+    // and the core is the only other writer.
+    public static void AppendToMacro(string line)
+    {
+        string content = GetMacro();
+        if (content.Length > 0 && !content.EndsWith("\n")) content += "\n";
+        try
+        {
+            File.WriteAllText(RootPath("macro.txt"), content + line + "\n");
+        }
+        catch (IOException)
+        {
+        }
+    }
+
     public static void ClearMacro() => TryTruncate(RootPath("macro.txt"));
 
     public static void ClearInstruction() => TryTruncate(RootPath("instruction.txt"));

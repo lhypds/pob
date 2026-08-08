@@ -30,8 +30,11 @@ public static class MouseService
     // ── virtual cursor state ────────────────────────────────────────────────
 
     private static readonly object PosLock = new();
-    private static double _virtualX;
-    private static double _virtualY;
+    // Starts at the home corner a reset puts it back at, which is where the
+    // overlay draws it from launch — the top-left corner would read as no
+    // cursor at all.
+    private static double _virtualX = 20;
+    private static double _virtualY = 20;
 
     public static void GetVirtualPos(out double x, out double y)
     {

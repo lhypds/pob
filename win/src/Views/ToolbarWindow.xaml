@@ -102,8 +102,8 @@
                         ToolTip="Window Unlocked (click to lock)" Click="OnLockClicked">
                     <TextBlock x:Name="LockIcon" Style="{StaticResource ToolIcon}" Text="&#xE785;"/>
                 </Button>
-                <Button x:Name="TrashBtn" Style="{StaticResource ToolButton}" ToolTip="Clear" Click="OnTrashClicked">
-                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE74D;"/>
+                <Button x:Name="ResetBtn" Style="{StaticResource ToolButton}" ToolTip="Reset" Click="OnResetClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE72C;"/>
                 </Button>
             </StackPanel>
         </DockPanel>

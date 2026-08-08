@@ -22,9 +22,16 @@ VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
 echo "🔨 Building macOS shell (Swift)..."
 (cd "$SCRIPT_DIR" && swift build)
 
+# Crash output and runtime warnings go where every component's log already
+# goes — ~/.pob/app.log, the file the toolbar's App Log button opens and the
+# one `pob` uses when it launches the app itself. A run leaves the checkout
+# untouched.
+APP_LOG="$HOME/.pob/app.log"
+mkdir -p "$HOME/.pob"
+
 cd "$ROOT_DIR"
 for _ in $(seq "$COUNT"); do
-    nohup "$SCRIPT_DIR/.build/debug/Pob" >>"$ROOT_DIR/app.log" 2>&1 &
+    nohup "$SCRIPT_DIR/.build/debug/Pob" >>"$APP_LOG" 2>&1 &
     echo "▶️  Pob started (pid $!)."
 done
-echo "Logs: $ROOT_DIR/app.log — stop all instances with ./stop.sh"
+echo "Logs: $APP_LOG — stop all instances with ./stop.sh"

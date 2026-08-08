@@ -24,4 +24,4 @@ if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "▶️  Launching Pob..."
 $Exe = Join-Path $ScriptDir "bin\Debug\net8.0-windows\Pob.exe"
 Start-Process -FilePath $Exe -WorkingDirectory $RootDir
-Write-Host "Pob restarted in background. Logs: $RootDir\app.log"
+Write-Host "Pob restarted in background. Logs: $env:USERPROFILE\.pob\app.log"

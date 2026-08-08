@@ -19,8 +19,8 @@ void content_view_reset_anim(void);
 // Triggers the white screenshot flash (opacity 0.5 fading out over 0.4 s).
 void content_view_flash(void);
 
-// Shows a transient message (top center, black pill, white text) that
-// disappears after ~2 s — action feedback like "Logs cleared".
+// Shows a transient message (bottom center, black pill, white text) that
+// disappears after ~2 s — action feedback like "macro.txt reset".
 void content_view_show_message(const char *text);
 
 // Applies the crosshair pointer while cropping; call after mode changes.

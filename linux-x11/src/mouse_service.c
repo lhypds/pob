@@ -14,8 +14,11 @@
 // ── virtual cursor state ────────────────────────────────────────────────────
 
 static GMutex pos_mutex;
-static double virtual_x = 0;
-static double virtual_y = 0;
+// Starts at the home corner a reset puts it back at, which is where the
+// overlay draws it from launch — the top-left corner would read as no cursor
+// at all.
+static double virtual_x = 20;
+static double virtual_y = 20;
 
 void mouse_get_virtual_pos(double *x, double *y) {
     g_mutex_lock(&pos_mutex);

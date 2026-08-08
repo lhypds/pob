@@ -6,11 +6,13 @@ import CoreGraphics
 /// (system-wide) mouse and keyboard events for its sessions.
 class MouseService: ObservableObject {
     /// Virtual cursor in screenshot pixel coordinates (origin: top-left).
-    /// Never touches the real system mouse pointer.
-    var virtualCursorPosition: CGPoint = .zero
+    /// Never touches the real system mouse pointer. Starts at the home corner
+    /// a reset puts it back at, which is where the overlay draws it from launch
+    /// — the top-left corner would read as no cursor at all.
+    var virtualCursorPosition = CGPoint(x: 20, y: 20)
 
     /// Published so the UI can overlay the cursor and animate its movement.
-    @Published var displayPosition: CGPoint = .zero
+    @Published var displayPosition = CGPoint(x: 20, y: 20)
 
     /// The overlay window this cursor belongs to; made click-through while
     /// automation events are posted. Set by PobInstance.attach.

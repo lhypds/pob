@@ -401,6 +401,20 @@ gchar *settings_get_macro(void) {
     return contents;
 }
 
+// Appends one action line, keeping the file newline-terminated. Read-modify-
+// write like the macOS shell's appendToMacro: macro.txt is small and the core
+// is the only other writer.
+void settings_append_macro(const char *line) {
+    gchar *contents = settings_get_macro();
+    gboolean needs_newline = *contents != '\0' && !g_str_has_suffix(contents, "\n");
+    gchar *next = g_strconcat(contents, needs_newline ? "\n" : "", line, "\n", NULL);
+    gchar *path = root_path("macro.txt");
+    g_file_set_contents(path, next, -1, NULL);
+    g_free(path);
+    g_free(next);
+    g_free(contents);
+}
+
 void settings_clear_macro(void) {
     gchar *path = root_path("macro.txt");
     g_file_set_contents(path, "", 0, NULL);

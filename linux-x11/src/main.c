@@ -117,7 +117,7 @@ static const char *const ICONS_SCREENSHOT[] = {"camera-photo-symbolic", "camera-
 static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic", NULL};
 static const char *const ICONS_LOCKED[] = {"changes-prevent-symbolic", NULL};
 static const char *const ICONS_UNLOCKED[] = {"changes-allow-symbolic", NULL};
-static const char *const ICONS_TRASH[] = {"user-trash-symbolic", NULL};
+static const char *const ICONS_RESET[] = {"view-refresh-symbolic", "edit-undo-symbolic", NULL};
 static const char *const ICONS_MINIMIZE[] = {"window-minimize-symbolic", "go-down-symbolic", NULL};
 static const char *const ICONS_MAXIMIZE[] = {"window-maximize-symbolic", "go-up-symbolic", NULL};
 static const char *const ICONS_RESTORE[] = {"window-restore-symbolic", "view-restore-symbolic", NULL};
@@ -314,6 +314,44 @@ void app_set_executing(gboolean executing) {
     gtk_widget_queue_draw(g_state.content);
 }
 
+// Syncs the record button's look and tooltip with g_state.is_recording.
+static void sync_record_button(void) {
+    set_active_class(g_state.record_btn, "pob-recording", g_state.is_recording);
+    gtk_widget_set_tooltip_text(g_state.record_btn,
+                                g_state.is_recording ? "Recording (click to stop)"
+                                                     : "Record Macro");
+}
+
+// Starts macro recording, either over an emptied macro.txt or appending to
+// what is already in it.
+static void start_recording(gboolean clearing_macro) {
+    if (clearing_macro) {
+        settings_clear_macro();
+    } else {
+        // Everything recorded next is a relative move from (20, 20), where a
+        // replay starts. The kept lines leave the cursor wherever they leave
+        // it, so send it home between them and what follows.
+        gchar *macro = settings_get_macro();
+        g_strstrip(macro);
+        if (*macro != '\0') settings_append_macro("resetCursor()");
+        g_free(macro);
+    }
+    g_state.is_recording = TRUE;
+    core_bridge_recording_changed(TRUE);
+    // Same behavior as macOS: starting to record outside a session enables
+    // click-through so interactions reach the app below the overlay.
+    if (!g_state.is_executing) set_click_through(TRUE);
+    content_view_show_message("Recording started");
+    sync_record_button();
+}
+
+static void stop_recording(void) {
+    g_state.is_recording = FALSE;
+    core_bridge_recording_changed(FALSE);
+    content_view_show_message("Recording stopped");
+    sync_record_button();
+}
+
 // ── dialogs ─────────────────────────────────────────────────────────────────
 
 static void on_max_step_response(GtkDialog *dialog, gint response, gpointer data) {
@@ -362,53 +400,68 @@ static void show_macro_choice_dialog(void) {
 }
 
 enum {
-    RESPONSE_CLEAR_INSTRUCTION = 1,
-    RESPONSE_CLEAR_MACRO = 2,
-    RESPONSE_CLEAR_LOGS = 3,
-    RESPONSE_CLEAR_ALL = 4,
+    RESPONSE_RECORD_CLEAR = 1,
+    RESPONSE_RECORD_KEEP = 2,
 };
 
-static void on_clear_response(GtkDialog *dialog, gint response, gpointer data) {
+static void on_record_warning_response(GtkDialog *dialog, gint response, gpointer data) {
+    (void)data;
+    if (response == RESPONSE_RECORD_CLEAR)
+        start_recording(TRUE);
+    else if (response == RESPONSE_RECORD_KEEP)
+        start_recording(FALSE);
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+static void show_record_warning_dialog(void) {
+    GtkWidget *dialog = gtk_message_dialog_new(
+        g_state.window, GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE, "Warning");
+    gtk_message_dialog_format_secondary_text(
+        GTK_MESSAGE_DIALOG(dialog),
+        "macro.txt has recorded actions. Clear them before recording?");
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Keep", RESPONSE_RECORD_KEEP);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Clear", RESPONSE_RECORD_CLEAR);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_record_warning_response), NULL);
+    gtk_widget_show_all(dialog);
+}
+
+enum {
+    RESPONSE_RESET_MOUSE = 1,
+    RESPONSE_RESET_INSTRUCTION = 2,
+    RESPONSE_RESET_MACRO = 3,
+};
+
+static void on_reset_response(GtkDialog *dialog, gint response, gpointer data) {
     (void)data;
     switch (response) {
-    case RESPONSE_CLEAR_INSTRUCTION:
+    case RESPONSE_RESET_MOUSE:
+        mouse_reset_cursor();
+        content_view_show_message("Mouse position reset");
+        break;
+    case RESPONSE_RESET_INSTRUCTION:
         settings_clear_instruction();
-        content_view_show_message("Instruction cleared");
+        content_view_show_message("instruction.txt reset");
         break;
-    case RESPONSE_CLEAR_MACRO:
+    case RESPONSE_RESET_MACRO:
         settings_clear_macro();
-        content_view_show_message("Macro cleared");
-        break;
-    case RESPONSE_CLEAR_LOGS:
-        settings_clear_logs();
-        content_view_show_message("Logs cleared");
-        break;
-    case RESPONSE_CLEAR_ALL:
-        settings_clear_instruction();
-        settings_clear_macro();
-        settings_clear_logs();
-        content_view_show_message("Instruction, macro and logs cleared");
+        content_view_show_message("macro.txt reset");
         break;
     default: break;
     }
     gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
-static void show_clear_dialog(void) {
+static void show_reset_dialog(void) {
     GtkWidget *dialog = gtk_message_dialog_new(
         g_state.window, GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-        GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "Clear");
+        GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "Reset");
     GtkDialog *d = GTK_DIALOG(dialog);
-    GtkWidget *b;
-    b = gtk_dialog_add_button(d, "Clear Instruction", RESPONSE_CLEAR_INSTRUCTION);
-    gtk_style_context_add_class(gtk_widget_get_style_context(b), "destructive-action");
-    b = gtk_dialog_add_button(d, "Clear Macro", RESPONSE_CLEAR_MACRO);
-    gtk_style_context_add_class(gtk_widget_get_style_context(b), "destructive-action");
-    b = gtk_dialog_add_button(d, "Clear Logs", RESPONSE_CLEAR_LOGS);
-    gtk_style_context_add_class(gtk_widget_get_style_context(b), "destructive-action");
-    b = gtk_dialog_add_button(d, "Clear All", RESPONSE_CLEAR_ALL);
-    gtk_style_context_add_class(gtk_widget_get_style_context(b), "destructive-action");
-    gtk_dialog_add_button(d, "Cancel", GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button(d, "Reset mouse position", RESPONSE_RESET_MOUSE);
+    gtk_dialog_add_button(d, "Reset instruction.txt", RESPONSE_RESET_INSTRUCTION);
+    gtk_dialog_add_button(d, "Reset macro.txt", RESPONSE_RESET_MACRO);
+    gtk_dialog_add_button(d, "Close", GTK_RESPONSE_CANCEL);
 
     // Stack the buttons vertically, like the macOS confirmation dialog.
     GtkWidget *action_area;
@@ -419,7 +472,7 @@ static void show_clear_dialog(void) {
                                    GTK_ORIENTATION_VERTICAL);
     gtk_button_box_set_layout(GTK_BUTTON_BOX(action_area), GTK_BUTTONBOX_EXPAND);
 
-    g_signal_connect(dialog, "response", G_CALLBACK(on_clear_response), NULL);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_reset_response), NULL);
     gtk_widget_show_all(dialog);
 }
 
@@ -481,19 +534,19 @@ static void on_macro_clicked(GtkButton *b, gpointer d) {
 
 static void on_record_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    g_state.is_recording = !g_state.is_recording;
-    if (g_state.is_recording) settings_clear_macro();
-    core_bridge_recording_changed(g_state.is_recording);
-    // Same behavior as macOS: starting to record outside a session enables
-    // click-through so interactions reach the app below the overlay.
-    if (g_state.is_recording && !g_state.is_executing)
-        set_click_through(TRUE);
-    content_view_show_message(g_state.is_recording ? "Recording started"
-                                                   : "Recording stopped");
-    set_active_class(g_state.record_btn, "pob-recording", g_state.is_recording);
-    gtk_widget_set_tooltip_text(g_state.record_btn,
-                                g_state.is_recording ? "Recording (click to stop)"
-                                                     : "Record Macro");
+    if (g_state.is_recording) {
+        stop_recording();
+        return;
+    }
+    gchar *macro = settings_get_macro();
+    g_strstrip(macro);
+    if (*macro == '\0')
+        start_recording(FALSE);
+    else
+        // Recording appends, so whatever is in macro.txt already would replay
+        // in front of everything recorded next.
+        show_record_warning_dialog();
+    g_free(macro);
 }
 
 static void on_play_clicked(GtkButton *b, gpointer d) {
@@ -547,9 +600,9 @@ static void on_lock_clicked(GtkButton *b, gpointer d) {
     app_update_window_lock();
 }
 
-static void on_trash_clicked(GtkButton *b, gpointer d) {
+static void on_reset_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    show_clear_dialog();
+    show_reset_dialog();
 }
 
 // ── headerbar (toolbar + context menu + drag lock) ──────────────────────────
@@ -680,7 +733,7 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.clickthrough_btn, "realize",
                      G_CALLBACK(on_clickthrough_realize), NULL);
     g_state.lock_btn = icon_button(ICONS_UNLOCKED, "Window Unlocked (click to lock)");
-    GtkWidget *trash_btn = icon_button(ICONS_TRASH, "Clear");
+    GtkWidget *reset_btn = icon_button(ICONS_RESET, "Reset");
     GtkWidget *minimize_btn = icon_button(ICONS_MINIMIZE, "Minimize");
     maximize_btn = icon_button(ICONS_MAXIMIZE, "Maximize");
     GtkWidget *close_btn = icon_button(ICONS_CLOSE, "Close");
@@ -697,7 +750,7 @@ static void build_headerbar(void) {
     g_signal_connect(screenshot_btn, "clicked", G_CALLBACK(on_screenshot_clicked), NULL);
     g_signal_connect(g_state.clickthrough_btn, "clicked", G_CALLBACK(on_clickthrough_clicked), NULL);
     g_signal_connect(g_state.lock_btn, "clicked", G_CALLBACK(on_lock_clicked), NULL);
-    g_signal_connect(trash_btn, "clicked", G_CALLBACK(on_trash_clicked), NULL);
+    g_signal_connect(reset_btn, "clicked", G_CALLBACK(on_reset_clicked), NULL);
     g_signal_connect(minimize_btn, "clicked", G_CALLBACK(on_minimize_clicked), NULL);
     g_signal_connect(maximize_btn, "clicked", G_CALLBACK(on_maximize_clicked), NULL);
     g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_clicked), NULL);
@@ -715,7 +768,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), close_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), maximize_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), minimize_btn);
-    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), trash_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), reset_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.lock_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), screenshot_btn);

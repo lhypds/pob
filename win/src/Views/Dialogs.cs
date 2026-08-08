@@ -1,6 +1,6 @@
 // Modal dialogs mirroring the macOS/Linux shells: the max-step warning,
-// the run-macro-or-instruction choice, the clear menu (stacked destructive
-// buttons) and the About box.
+// the run-macro-or-instruction choice, the record-over-a-macro warning, the
+// reset menu (stacked buttons) and the About box.
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -15,10 +15,15 @@ public enum MacroChoice
     RunInstruction,
 }
 
+public enum RecordChoice
+{
+    Cancel,
+    ClearMacro,
+    KeepMacro,
+}
+
 public static class Dialogs
 {
-    private static readonly Brush DestructiveBrush = new SolidColorBrush(AppState.RecordRed);
-
     private static Window MakeDialog(Window? owner, string title)
     {
         var dialog = new Window
@@ -37,7 +42,7 @@ public static class Dialogs
         return dialog;
     }
 
-    private static Button MakeButton(string label, Action onClick, bool destructive = false)
+    private static Button MakeButton(string label, Action onClick)
     {
         var button = new Button
         {
@@ -46,7 +51,6 @@ public static class Dialogs
             Margin = new Thickness(4),
             MinWidth = 80,
         };
-        if (destructive) button.Foreground = DestructiveBrush;
         button.Click += (_, _) => onClick();
         return button;
     }
@@ -124,49 +128,81 @@ public static class Dialogs
         return choice;
     }
 
-    // ── Clear (stacked destructive buttons, like the macOS confirmation) ────
+    // ── "macro.txt has recorded actions." Clear/Keep/Cancel ─────────────────
 
-    public static void ShowClear(Window? owner)
+    public static RecordChoice ShowRecordWarning(Window? owner)
     {
-        Window dialog = MakeDialog(owner, "Clear");
+        Window dialog = MakeDialog(owner, "Warning");
+        RecordChoice choice = RecordChoice.Cancel;
+
+        var message = new TextBlock
+        {
+            Text = "macro.txt has recorded actions. Clear them before recording?",
+            Margin = new Thickness(0, 0, 0, 12),
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        buttons.Children.Add(MakeButton("Cancel", () => dialog.Close()));
+        buttons.Children.Add(MakeButton("Keep", () =>
+        {
+            choice = RecordChoice.KeepMacro;
+            dialog.Close();
+        }));
+        buttons.Children.Add(MakeButton("Clear", () =>
+        {
+            choice = RecordChoice.ClearMacro;
+            dialog.Close();
+        }));
+
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(message);
+        panel.Children.Add(buttons);
+        dialog.Content = panel;
+        dialog.ShowDialog();
+        return choice;
+    }
+
+    // ── Reset (stacked buttons, like the macOS confirmation) ────────────────
+
+    public static void ShowReset(Window? owner)
+    {
+        Window dialog = MakeDialog(owner, "Reset");
         ContentView? content = AppState.Overlay?.ContentView;
 
         var panel = new StackPanel { Margin = new Thickness(20), MinWidth = 220 };
 
-        void AddAction(string label, Action action, bool destructive = true)
+        void AddAction(string label, Action action)
         {
             Button button = MakeButton(label, () =>
             {
                 dialog.Close();
                 action();
-            }, destructive);
+            });
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             panel.Children.Add(button);
         }
 
-        AddAction("Clear Instruction", () =>
+        AddAction("Reset mouse position", () =>
+        {
+            MouseService.ResetCursor();
+            content?.ShowMessage("Mouse position reset");
+        });
+        AddAction("Reset instruction.txt", () =>
         {
             SettingsService.ClearInstruction();
-            content?.ShowMessage("Instruction cleared");
+            content?.ShowMessage("instruction.txt reset");
         });
-        AddAction("Clear Macro", () =>
+        AddAction("Reset macro.txt", () =>
         {
             SettingsService.ClearMacro();
-            content?.ShowMessage("Macro cleared");
+            content?.ShowMessage("macro.txt reset");
         });
-        AddAction("Clear Logs", () =>
-        {
-            SettingsService.ClearLogs();
-            content?.ShowMessage("Logs cleared");
-        });
-        AddAction("Clear All", () =>
-        {
-            SettingsService.ClearInstruction();
-            SettingsService.ClearMacro();
-            SettingsService.ClearLogs();
-            content?.ShowMessage("Instruction, macro and logs cleared");
-        });
-        AddAction("Cancel", () => { }, destructive: false);
+        AddAction("Close", () => { });
 
         dialog.Content = panel;
         dialog.ShowDialog();

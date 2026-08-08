@@ -122,19 +122,64 @@ public partial class ToolbarWindow : Window
 
     private void OnRecordClicked(object sender, RoutedEventArgs e)
     {
-        AppState.IsRecording = !AppState.IsRecording;
-        if (AppState.IsRecording) SettingsService.ClearMacro();
-        CoreBridge.RecordingChanged(AppState.IsRecording);
+        if (AppState.IsRecording)
+        {
+            StopRecording();
+            return;
+        }
+        if (SettingsService.GetMacro().Trim().Length == 0)
+        {
+            StartRecording(clearingMacro: false);
+            return;
+        }
+        // Recording appends, so whatever is in macro.txt already would replay
+        // in front of everything recorded next.
+        switch (Dialogs.ShowRecordWarning(this))
+        {
+            case RecordChoice.ClearMacro:
+                StartRecording(clearingMacro: true);
+                break;
+            case RecordChoice.KeepMacro:
+                StartRecording(clearingMacro: false);
+                break;
+        }
+    }
+
+    // Starts macro recording, either over an emptied macro.txt or appending to
+    // what is already in it.
+    private void StartRecording(bool clearingMacro)
+    {
+        if (clearingMacro)
+        {
+            SettingsService.ClearMacro();
+        }
+        else if (SettingsService.GetMacro().Trim().Length > 0)
+        {
+            // Everything recorded next is a relative move from (20, 20), where
+            // a replay starts. The kept lines leave the cursor wherever they
+            // leave it, so send it home between them and what follows.
+            SettingsService.AppendToMacro("resetCursor()");
+        }
+        AppState.IsRecording = true;
+        CoreBridge.RecordingChanged(true);
         // Same behavior as macOS: starting to record outside a session enables
         // click-through so interactions reach the app below the overlay.
-        if (AppState.IsRecording && !AppState.IsExecuting && !AppState.IsClickThrough)
+        if (!AppState.IsExecuting && !AppState.IsClickThrough)
         {
             AppState.IsClickThrough = true;
             SetClickThroughVisual(true);
             AppState.UpdateClickThrough();
         }
-        Content2?.ShowMessage(AppState.IsRecording ? "Recording started" : "Recording stopped");
-        SetRecordingVisual(AppState.IsRecording);
+        Content2?.ShowMessage("Recording started");
+        SetRecordingVisual(true);
+    }
+
+    private void StopRecording()
+    {
+        AppState.IsRecording = false;
+        CoreBridge.RecordingChanged(false);
+        Content2?.ShowMessage("Recording stopped");
+        SetRecordingVisual(false);
     }
 
     private void OnPlayClicked(object sender, RoutedEventArgs e)
@@ -182,7 +227,7 @@ public partial class ToolbarWindow : Window
         AppState.UpdateWindowLock();
     }
 
-    private void OnTrashClicked(object sender, RoutedEventArgs e) => Dialogs.ShowClear(this);
+    private void OnResetClicked(object sender, RoutedEventArgs e) => Dialogs.ShowReset(this);
 
     // ── window controls ─────────────────────────────────────────────────────
 

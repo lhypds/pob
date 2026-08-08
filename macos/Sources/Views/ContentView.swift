@@ -46,7 +46,8 @@ struct InstanceContentView: View {
     @State private var isLocked = false
     @State private var isRecording = false
     @State private var showMacroChoice = false
-    @State private var showClearChoice = false
+    @State private var showRecordWarning = false
+    @State private var showResetChoice = false
     @State private var mousePosition: CGPoint? = nil
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
@@ -100,21 +101,23 @@ struct InstanceContentView: View {
                 }
             }
 
-            if bridge.isExecuting || bridge.isMCPDriving {
-                let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-                let cursorImg = NSCursor.arrow.image
-                let hot = NSCursor.arrow.hotSpot
-                let viewX = animatedCursorPos.x / scale
-                let viewY = animatedCursorPos.y / scale
-                Image(nsImage: cursorImg)
-                    .resizable()
-                    .frame(width: cursorImg.size.width, height: cursorImg.size.height)
-                    .position(
-                        x: viewX + cursorImg.size.width / 2 - hot.x,
-                        y: viewY + cursorImg.size.height / 2 - hot.y
-                    )
-                    .allowsHitTesting(false)
-            }
+            // The virtual cursor is on screen from launch, parked at its home
+            // corner: it is what every screenshot shows and what all the clicks
+            // are aimed with, so where it sits is worth seeing before anything
+            // starts driving it.
+            let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+            let cursorImg = NSCursor.arrow.image
+            let hot = NSCursor.arrow.hotSpot
+            let viewX = animatedCursorPos.x / scale
+            let viewY = animatedCursorPos.y / scale
+            Image(nsImage: cursorImg)
+                .resizable()
+                .frame(width: cursorImg.size.width, height: cursorImg.size.height)
+                .position(
+                    x: viewX + cursorImg.size.width / 2 - hot.x,
+                    y: viewY + cursorImg.size.height / 2 - hot.y
+                )
+                .allowsHitTesting(false)
 
             Color.white
                 .opacity(screenshotFlashOpacity)
@@ -128,8 +131,8 @@ struct InstanceContentView: View {
                     .padding(.vertical, 4)
                     .background(Color.black.opacity(0.75))
                     .cornerRadius(6)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 10)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
@@ -195,26 +198,27 @@ struct InstanceContentView: View {
         } message: {
             Text("macro.txt has recorded actions.")
         }
-        .confirmationDialog("Clear", isPresented: $showClearChoice) {
-            Button("Clear Instruction", role: .destructive) {
-                instance.settings.clearInstruction()
-                showToast("Instruction cleared")
-            }
-            Button("Clear Macro", role: .destructive) {
-                instance.settings.clearMacro()
-                showToast("Macro cleared")
-            }
-            Button("Clear Logs", role: .destructive) {
-                instance.settings.clearLogs()
-                showToast("Logs cleared")
-            }
-            Button("Clear All", role: .destructive) {
-                instance.settings.clearInstruction()
-                instance.settings.clearMacro()
-                instance.settings.clearLogs()
-                showToast("Instruction, macro and logs cleared")
-            }
+        .alert("Warning", isPresented: $showRecordWarning) {
+            Button("Clear") { startRecording(clearingMacro: true) }
+            Button("Keep") { startRecording(clearingMacro: false) }
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("macro.txt has recorded actions. Clear them before recording?")
+        }
+        .confirmationDialog("Reset", isPresented: $showResetChoice) {
+            Button("Reset mouse position") {
+                mouseService.resetCursor()
+                showToast("Mouse position reset")
+            }
+            Button("Reset instruction.txt") {
+                instance.settings.clearInstruction()
+                showToast("instruction.txt reset")
+            }
+            Button("Reset macro.txt") {
+                instance.settings.clearMacro()
+                showToast("macro.txt reset")
+            }
+            Button("Close", role: .cancel) {}
         }
     }
 
@@ -374,23 +378,15 @@ struct InstanceContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
-                isRecording.toggle()
-                if isRecording { instance.settings.clearMacro() }
-                bridge.recordingChanged(isRecording)
                 if isRecording {
-                    // Outside a session, capture the user's own actions; enable
-                    // click-through so those actions reach the app below.
-                    if !bridge.isExecuting {
-                        instance.recorder.start()
-                        if !isClickThrough {
-                            isClickThrough = true
-                            updateClickThrough()
-                        }
-                    }
+                    stopRecording()
+                } else if instance.settings.getMacro().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    startRecording(clearingMacro: false)
                 } else {
-                    instance.recorder.stop()
+                    // Recording appends, so whatever is in macro.txt already
+                    // would replay in front of everything recorded next.
+                    showRecordWarning = true
                 }
-                showToast(isRecording ? "Recording started" : "Recording stopped")
             }) {
                 Image(systemName: isRecording ? "record.circle.fill" : "record.circle")
                     .foregroundStyle(isRecording ? Color.red : (controlActiveState == .inactive ? Color.secondary : Color.primary))
@@ -472,17 +468,49 @@ struct InstanceContentView: View {
             .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { showClearChoice = true }) {
-                Image(systemName: "trash")
+            Button(action: { showResetChoice = true }) {
+                Image(systemName: "arrow.counterclockwise")
             }
-            .help("Clear")
+            .help("Reset")
         }
     }
 
     // MARK: - Helpers
 
-    /// Shows a transient top-centered message (black pill, white text) that
-    /// fades out after ~2 s — action feedback like "Logs cleared".
+    /// Starts macro recording, either over an emptied macro.txt or appending to
+    /// what is already in it.
+    private func startRecording(clearingMacro: Bool) {
+        if clearingMacro {
+            instance.settings.clearMacro()
+        } else if !instance.settings.getMacro().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Everything recorded next is a relative move from (20, 20), where
+            // a replay starts. The kept lines leave the cursor wherever they
+            // leave it, so send it home between them and what follows.
+            instance.settings.appendToMacro("resetCursor()")
+        }
+        isRecording = true
+        bridge.recordingChanged(true)
+        // Outside a session, capture the user's own actions; enable
+        // click-through so those actions reach the app below.
+        if !bridge.isExecuting {
+            instance.recorder.start()
+            if !isClickThrough {
+                isClickThrough = true
+                updateClickThrough()
+            }
+        }
+        showToast("Recording started")
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        bridge.recordingChanged(false)
+        instance.recorder.stop()
+        showToast("Recording stopped")
+    }
+
+    /// Shows a transient bottom-centered message (black pill, white text) that
+    /// fades out after ~2 s — action feedback like "macro.txt reset".
     private func showToast(_ message: String) {
         toastMessage = message
         toastToken += 1

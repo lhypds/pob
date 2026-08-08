@@ -35,6 +35,9 @@ void settings_open_logs_folder(void);
 // Contents of macro.txt ("" when missing); caller frees.
 gchar *settings_get_macro(void);
 
+// Appends one action line to macro.txt.
+void settings_append_macro(const char *line);
+
 void settings_clear_macro(void);
 void settings_clear_instruction(void);
 void settings_clear_logs(void);

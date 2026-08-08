@@ -160,8 +160,8 @@ public class ContentView : FrameworkElement
         EnsureTick();
     }
 
-    // Shows a transient message (top center, black pill, white text) that
-    // disappears after ~2 s — action feedback like "Logs cleared".
+    // Shows a transient message (bottom center, black pill, white text) that
+    // disappears after ~2 s — action feedback like "macro.txt reset".
     public void ShowMessage(string text)
     {
         _toastText = text;
@@ -212,9 +212,9 @@ public class ContentView : FrameworkElement
         // painted by the OverlayWindow itself).
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
 
-        // Transient action feedback.
+        // Transient action feedback, along the bottom edge.
         if (_toastText != null)
-            DrawLabel(dc, w / 2, 20, _toastText);
+            DrawLabel(dc, w / 2, h - 20, _toastText);
 
         // Crop selection rectangle + size label.
         if (AppState.IsCropping && _hasCropRect)
@@ -256,14 +256,14 @@ public class ContentView : FrameworkElement
             DrawLabel(dc, cx, cy, text);
         }
 
-        // Virtual cursor overlay while the agent executes.
-        if (AppState.IsExecuting)
-        {
-            double vx = _animX / scale, vy = _animY / scale;
-            dc.PushTransform(new TranslateTransform(vx, vy)); // hotspot = (0, 0)
-            CursorArrow.Draw(dc);
-            dc.Pop();
-        }
+        // Virtual cursor overlay. On screen from launch, parked at its home
+        // corner: it is what every screenshot shows and what all the clicks
+        // are aimed with, so where it sits is worth seeing before anything
+        // starts driving it.
+        double vx = _animX / scale, vy = _animY / scale;
+        dc.PushTransform(new TranslateTransform(vx, vy)); // hotspot = (0, 0)
+        CursorArrow.Draw(dc);
+        dc.Pop();
 
         // Screenshot flash.
         if (_flashOpacity > 0)

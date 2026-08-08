@@ -16,7 +16,11 @@ echo "🔨 Building Linux shell (C/GTK)..."
 "$SCRIPT_DIR/stop.sh" 2>/dev/null || true
 
 echo "▶️  Launching Pob..."
+# Appended to ~/.pob/app.log, next to what the app and the core log there
+# themselves — see linux-x11/start.sh.
+APP_LOG="$HOME/.pob/app.log"
+mkdir -p "$HOME/.pob"
 cd "$ROOT_DIR"
-nohup "$SCRIPT_DIR/bin/pob" >"$ROOT_DIR/app.log" 2>&1 &
-echo "Pob restarted in background. Logs: $ROOT_DIR/app.log"
+nohup "$SCRIPT_DIR/bin/pob" >>"$APP_LOG" 2>&1 &
+echo "Pob restarted in background. Logs: $APP_LOG"
 exit 0

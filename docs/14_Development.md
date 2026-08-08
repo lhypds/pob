@@ -10,7 +10,7 @@ Tools (Swift) on macOS, or GTK 3 development libraries on Linux (see
 ./setup.sh      # select your OS (recorded in the SYSTEM file), then
                 # check toolchains and build core + that OS shell
 ./start.sh      # build and run in the foreground
-./restart.sh    # rebuild and relaunch in the background (logs to app.log)
+./restart.sh    # rebuild and relaunch in the background (logs to ~/.pob/app.log)
 ./stop.sh       # stop the app and the core process
 ./build.sh      # release build (macOS: Pob.app, Linux: dist tarball)
 ./keyboard.sh   # build and run Pob Keyboard (its own Go module, not built

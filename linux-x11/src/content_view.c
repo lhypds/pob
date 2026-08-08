@@ -254,11 +254,11 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
             hints[n++] = "No ARGB visual \xE2\x80\x94 the window has no alpha channel";
         for (int i = 0; i < n; i++)
             draw_label(cr, W / 2, 20 + i * 24, hints[i]);
-
-        // Transient action feedback, stacked below the diagnostics.
-        if (toast_text)
-            draw_label(cr, W / 2, 20 + n * 24, toast_text);
     }
+
+    // Transient action feedback, along the bottom edge.
+    if (toast_text)
+        draw_label(cr, W / 2, H - 20, toast_text);
 
     // Crop selection rectangle + size label.
     if (g_state.is_cropping && has_crop_rect) {
@@ -311,8 +311,11 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         g_free(text);
     }
 
-    // Virtual cursor overlay while the agent executes.
-    if (g_state.is_executing) {
+    // Virtual cursor overlay. On screen from launch, parked at its home
+    // corner: it is what every screenshot shows and what all the clicks are
+    // aimed with, so where it sits is worth seeing before anything starts
+    // driving it.
+    {
         double hx, hy, cw, ch;
         cairo_surface_t *surf = overlay_cursor(&hx, &hy, &cw, &ch);
         if (surf) {
