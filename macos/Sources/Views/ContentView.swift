@@ -192,8 +192,8 @@ struct InstanceContentView: View {
             Text("Max step exceed.")
         }
         .alert("What would you like to run?", isPresented: $showMacroChoice) {
-            Button("Run Instruction") { bridge.runInstruction(recording: isRecording) }
-            Button("Run Macro") { bridge.runMacro() }
+            Button("Run Instruction") { lockWindow(); bridge.runInstruction(recording: isRecording) }
+            Button("Run Macro") { lockWindow(); bridge.runMacro() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("macro.txt has recorded actions.")
@@ -400,6 +400,7 @@ struct InstanceContentView: View {
                 } else {
                     let macro = instance.settings.getMacro()
                     if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        lockWindow()
                         bridge.runInstruction(recording: isRecording)
                     } else {
                         showMacroChoice = true
@@ -490,6 +491,7 @@ struct InstanceContentView: View {
         }
         isRecording = true
         bridge.recordingChanged(true)
+        lockWindow()
         // Outside a session, capture the user's own actions; enable
         // click-through so those actions reach the app below.
         if !bridge.isExecuting {
@@ -522,6 +524,15 @@ struct InstanceContentView: View {
                 }
             }
         }
+    }
+
+    /// Running and recording both make the window's frame part of the result:
+    /// every coordinate written to macro.txt is relative to it, so a nudge or a
+    /// resize partway through aims the replay at the wrong pixels. Play and
+    /// Record turn the lock on themselves; turning it back off stays the
+    /// user's call, as it was before.
+    private func lockWindow() {
+        isLocked = true
     }
 
     private func updateWindowLock() {
