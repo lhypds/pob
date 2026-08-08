@@ -11,7 +11,7 @@
   "stop_hook": "",
   "mcp": true,
   "mcp_port": 8032,
-  "mcp_host": "127.0.0.1",
+  "mcp_host": "0.0.0.0",
   "server": true,
   "server_port": 8033
 }

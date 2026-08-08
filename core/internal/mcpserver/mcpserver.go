@@ -51,13 +51,26 @@ type MacroRecorder interface {
 // DefaultPort is used when `pob mcp start` is not given an explicit port.
 const DefaultPort = 8032
 
-// DefaultHost is the interface bound when settings name none. Loopback, so the
-// tools — which move this machine's pointer and type on its keyboard — answer
-// only the machine they run on. A machine that wants to be driven from another
-// one sets `mcp_host` to "0.0.0.0" in settings.json, which keeps loopback
-// working too: a wildcard bind takes 127.0.0.1 along with every other address,
-// so a client already pointed at localhost never notices the move.
-const DefaultHost = "127.0.0.1"
+// DefaultHost is the interface bound when settings name none: every one of
+// them, so a client on another machine reaches it without anything being
+// configured first. Loopback keeps working — a wildcard bind holds 127.0.0.1
+// along with every other address — so a client pointed at localhost is not
+// affected by this either way.
+//
+// These tools move the machine's pointer and type on its keyboard, and take no
+// credentials, which reads like a reason to bind loopback instead. It isn't
+// one: the Pob server has bound every interface since it existed, and its
+// Operation API types and clicks on the same machine. Closing
+// this port while that one is open protects nothing — so the choice is made
+// once, for the machine, by putting it on a network you trust or by setting
+// `mcp_host` to "127.0.0.1" (and `"server": false`) on one you don't.
+const DefaultHost = "0.0.0.0"
+
+// loopbackHost is the address a client on this machine is given. Named apart
+// from DefaultHost because they answer different questions — what to bind, and
+// what to tell a local client — and a wildcard bind is not an address anyone
+// can dial.
+const loopbackHost = "127.0.0.1"
 
 func New(br *bridge.Bridge) *Server {
 	return &Server{br: br, sessions: map[string]chan []byte{}}
@@ -94,8 +107,8 @@ func (s *Server) originForMove() (bridge.Point, bool) {
 // the same host and port is a no-op; asked for another one it moves, since the
 // address that was asked for is the address a client is about to be handed —
 // and with the server starting with the instance, `pob mcp start <port>` always
-// arrives at one that is already running. An empty host means DefaultHost, so a
-// settings file written before `mcp_host` existed still binds where it did.
+// arrives at one that is already running. An empty host means DefaultHost —
+// a settings file with nothing to say about the interface gets the default one.
 func (s *Server) Start(host string, port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -203,7 +216,7 @@ func URLsFor(host string, port int) []string {
 	if !wildcardHosts[host] {
 		return []string{sse(host)}
 	}
-	urls := []string{sse(DefaultHost)}
+	urls := []string{sse(loopbackHost)}
 	for _, ip := range server.Addresses() {
 		// Addresses falls back to loopback on a machine that is on no network,
 		// which is already the first entry.

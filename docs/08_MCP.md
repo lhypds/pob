@@ -22,25 +22,9 @@ closed on a machine that does not want it open.
 Driving one machine from another
 --------------------------------
 
-The server binds loopback by default, so it answers only the machine it runs
-on: the tools move that machine's pointer and type on its keyboard, and nothing
-on the network is asked whether it should be allowed to. A client on another
-machine gets no connection at all — not a refusal it can report, since a
-firewall in the way drops the packets rather than answering them.
-
-To let another machine drive it, bind every interface in
-[`settings.json`](06_Settings.md):
-
-```json
-{
-  "mcp_host": "0.0.0.0"
-}
-```
-
-Loopback keeps working — a wildcard bind holds `127.0.0.1` alongside every
-other address — so a client already pointed at `localhost` never notices, and
-the same machine can be driven from itself and from another one at once. The
-remote client is given the machine's own address instead:
+The server binds every interface, so a client on another machine reaches it
+with nothing configured first. Give that client the machine's own address in
+place of `127.0.0.1`:
 
 ```json
 {
@@ -53,19 +37,42 @@ remote client is given the machine's own address instead:
 }
 ```
 
-The setting is read when the server starts, so the app has to be restarted
-after it changes — and a `settings.json` written before `mcp_host` existed has
-the key added on the next launch, set to loopback, which is where that machine
-was already bound. `POB_MCP_HOST=0.0.0.0` sets it for one launch without
-touching the file.
+Loopback keeps working — a wildcard bind holds `127.0.0.1` alongside every
+other address — so a client pointed at `localhost` is unaffected, and the same
+machine can be driven from itself and from another one at once.
 
-Two things to know before opening it. The host firewall has to allow the port —
-it drops the connection rather than refusing it, which looks exactly like a
-server that is not running. And the endpoints take no credentials: anyone who
-can reach the port can move the pointer, type, and read the screen through
-`take_screenshot`. That is the same posture as the [Pob Server](09_Server.md)
-on `8033`, which is open to the network by default — both belong on a network
-you trust, and `"mcp": false` closes this one again.
+What is open here. The endpoints take no credentials: anyone who can reach the
+port can move the pointer, type, and read the screen through `take_screenshot`.
+That is deliberately the same posture as the [Pob Server](09_Server.md) on
+`8033`, which has bound every interface since it existed and whose
+[Operation API](10_Operation%20API.md) types on this machine too — a closed
+`8032` beside an open `8033` would have been a locked door in a wall with none.
+So the decision is made once, for the machine: run it on a network you trust,
+or close both.
+
+Closing it is `mcp_host` in [`settings.json`](06_Settings.md), and the port
+answers only this machine again:
+
+```json
+{
+  "mcp_host": "127.0.0.1"
+}
+```
+
+`"mcp": false` closes it altogether, and `"server": false` does the same for
+`8033`. The setting is read when the server starts, so the app has to be
+restarted after it changes; `POB_MCP_HOST=127.0.0.1` sets it for one launch
+without touching the file.
+
+A machine that already has `mcp_host` in its `settings.json` keeps the value
+that is written there — backfilled defaults never overwrite a key that exists,
+which is what stops a file someone has edited from being edited back. A machine
+set up on an earlier version therefore has `127.0.0.1` in the file and stays
+loopback-bound until that line is changed; `pob mcp status` says which it is.
+
+One more thing before another machine can reach it: the host firewall has to
+allow the port. It drops the connection rather than refusing it, which looks
+exactly like a server that is not running.
 
 
 A client that will not connect
@@ -89,9 +96,10 @@ Host:       0.0.0.0 (every interface — reachable from the network)
 ```
 
 A `Host:` of `127.0.0.1` is a server that answers only its own machine, whatever
-the client is pointed at. That is `mcp_host` — set it and restart the app. The
-index page on [`8033`](09_Server.md) reports the same list, so a machine with no
-terminal on it can be asked from a browser.
+the client is pointed at — a machine set up on a version that defaulted to
+loopback still has that line in its `settings.json`. Change it to `0.0.0.0` and
+restart the app. The index page on [`8033`](09_Server.md) reports the same list,
+so a machine with no terminal on it can be asked from a browser.
 
 With the bind open and the client still hanging, it is the firewall. A
 connection **refused** straight away means nothing is listening on that address

@@ -303,10 +303,11 @@ func (c *Config) MCPPort() int {
 	return c.portVal("mcp_port", "POB_MCP_PORT", mcpserver.DefaultPort)
 }
 
-// MCPHost is the interface the MCP server binds. Loopback by default, so the
-// tools answer only this machine; "0.0.0.0" opens it to the network, for a
-// client running on another machine. Loopback keeps working either way, so
-// opening it costs the local client nothing. POB_MCP_HOST overrides the
+// MCPHost is the interface the MCP server binds. Every interface by default,
+// so a client on another machine reaches it with nothing configured first —
+// the same posture as the Pob server, which is open to the network and can
+// type on this machine too. "127.0.0.1" closes it to loopback, for a machine
+// on a network its owner would rather not trust. POB_MCP_HOST overrides the
 // setting, the same way POB_MCP_PORT overrides the port.
 func (c *Config) MCPHost() string {
 	if v := strings.TrimSpace(os.Getenv("POB_MCP_HOST")); v != "" {

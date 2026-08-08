@@ -288,12 +288,35 @@ func TestWildcardBindAnswersLoopbackAndTheNetwork(t *testing.T) {
 	resp.Body.Close()
 }
 
-// The default bind is loopback, so a machine that says nothing about it is not
-// quietly reachable from the network — the tools type on its keyboard.
-func TestDefaultBindIsLoopbackOnly(t *testing.T) {
+// The default bind answers the network, so a client on another machine reaches
+// it with nothing configured first — the same posture as the Pob server, which
+// can type on this machine too and has been open since it existed.
+func TestDefaultBindAnswersTheNetwork(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	if err := srv.Start(DefaultHost, 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.Stop()
+
+	ip := routableIPv4()
+	if ip == "" {
+		t.Skip("no non-loopback IPv4 address on this machine")
+	}
+	addr := net.JoinHostPort(ip, strconv.Itoa(srv.Port()))
+	resp, err := http.Get(fmt.Sprintf("http://%s/sse", addr))
+	if err != nil {
+		t.Fatalf("%s did not answer a default-bound server: %v", addr, err)
+	}
+	resp.Body.Close()
+}
+
+// And the way back: a machine on a network its owner would rather not trust
+// sets loopback explicitly, and then nothing on that network can reach it.
+func TestAnExplicitLoopbackBindIsLoopbackOnly(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start("127.0.0.1", 0); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	defer srv.Stop()
@@ -349,7 +372,7 @@ func TestWildcardBindReportsTheNetworkAddresses(t *testing.T) {
 func TestLoopbackBindReportsOnlyLoopback(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	if err := srv.Start(DefaultHost, 0); err != nil {
+	if err := srv.Start("127.0.0.1", 0); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	defer srv.Stop()
@@ -435,8 +458,11 @@ func TestStartMovesARunningServerToANewPort(t *testing.T) {
 	}
 
 	// A move to a port that will not bind keeps the server where it is, rather
-	// than leaving a registered client with nothing to talk to.
-	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	// than leaving a registered client with nothing to talk to. Taken on the
+	// same interface the server binds — a port held on loopback alone does not
+	// stop a wildcard bind on every platform, and the conflict is the point of
+	// the test, not the addressing.
+	taken, err := net.Listen("tcp", net.JoinHostPort(DefaultHost, "0"))
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
