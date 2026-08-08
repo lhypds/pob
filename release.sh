@@ -45,15 +45,20 @@ if [[ "$SYSTEM" == "macos" ]]; then
   fi
 
   # ── build macOS ────────────────────────────────────────────────────────────
-  APP_BUNDLE="macos/macos_app/Pob.app"
+  # The zip holds the Pob folder macos/build.sh assembles — Pob.app with the
+  # README beside it — so all three releases unzip to the same shape.
+  MACOS_DIST="macos/macos_app/dist/Pob"
   MACOS_ZIP="Pob-${VERSION}-macos.zip"
 
   echo "==> Building macOS app…"
   ./macos/build.sh
 
-  echo "==> Zipping $APP_BUNDLE -> $MACOS_ZIP"
+  echo "==> Zipping $MACOS_DIST -> $MACOS_ZIP"
   rm -f "$MACOS_ZIP"
-  ditto -c -k --keepParent "$APP_BUNDLE" "$MACOS_ZIP"
+  # --sequesterRsrc keeps the metadata twins macOS attaches to every file out
+  # of the folder itself (they go under __MACOSX), so what unzips beside
+  # Pob.app is the README and nothing else.
+  ditto -c -k --sequesterRsrc --keepParent "$MACOS_DIST" "$MACOS_ZIP"
   ASSETS+=("$MACOS_ZIP")
 
   # ── build Linux (via Docker, one zip per architecture) ─────────────────────

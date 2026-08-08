@@ -86,7 +86,8 @@ The WPF shell can be *compiled* (not run) on Unix — the .NET SDK supports
 ```
 
 Both produce `win/dist/Pob/` (`Pob.exe` + `pob-core.exe` side by side, the
-`pob.exe` CLI in `Helpers\`, and `install.ps1`) and
+`pob.exe` CLI in `Helpers\`, plus `install.ps1` and the `README.txt` users
+read first — the copy in this folder) and
 `Pob-<version>-windows-<arch>.zip` in the project root. Default target is
 `amd64`; use `WIN_ARCHS="amd64 arm64"` to build both.
 

@@ -52,6 +52,9 @@ Copy-Item (Join-Path $RootDir "core\bin\pob-core.exe") $DistDir
 # puts on the PATH.
 Copy-Item (Join-Path $RootDir "core\bin\pob.exe") (Join-Path $DistDir "Helpers\pob.exe")
 Copy-Item (Join-Path $ScriptDir "install.ps1") (Join-Path $DistDir "install.ps1")
+# What the person who unzips this reads first: how to install it, and what the
+# pob command is for.
+Copy-Item (Join-Path $ScriptDir "README.txt") (Join-Path $DistDir "README.txt")
 if (Test-Path $VersionFile) { Copy-Item $VersionFile (Join-Path $DistDir "VERSION") }
 
 Write-Host "Creating $ZipPath…"

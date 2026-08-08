@@ -145,10 +145,23 @@ codesign --force --deep --options runtime \
   --sign "$IDENTITY" \
   "$APP_BUNDLE"
 
+# ── assemble dist ────────────────────────────────────────────────────────────
+# What release.sh zips: the app with the guide beside it, the same folder shape
+# the Linux and Windows releases unzip to. A .app on its own has nowhere to put
+# a README a person can read before installing anything.
+DIST_DIR="$OUTPUT_DIR/dist/Pob"
+echo "Assembling dist/Pob…"
+rm -rf "$OUTPUT_DIR/dist"
+mkdir -p "$DIST_DIR"
+ditto "$APP_BUNDLE" "$DIST_DIR/Pob.app"
+cp "$MACOS_DIR/README.txt" "$DIST_DIR/README.txt"
+cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
+
 echo ""
 echo "Done: $APP_BUNDLE"
 echo "  Version : $VERSION"
 echo "  Config  : $CONFIG"
 echo "  Signed  : $IDENTITY"
+echo "  Dist    : $DIST_DIR"
 echo ""
 echo "Run with:  open \"$APP_BUNDLE\""

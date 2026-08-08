@@ -107,7 +107,8 @@ directly:
 ```
 
 Both build scripts produce `linux-x11/dist/Pob/` (`pob` + `pob-core` side by
-side, the `pob` CLI in `Helpers/`, and `install.sh`) and
+side, the `pob` CLI in `Helpers/`, plus `install.sh` and the `README.txt`
+users read first — the copy in this folder) and
 `Pob-<version>-linux-<arch>.zip` at the project root.
 
 Project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)

@@ -70,6 +70,9 @@ cp "$ROOT_DIR/core/bin/pob-core-linux-$ARCH" "$DIST_DIR/pob-core"
 mkdir -p "$DIST_DIR/Helpers"
 cp "$ROOT_DIR/core/bin/pob-linux-$ARCH" "$DIST_DIR/Helpers/pob"
 cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
+# What the person who unzips this reads first: how to install it, and what the
+# pob command is for.
+cp "$SCRIPT_DIR/README.txt" "$DIST_DIR/README.txt"
 cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
 echo "Creating ${ZIP_PATH}…"

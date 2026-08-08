@@ -67,6 +67,9 @@ for ARCH in $WIN_ARCHS; do
     # installer puts on the PATH.
     cp "$ROOT_DIR/core/bin/pob.exe" "$DIST_DIR/Helpers/pob.exe"
     cp "$SCRIPT_DIR/install.ps1" "$DIST_DIR/install.ps1"
+    # What the person who unzips this reads first: how to install it, and what
+    # the pob command is for.
+    cp "$SCRIPT_DIR/README.txt" "$DIST_DIR/README.txt"
     cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
     echo "Creating ${ZIP_PATH}…"

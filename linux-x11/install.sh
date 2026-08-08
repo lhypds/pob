@@ -109,14 +109,27 @@ if pgrep -x pob >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "📦 Installing to ${PREFIX}…"
 mkdir -p "$PREFIX/Helpers" "$BIN_DIR"
 
-install -m 755 "$SRC/pob" "$PREFIX/pob"
-install -m 755 "$SRC/pob-core" "$PREFIX/pob-core"
-install -m 755 "$SRC/Helpers/pob" "$PREFIX/Helpers/pob"
-if [ -f "$SRC/VERSION" ]; then
-    install -m 644 "$SRC/VERSION" "$PREFIX/VERSION"
+# Run from inside the install directory itself, there is nothing to copy —
+# every install below would be a file onto itself — but the link is still
+# worth (re)making.
+if [ "$SRC" = "$PREFIX" ]; then
+    echo "📦 Already in $PREFIX — linking only."
+else
+    echo "📦 Installing to ${PREFIX}…"
+    install -m 755 "$SRC/pob" "$PREFIX/pob"
+    install -m 755 "$SRC/pob-core" "$PREFIX/pob-core"
+    install -m 755 "$SRC/Helpers/pob" "$PREFIX/Helpers/pob"
+    if [ -f "$SRC/VERSION" ]; then
+        install -m 644 "$SRC/VERSION" "$PREFIX/VERSION"
+    fi
+    # The installer and the guide go along too, so uninstalling later — or
+    # reading what any of this was — does not mean finding the zip again.
+    install -m 755 "$0" "$PREFIX/install.sh"
+    if [ -f "$SRC/README.txt" ]; then
+        install -m 644 "$SRC/README.txt" "$PREFIX/README.txt"
+    fi
 fi
 
 # The command on the PATH is the CLI, not the app: `pob` typed in a terminal

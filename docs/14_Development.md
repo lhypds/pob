@@ -13,7 +13,7 @@ Tools (Swift) on macOS, GTK 3 development libraries on Linux (see
 ./start.sh      # build and run in the foreground
 ./restart.sh    # rebuild and relaunch in the background (logs to ~/.pob/app.log)
 ./stop.sh       # stop the app and the core process
-./build.sh      # release build (macOS: Pob.app, Linux: dist tarball)
+./build.sh      # release build (the dist/Pob folder a release zip is made of)
 ./keyboard.sh   # build and run Pob Keyboard (its own Go module, not built
                 # by the scripts above)
 ```
@@ -49,10 +49,14 @@ Update `VERSION`, then run `release.sh`. What it builds follows the
 - `SYSTEM=linux-*` — builds `Pob-<version>-linux-<arch>.zip` natively via
   `linux-x11/build.sh` for the host architecture only
 
-Every zip has the same shape as the macOS bundle: the shell app, `pob-core`
-beside it, the `pob` CLI in `Helpers/`, and an installer that puts the app
-somewhere permanent and the CLI on the PATH — `install.sh` on Linux,
-`install.ps1` on Windows (see [CLI](07_CLI.md)).
+All three zips unzip to the same `Pob/` folder: the shell app, `pob-core`
+beside it, the `pob` CLI in `Helpers/`, a `README.txt` telling the person who
+downloaded it how to install and use the `pob` command, and — on Linux and
+Windows — the installer that does it (`install.sh` / `install.ps1`; macOS has
+the app-menu item instead). See [CLI](07_CLI.md).
+
+The `README.txt` in each zip is `macos/README.txt`, `linux-x11/README.txt` or
+`win/README.txt`, copied in at build time.
 
 
 See also
