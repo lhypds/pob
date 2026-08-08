@@ -269,6 +269,17 @@ void app_update_window_lock(void) {
     app_update_click_through();
 }
 
+// Sets the window lock and syncs the toolbar button (icon, tooltip).
+static void set_locked(gboolean on) {
+    if (g_state.is_locked == on) return;
+    g_state.is_locked = on;
+    set_button_icon(g_state.lock_btn, on ? ICONS_LOCKED : ICONS_UNLOCKED);
+    gtk_widget_set_tooltip_text(g_state.lock_btn,
+                                on ? "Window Locked (click to unlock)"
+                                   : "Window Unlocked (click to lock)");
+    app_update_window_lock();
+}
+
 // Sets click-through and syncs the toolbar button (icon, tooltip, shape).
 static void set_click_through(gboolean on) {
     if (g_state.is_click_through == on) return;
@@ -338,6 +349,10 @@ static void start_recording(gboolean clearing_macro) {
     }
     g_state.is_recording = TRUE;
     core_bridge_recording_changed(TRUE);
+    // Recorded coordinates are relative to the window, so a nudge or a resize
+    // partway through aims the replay at the wrong pixels. Unlocking again is
+    // the user's call.
+    set_locked(TRUE);
     // Same behavior as macOS: starting to record outside a session enables
     // click-through so interactions reach the app below the overlay.
     if (!g_state.is_executing) set_click_through(TRUE);
@@ -379,10 +394,13 @@ enum {
 
 static void on_macro_choice_response(GtkDialog *dialog, gint response, gpointer data) {
     (void)data;
-    if (response == RESPONSE_RUN_INSTRUCTION)
+    if (response == RESPONSE_RUN_INSTRUCTION) {
+        set_locked(TRUE);
         core_bridge_run_instruction(g_state.is_recording);
-    else if (response == RESPONSE_RUN_MACRO)
+    } else if (response == RESPONSE_RUN_MACRO) {
+        set_locked(TRUE);
         core_bridge_run_macro();
+    }
     gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
@@ -557,10 +575,12 @@ static void on_play_clicked(GtkButton *b, gpointer d) {
     }
     gchar *macro = settings_get_macro();
     g_strstrip(macro);
-    if (*macro == '\0')
+    if (*macro == '\0') {
+        set_locked(TRUE);
         core_bridge_run_instruction(g_state.is_recording);
-    else
+    } else {
         show_macro_choice_dialog();
+    }
     g_free(macro);
 }
 
@@ -591,13 +611,7 @@ static void on_clickthrough_clicked(GtkButton *b, gpointer d) {
 
 static void on_lock_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    g_state.is_locked = !g_state.is_locked;
-    set_button_icon(g_state.lock_btn, g_state.is_locked ? ICONS_LOCKED : ICONS_UNLOCKED);
-    gtk_widget_set_tooltip_text(g_state.lock_btn,
-                                g_state.is_locked
-                                    ? "Window Locked (click to unlock)"
-                                    : "Window Unlocked (click to lock)");
-    app_update_window_lock();
+    set_locked(!g_state.is_locked);
 }
 
 static void on_reset_clicked(GtkButton *b, gpointer d) {

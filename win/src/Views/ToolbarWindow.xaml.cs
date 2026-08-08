@@ -162,6 +162,7 @@ public partial class ToolbarWindow : Window
         }
         AppState.IsRecording = true;
         CoreBridge.RecordingChanged(true);
+        SetLocked(true);
         // Same behavior as macOS: starting to record outside a session enables
         // click-through so interactions reach the app below the overlay.
         if (!AppState.IsExecuting && !AppState.IsClickThrough)
@@ -191,14 +192,19 @@ public partial class ToolbarWindow : Window
         }
         string macro = SettingsService.GetMacro().Trim();
         if (macro.Length == 0)
+        {
+            SetLocked(true);
             CoreBridge.RunInstruction(AppState.IsRecording);
+        }
         else
             switch (Dialogs.ShowMacroChoice(this))
             {
                 case MacroChoice.RunInstruction:
+                    SetLocked(true);
                     CoreBridge.RunInstruction(AppState.IsRecording);
                     break;
                 case MacroChoice.RunMacro:
+                    SetLocked(true);
                     CoreBridge.RunMacro();
                     break;
             }
@@ -220,10 +226,17 @@ public partial class ToolbarWindow : Window
         AppState.UpdateClickThrough();
     }
 
-    private void OnLockClicked(object sender, RoutedEventArgs e)
+    private void OnLockClicked(object sender, RoutedEventArgs e) => SetLocked(!AppState.IsLocked);
+
+    // Sets the window lock and syncs the toolbar button. Play and Record turn
+    // it on themselves: recorded coordinates are relative to the window, so a
+    // nudge or a resize partway through aims the replay at the wrong pixels.
+    // Unlocking again is the user's call.
+    private void SetLocked(bool locked)
     {
-        AppState.IsLocked = !AppState.IsLocked;
-        SetLockVisual(AppState.IsLocked);
+        if (AppState.IsLocked == locked) return;
+        AppState.IsLocked = locked;
+        SetLockVisual(locked);
         AppState.UpdateWindowLock();
     }
 
