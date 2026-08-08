@@ -69,6 +69,6 @@ Documentation
 | [Pob Server](docs/09_Server.md) | The server every instance runs, and its address |
 | [Operation API](docs/10_Operation%20API.md) | The HTTP command grammar for driving the machine |
 | [Control API](docs/11_Control%20API.md) | The localhost API the `pob` CLI drives the app with |
-| [Web UI](docs/12_Web%20AUI.md) | The remote control page, for a phone |
+| [Web UI](docs/12_Web%20UI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
