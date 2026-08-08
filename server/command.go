@@ -1,4 +1,4 @@
-package webui
+package server
 
 import (
 	"strconv"
@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// Target is the machine the web UI drives: Pob's virtual cursor and the
+// Target is the machine the server drives: Pob's virtual cursor and the
 // keyboard and mouse events the native shell posts for it. Coordinates are
 // screenshot pixels, the same space the MCP tools work in.
 type Target interface {
@@ -90,7 +90,7 @@ func (c *controller) run(body string) {
 		for _, chord := range strings.Split(strings.TrimSpace(argument), ",") {
 			key, ok := pobKey(chord)
 			if !ok {
-				c.logf("WebUI: no key for %q", chord)
+				c.logf("Server: no key for %q", chord)
 				continue
 			}
 			c.fail("key press", c.target.KeyPress(key))
@@ -103,20 +103,20 @@ func (c *controller) run(body string) {
 		// Media and brightness keys. The Pob Keyboard offers them on a Mac
 		// target's function row, but the shells post plain key events and have
 		// nowhere to put a consumer-control usage, so they go no further.
-		c.logf("WebUI: consumer control %q is not supported", strings.TrimSpace(argument))
+		c.logf("Server: consumer control %q is not supported", strings.TrimSpace(argument))
 
 	case "automove":
 		// The board's idle-jiggler. Pob has no such mode and needs none.
 
 	default:
-		c.logf("WebUI: unknown command %q", verb)
+		c.logf("Server: unknown command %q", verb)
 	}
 }
 
 func (c *controller) mouse(argument string) {
 	action, x, y, ok := parseMouse(argument)
 	if !ok {
-		c.logf("WebUI: bad mouse command %q", argument)
+		c.logf("Server: bad mouse command %q", argument)
 		return
 	}
 
@@ -192,7 +192,7 @@ func (c *controller) mouse(argument string) {
 		c.fail("scroll", c.target.Scroll(x*scrollPixelsPerNotch, -y*scrollPixelsPerNotch))
 
 	default:
-		c.logf("WebUI: unknown mouse action %q", action)
+		c.logf("Server: unknown mouse action %q", action)
 	}
 }
 
@@ -219,6 +219,6 @@ func parseMouse(s string) (action string, x, y int, ok bool) {
 // is something you see on the target machine anyway.
 func (c *controller) fail(what string, err error) {
 	if err != nil {
-		c.logf("WebUI: %s failed: %v", what, err)
+		c.logf("Server: %s failed: %v", what, err)
 	}
 }

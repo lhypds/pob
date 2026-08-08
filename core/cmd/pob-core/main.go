@@ -23,7 +23,7 @@ import (
 	"pob/core/internal/llm"
 	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
-	"pob/webui"
+	"pob/server"
 )
 
 func main() {
@@ -79,19 +79,23 @@ func main() {
 	// `pob mcp start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
 
-	// The web UI does start with the app, so that reaching for a phone is all
-	// it takes: it serves at http://<machine>:<port> for anyone on the same
-	// network, which is why "webui": false in settings.json turns it off.
-	web := webui.New(store.InstanceID(), br.Remote(), applog.Logf)
-	if cfg.WebUI() {
-		if err := web.Start(cfg.WebUIPort()); err != nil {
-			applog.Logf("WebUI: not started: %v", err)
+	// The Pob server does start with the instance, so that reaching for a
+	// phone is all it takes: it serves the API and the web UI at
+	// http://<machine>:<port> for anyone on the same network, which is why
+	// "server": false in settings.json turns it off.
+	srv := server.New(store.InstanceID(), br.Remote(), applog.Logf)
+	if cfg.ServerEnabled() {
+		if err := srv.Start(cfg.ServerPort()); err != nil {
+			applog.Logf("Server: not started: %v", err)
 		}
 	}
+	// Told once, here: the server is started with the instance and runs for as
+	// long as it does, so this address is the address until the app is quit.
+	br.NotifyServerState(srv.Running(), srv.URL())
 
 	// The control server lets the `pob` CLI drive this instance; it always
 	// runs, on an ephemeral port advertised in logs/<instance>/control.json.
-	ctl := ctlserver.New(cfg, store, runner, mcp, web, br)
+	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br)
 	_ = ctl.Start()
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())
@@ -103,7 +107,7 @@ func main() {
 	go func() {
 		<-sig
 		ctl.Stop()
-		web.Stop()
+		srv.Stop()
 		store.WriteInstanceEnd()
 		os.Exit(0)
 	}()
@@ -111,6 +115,6 @@ func main() {
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()
 	ctl.Stop()
-	web.Stop()
+	srv.Stop()
 	store.WriteInstanceEnd()
 }

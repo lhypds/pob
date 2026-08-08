@@ -4,9 +4,9 @@
 // logs/<instance>/control.json ({pid, port}) which the CLI scans to discover
 // live instances. Endpoints:
 //
-//	GET  /status           — instance id, executing/recording state, MCP and web UI state
+//	GET  /status           — instance id, executing/recording state, MCP and Pob server state
 //	GET  /mcp              — MCP server info (running, port, url, tools)
-//	GET  /webui            — web UI info (running, port, url)
+//	GET  /server           — Pob server info (running, port, url)
 //	POST /mcp/start        — start the MCP server; body: none
 //	POST /mcp/stop         — stop the MCP server
 //	POST /run/instruction  — run instruction.txt; optional body {"instruction": "..."} replaces it first
@@ -30,7 +30,7 @@ import (
 	"pob/core/internal/config"
 	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
-	"pob/webui"
+	"pob/server"
 )
 
 type Server struct {
@@ -38,15 +38,15 @@ type Server struct {
 	store  *storage.Storage
 	runner *agent.Runner
 	mcp    *mcpserver.Server
-	web    *webui.Server
+	pob    *server.Server
 	br     *bridge.Bridge
 
 	server *http.Server
 	port   int
 }
 
-func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, web *webui.Server, br *bridge.Bridge) *Server {
-	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, web: web, br: br}
+func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, pob *server.Server, br *bridge.Bridge) *Server {
+	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, pob: pob, br: br}
 }
 
 func (s *Server) controlFile() string {
@@ -61,7 +61,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp", s.handleMCPInfo)
 	mux.HandleFunc("/mcp/start", s.handleMCPStart)
 	mux.HandleFunc("/mcp/stop", s.handleMCPStop)
-	mux.HandleFunc("/webui", s.handleWebUIInfo)
+	mux.HandleFunc("/server", s.handleServerInfo)
 	mux.HandleFunc("/run/instruction", s.handleRunInstruction)
 	mux.HandleFunc("/run/macro", s.handleRunMacro)
 	mux.HandleFunc("/run/stop", s.handleRunStop)
@@ -133,20 +133,20 @@ func (s *Server) mcpInfo() map[string]any {
 	}
 }
 
-// webUIInfo describes the phone-facing remote control page. A stopped server
-// still reports the port it would take, which is the one in settings.json.
-// "urls" is one address per network the machine is on, since which of them is
-// reachable depends on where the phone is.
-func (s *Server) webUIInfo() map[string]any {
-	port := s.web.Port()
+// pobServerInfo describes the Pob server — the API and the web UI it hosts. A
+// stopped server still reports the port it would take, which is the one in
+// settings.json. "urls" is one address per network the machine is on, since
+// which of them is reachable depends on where the phone is.
+func (s *Server) pobServerInfo() map[string]any {
+	port := s.pob.Port()
 	if port == 0 {
-		port = s.cfg.WebUIPort()
+		port = s.cfg.ServerPort()
 	}
 	return map[string]any{
-		"running": s.web.Running(),
+		"running": s.pob.Running(),
 		"port":    port,
-		"url":     s.web.URL(),
-		"urls":    s.web.URLs(),
+		"url":     s.pob.URL(),
+		"urls":    s.pob.URLs(),
 	}
 }
 
@@ -160,12 +160,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"recording": s.runner.Recording(),
 		"model":     s.cfg.Model(),
 		"mcp":       s.mcpInfo(),
-		"webui":     s.webUIInfo(),
+		"server":    s.pobServerInfo(),
 	})
 }
 
-func (s *Server) handleWebUIInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.webUIInfo())
+func (s *Server) handleServerInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.pobServerInfo())
 }
 
 func (s *Server) handleMCPInfo(w http.ResponseWriter, r *http.Request) {

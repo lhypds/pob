@@ -1,0 +1,55 @@
+
+Architecture
+============
+
+Pob is split into a platform-independent brain and a native shell:
+
+```
+core/    The brain (Go, zero dependencies). Agent loop (plan → execute →
+         verify), OpenAI-compatible LLM client, session logs, macro engine,
+         and the MCP SSE server. Compiled to a single binary: pob-core.
+
+macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
+         virtual cursor, mouse/keyboard event injection, and the permission
+         surface (Screen Recording / Accessibility).
+
+linux-x11/  The same hands and eyes for Linux/Xorg (C + GTK 3). Identical UI
+            and features; screenshots via XGetImage, input via XTest.
+            See linux-x11/README.md.
+
+win/     The same hands and eyes for Windows (C# / WPF). Identical UI and
+         features; screenshots via GDI, input via SendInput.
+         See win/README.md.
+
+server/  The Pob server (Go, zero dependencies), compiled into pob-core and
+         started with the instance: an HTTP server serving the remote-control
+         API, and hosting the Web UI page it keeps in server/webui/.
+
+keyboard/  Pob Keyboard (Go + Fyne), a separate desktop app: a full-size
+           on-screen keyboard and a trackpad in their own window, driving Pob
+           through the same server API. Run it with ./keyboard.sh.
+```
+
+The shell spawns `pob-core` as a child process and the two talk over
+stdin/stdout with line-delimited JSON-RPC:
+
+- Shell → core: `run.instruction`, `run.macro`, `run.stop`, `recording.changed`
+- Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
+  `keyboard.type`, `ui.confirmMaxStep`, … and `session.state` notifications
+
+Everything that drives the machine goes through those same calls — the agent
+loop, the MCP server, and the Pob server — so a tap on a phone and a tool call
+from a model take exactly the same path.
+
+All coordinates crossing the boundary are screenshot pixels; the shell owns
+the conversion to real screen positions. Porting to a new platform means
+reimplementing only the shell — the brain is shared.
+
+
+See also
+--------
+
+- [Pob Server](Server.md) — the HTTP server started with every instance
+- [Pob Keyboard](Keyboard.md) — the separate desktop client in `keyboard/`
+- [Development](Development.md) — building the core and the shells
+- [Logs](Logs.md) — what the core writes as it runs

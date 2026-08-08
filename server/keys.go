@@ -1,8 +1,8 @@
-package webui
+package server
 
 import "strings"
 
-// Both clients — the page in index.html and the Pob Keyboard app — name keys
+// Both clients — the web UI page and the Pob Keyboard app — name keys
 // the way the pico-hid HTTP API does: the *physical* key, in the style of the
 // USB HID usage tables, so the target machine applies its own layout. Pob's
 // own keyPress vocabulary spells the same keys in lower case and, in a few

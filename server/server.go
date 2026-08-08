@@ -1,19 +1,21 @@
-// Package webui serves the phone-in-your-hand remote control for Pob: a text
-// field, a keyboard-mirror button and a trackpad, on a page reachable at
+// Package server is the Pob server: the HTTP surface a machine running Pob
+// answers on, reachable at
 //
 //	http://192.168.1.40:8033/pb-a703
 //
-// It is the pico-hid board's web UI pointed at Pob instead of at a USB HID
-// dongle: the page in index.html is that page, and the commands it POSTs are
-// that HTTP API, translated in command.go into the same cursor and keyboard
-// calls the MCP server makes.
+// It serves two things. The API is the pico-hid board's, so its clients work
+// against Pob unchanged: the commands POSTed here are translated in command.go
+// into the same cursor and keyboard calls the MCP server makes. The web UI in
+// webui/index.html is one such client — a text field, a keyboard-mirror button
+// and a trackpad — served from the same address so a phone on the network can
+// drive the machine with nothing installed.
 //
-// One server runs with the app, on the port in settings.json — the same on
-// every machine unless someone changes it, so the address can be typed from
+// The server starts with the instance, on the port in settings.json — the same
+// on every machine unless someone changes it, so the address can be typed from
 // memory. The instance id is kept in the path so an address that names it
-// stays valid, but the bare root is the same page: there is one instance to
+// stays valid, but the bare root is the same server: there is one instance to
 // reach (see router.go).
-package webui
+package server
 
 import (
 	_ "embed"
@@ -31,7 +33,7 @@ import (
 // app has no business asking for.
 const DefaultPort = 8033
 
-// idleAfter is how long the page must be quiet before the virtual cursor is
+// idleAfter is how long the API must be quiet before the virtual cursor is
 // allowed to go back into hiding. Long enough that putting the phone down
 // mid-task doesn't lose sight of the cursor, short enough that a forgotten
 // open tab doesn't pin it on screen for the rest of the session.
@@ -41,7 +43,11 @@ const idleAfter = 90 * time.Second
 // text field; a megabyte of it is already far past what anyone types.
 const maxBody = 1 << 20
 
-//go:embed index.html
+// The web UI is the server's own client, kept in its own directory because it
+// is the one part of this package that isn't Go — and built into the binary,
+// so serving it needs nothing on disk.
+//
+//go:embed webui/index.html
 var page []byte
 
 type Server struct {
@@ -78,11 +84,11 @@ func New(instance string, target Target, logf func(string, ...any)) *Server {
 // around: only one instance runs, so something else has it, and quietly
 // serving nowhere would be worse than saying so.
 //
-// The listener is on every interface on purpose — a page only reachable from
-// the machine it drives would have no point — so anyone on the same network
-// who knows the address can move this machine's pointer and type on it. That
-// is the same bargain the pico-hid board makes, and the reason "webui" is a
-// setting that can be turned off.
+// The listener is on every interface on purpose — a remote control only
+// reachable from the machine it drives would have no point — so anyone on the
+// same network who knows the address can move this machine's pointer and type
+// on it. That is the same bargain the pico-hid board makes, and the reason
+// "server" is a setting that can be turned off.
 func (s *Server) Start(port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,14 +108,14 @@ func (s *Server) Start(port int) error {
 	s.server = &http.Server{Handler: http.HandlerFunc(s.route)}
 	go func(server *http.Server) {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			s.logf("WebUI: listener failed: %v", err)
+			s.logf("Server: listener failed: %v", err)
 		}
 	}(s.server)
 
 	// urlsLocked, not URLs: the lock is already held here, and sync.Mutex is
 	// not reentrant — taking it again would wedge the instance before it ever
 	// served a page.
-	s.logf("WebUI: serving at %s", strings.Join(s.urlsLocked(), " "))
+	s.logf("Server: serving at %s", strings.Join(s.urlsLocked(), " "))
 	return nil
 }
 
@@ -161,9 +167,9 @@ func (s *Server) URL() string {
 	return ""
 }
 
-// URLs is every address the page can be reached at: one per network the
-// machine is on. Each names the instance in the path — the bare root serves
-// the same page, but an address that says which machine it drives is the one
+// URLs is every address the server can be reached at: one per network the
+// machine is on. Each names the instance in the path — the bare root is the
+// same server, but an address that says which machine it drives is the one
 // worth writing down, and it is what Pob Keyboard is given.
 func (s *Server) URLs() []string {
 	s.mu.Lock()
@@ -183,8 +189,8 @@ func (s *Server) urlsLocked() []string {
 	return urls
 }
 
-// touch marks the page as being used, which keeps the virtual cursor visible
-// while it is and lets it fade back out once the page goes quiet.
+// touch marks the server as being driven, which keeps the virtual cursor
+// visible while it is and lets it fade back out once the commands stop.
 func (s *Server) touch() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

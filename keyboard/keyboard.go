@@ -1,6 +1,6 @@
 // Command keyboard is Pob Keyboard: a desktop front end for a running Pob
 // instance — a full-size on-screen keyboard, and a trackpad beside it, driving
-// the machine Pob runs on through the web UI's HTTP API.
+// the machine Pob runs on through the Pob server's HTTP API.
 //
 //	./keyboard.sh
 //
@@ -84,7 +84,7 @@ const (
 	// An id is always this long: Pob builds it from two bytes of a fresh UID
 	// as lowercase hex.
 	instanceIDLength = 4
-	// The port Pob is reached through, unless someone has changed webui_port
+	// The port Pob is reached through, unless someone has changed server_port
 	// — which is why it is editable at all.
 	defaultPort = 8033
 )
@@ -1297,11 +1297,11 @@ func (r *keyboardPanelRenderer) Destroy()                     {}
 // ---------------------------------------------------------------------------
 // Trackpad
 //
-// The gestures are the web UI's, from public/index.html: dragging moves the
-// pointer, click, right-click and double-click do the obvious thing, and the
-// wheel scrolls the target machine. Click and then press again straight away to
-// drag on the target itself — the second press grabs and holds the button, so
-// motion after it drags whatever is under the pointer.
+// The gestures are the web UI's, from the page the Pob server hosts: dragging
+// moves the pointer, click, right-click and double-click do the obvious thing,
+// and the wheel scrolls the target machine. Click and then press again straight
+// away to drag on the target itself — the second press grabs and holds the
+// button, so motion after it drags whatever is under the pointer.
 //
 // The clicks are told apart here rather than by Fyne, which cannot say "a press
 // arrived inside the double-click window" — and that moment is exactly when the

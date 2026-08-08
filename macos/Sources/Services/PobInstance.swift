@@ -35,7 +35,7 @@ final class PobInstance: NSObject, ObservableObject {
         // SwiftUI builds this scene before the app delegate can refuse a
         // second launch, so the refusal has to be honoured here too: without
         // the machine's instance lock, starting a core would leave a
-        // pob-core, a control port and a claim on the web UI port behind for
+        // pob-core, a control port and a claim on the server port behind for
         // the few moments before the app quits.
         guard SettingsService.holdsInstanceLock else { return }
         bridge.start()

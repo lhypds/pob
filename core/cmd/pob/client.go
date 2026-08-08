@@ -154,20 +154,20 @@ func showStatus(inst *Instance) {
 		}
 	}
 
-	if web, ok := status["webui"].(map[string]any); ok {
-		running, _ := web["running"].(bool)
-		urls, _ := web["urls"].([]any)
+	if pob, ok := status["server"].(map[string]any); ok {
+		running, _ := pob["running"].(bool)
+		urls, _ := pob["urls"].([]any)
 		switch {
 		case !running:
-			fmt.Printf("Web UI:     off\n")
+			fmt.Printf("Server:     off\n")
 		case len(urls) == 0:
-			fmt.Printf("Web UI:     %s\n", web["url"])
+			fmt.Printf("Server:     %s\n", pob["url"])
 		default:
-			// The name first, then the addresses it resolves to — a phone on a
-			// network that swallows mDNS needs one of the latter.
+			// One line per network the machine is on: which of them a phone can
+			// reach depends on where the phone is.
 			for i, u := range urls {
 				if i == 0 {
-					fmt.Printf("Web UI:     %v\n", u)
+					fmt.Printf("Server:     %v\n", u)
 				} else {
 					fmt.Printf("            %v\n", u)
 				}

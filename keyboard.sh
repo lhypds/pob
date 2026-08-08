@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds and runs Pob Keyboard: a full-size on-screen keyboard and a trackpad
-# in their own window, driving a running Pob instance through its web UI.
+# in their own window, driving a running Pob instance through its server.
 #
 #   ./keyboard.sh
 #   ./keyboard.sh -url http://192.168.1.40:8033/pb-3f9a

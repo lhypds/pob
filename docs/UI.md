@@ -1,0 +1,43 @@
+
+UI
+==
+
+The Pob window is an overlay: it sits above the app you want driven, and what
+it frames is what the screenshots show and what the clicks are aimed through.
+
+<img width="839" height="762" alt="image" src="https://github.com/user-attachments/assets/e74edfe9-7bd7-40b1-a403-d0391477d2d8" />
+
+The toolbar shows this instance's ID (`pb-<uid>`) at the left, beside the window buttons; the action
+buttons are packed against the right edge, in this order (left to right):
+
+| # | Button | Description |
+|---|--------|-------------|
+| 1 | Settings | Open the settings file |
+| 2 | Logs | Open the logs folder |
+| 3 | App Log | Open the app log file |
+| 4 | Instruction | Open the instruction file |
+| 5 | Macro | Open the macro file |
+| 6 | Record Macro | Start/stop macro recording; clears macro on start |
+| 7 | Execute / Stop | Run the instruction or macro; stop if already running |
+| 8 | Target | Hover to inspect pixel coordinates; click to copy `(x, y)` to clipboard |
+| 9 | Crop | Drag to select a region; release to copy `(x, y, width, height)` to clipboard |
+| 10 | Screenshot | Capture the content area to `logs/<instance>/screenshots/`; while recording, also appends `take_screenshot()` to the macro |
+| 11 | Click-Through | Toggle whether clicks pass through the window to apps behind it (on by default) |
+| 12 | Lock | Lock the window to prevent moving or resizing |
+| 13 | Clear | Clear instruction, macro, logs, or all |
+
+* Target and Crop are helper functions for when you hard to describe the GUI element.  
+
+Clicking the instance badge copies this machine's address —
+`http://192.168.1.40:8033/pb-a703` — which is what a phone's browser or
+[Pob Keyboard](Keyboard.md) has to be pointed at. With the
+[server](Server.md) turned off there is no address, and the bare ID is copied
+instead.
+
+
+See also
+--------
+
+- [Logs](Logs.md) — the tree the Logs button opens
+- [Macro](Macro.md) — what Record Macro writes and Execute replays
+- [Settings](Settings.md) — the file the Settings button opens

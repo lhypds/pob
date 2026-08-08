@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	"pob/webui"
+	"pob/server"
 )
 
 type Config struct {
@@ -38,8 +38,18 @@ var defaults = map[string]any{
 	"editor":              "system",
 	"terminal":            "system",
 	"stop_hook":           "",
-	"webui":               true,
-	"webui_port":          webui.DefaultPort,
+	"server":              true,
+	"server_port":         server.DefaultPort,
+}
+
+// legacyKeys are settings renamed since they were written, mapped old to new.
+// A settings file from an older Pob is carried over on first read rather than
+// left behind: a machine that had moved its port would otherwise go quietly
+// back to the default one, and the address that was worth writing down would
+// stop working.
+var legacyKeys = map[string]string{
+	"webui":      "server",
+	"webui_port": "server_port",
 }
 
 func New(root, instanceID string) *Config {
@@ -69,19 +79,24 @@ func (c *Config) ensureFiles() {
 		_ = os.MkdirAll(filepath.Join(c.LogsDir(), c.InstanceID), 0o755)
 		c.seedInstanceSettings()
 	}
+	// The root template is migrated too, not just this instance's copy: it is
+	// the file the Settings menu opens, so a key left under its old name there
+	// would be edited to no effect.
+	migrateLegacyKeys(c.rootSettingsFile())
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
 	} else {
-		json := c.readSettings()
+		migrateLegacyKeys(c.settingsFile())
+		settings := c.readSettings()
 		changed := false
 		for key, value := range defaults {
-			if _, ok := json[key]; !ok {
-				json[key] = value
+			if _, ok := settings[key]; !ok {
+				settings[key] = value
 				changed = true
 			}
 		}
 		if changed {
-			c.writeSettings(json)
+			c.writeSettings(settings)
 		}
 	}
 	if _, err := os.Stat(c.instructionFile()); os.IsNotExist(err) {
@@ -111,8 +126,32 @@ func (c *Config) seedInstanceSettings() {
 	_ = os.WriteFile(c.settingsFile(), data, 0o644)
 }
 
-func (c *Config) readSettings() map[string]any {
-	data, err := os.ReadFile(c.settingsFile())
+// migrateLegacyKeys rewrites settings that have been renamed, keeping the
+// value that was set against the old name. A file that already uses the new
+// name wins — the old key is then only a leftover, and is dropped.
+func migrateLegacyKeys(path string) {
+	settings := readSettingsFile(path)
+	changed := false
+	for old, current := range legacyKeys {
+		value, ok := settings[old]
+		if !ok {
+			continue
+		}
+		delete(settings, old)
+		if _, taken := settings[current]; !taken {
+			settings[current] = value
+		}
+		changed = true
+	}
+	if changed {
+		writeSettingsFile(path, settings)
+	}
+}
+
+func (c *Config) readSettings() map[string]any { return readSettingsFile(c.settingsFile()) }
+
+func readSettingsFile(path string) map[string]any {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return map[string]any{}
 	}
@@ -166,11 +205,12 @@ func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.opena
 func (c *Config) Model() string    { return c.str("model", "gpt-4o") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
 
-// WebUI reports whether the phone-facing remote control page should be
-// served. It is on by default; turning it off is how a machine stops
-// accepting pointer and keyboard commands from the local network.
-func (c *Config) WebUI() bool {
-	switch v := c.readSettings()["webui"].(type) {
+// ServerEnabled reports whether the Pob server should run. It is on by
+// default; turning it off is how a machine stops accepting pointer and
+// keyboard commands from the local network — which also takes the web UI down
+// with it, since that page is served by the same server.
+func (c *Config) ServerEnabled() bool {
+	switch v := c.readSettings()["server"].(type) {
 	case bool:
 		return v
 	case string:
@@ -182,17 +222,17 @@ func (c *Config) WebUI() bool {
 	return true
 }
 
-// WebUIPort is the port every instance on this machine is reached through —
-// one port, with the instance named in the path, so the address can be typed
-// from memory rather than looked up per window. POB_WEBUI_PORT overrides the
-// setting, for a shell or a .env that wants to pick it per launch.
-func (c *Config) WebUIPort() int {
-	if env := strings.TrimSpace(os.Getenv("POB_WEBUI_PORT")); env != "" {
+// ServerPort is the port this machine's Pob is reached through. It is the
+// same on every machine unless someone changes it, so the address can be
+// typed from memory. POB_SERVER_PORT overrides the setting, for a shell or a
+// .env that wants to pick it per launch.
+func (c *Config) ServerPort() int {
+	if env := strings.TrimSpace(os.Getenv("POB_SERVER_PORT")); env != "" {
 		if port, err := strconv.Atoi(env); err == nil && port > 0 && port < 65536 {
 			return port
 		}
 	}
-	return c.intVal("webui_port", webui.DefaultPort, 1)
+	return c.intVal("server_port", server.DefaultPort, 1)
 }
 
 func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }

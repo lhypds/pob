@@ -153,8 +153,19 @@ func (b *Bridge) NotifyExecutionState(executing bool) {
 	b.ipc.Notify("session.state", map[string]any{"executing": executing})
 }
 
+// NotifyServerState tells the UI where this instance answers on the network —
+// http://<machine>:<port>/<instance>, or "" while the server is off. The
+// address is the one thing about an instance worth handing to another device,
+// so the shell puts it behind the instance badge.
+//
+// A machine can be on more than one network, and then it has an address per
+// network; the first is sent, which is the one `pob status` prints.
+func (b *Bridge) NotifyServerState(running bool, url string) {
+	b.ipc.Notify("server.state", map[string]any{"running": running, "url": url})
+}
+
 // NotifyRemoteControl tells the UI that something outside the agent loop — an
-// MCP client, a browser on the web UI — is driving this instance, so the
+// MCP client, a browser on the Pob server — is driving this instance, so the
 // virtual cursor stays visible while it does. Kept separate from
 // session.state: remote control should not lock the window or pause the macro
 // recorder the way an agent run does.

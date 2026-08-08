@@ -308,14 +308,25 @@ struct InstanceContentView: View {
         toolbarActionItems
     }
 
+    /// What the badge puts on the pasteboard: this instance's address on the
+    /// network, which is what a phone's browser or Pob Keyboard has to be
+    /// pointed at and the only part of it worth typing by hand. With the
+    /// server off there is no address, and the id it shows is copied instead —
+    /// the name of its logs/<instance>/ directory, and what `pob show <id>`
+    /// takes.
+    private var badgeCopyText: String {
+        bridge.serverURL ?? instance.settings.instanceID
+    }
+
     /// Names this window's logs/<instance>/ directory, so the id on screen is
-    /// the directory to look in (and what `pob show <id>` takes). Click to
-    /// copy it, like the targeting and crop labels.
+    /// the directory to look in. Click to copy the address it answers on, like
+    /// the targeting and crop labels copy what they point at.
     private var instanceBadge: some View {
         Button(action: {
+            let text = badgeCopyText
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(instance.settings.instanceID, forType: .string)
-            showToast("Copied \(instance.settings.instanceID)")
+            NSPasteboard.general.setString(text, forType: .string)
+            showToast("Copied \(text)")
         }) {
             Text(instance.settings.instanceID)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -328,7 +339,8 @@ struct InstanceContentView: View {
                 )
         }
         .buttonStyle(.plain)
-        .help("Instance \(instance.settings.instanceID) — click to copy")
+        .help(bridge.serverURL.map { "Instance \(instance.settings.instanceID) — click to copy \($0)" }
+            ?? "Instance \(instance.settings.instanceID) — click to copy")
     }
 
     @ToolbarContentBuilder

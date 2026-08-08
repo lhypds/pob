@@ -16,6 +16,11 @@ final class CoreBridge: ObservableObject {
     @Published var isMCPDriving = false
     /// Set when the Go core asks the user whether to continue past max_steps.
     @Published var showMaxStepWarning = false
+    /// Where this instance answers on the network —
+    /// http://<machine>:<port>/<instance> — or nil while the Pob server is off
+    /// ("server": false in settings.json). Pushed by the Go core once at
+    /// startup; the instance badge copies it.
+    @Published var serverURL: String?
     /// Incremented whenever the Go core requests the screenshot flash effect.
     @Published var flashTick = 0
 
@@ -201,6 +206,13 @@ final class CoreBridge: ObservableObject {
                 // top-left corner where it reads as "no cursor at all".
                 if active { self.mouse.resetCursor() }
                 self.isMCPDriving = active
+            }
+
+        case "server.state":
+            let running = params["running"] as? Bool ?? false
+            let url = params["url"] as? String ?? ""
+            DispatchQueue.main.async {
+                self.serverURL = running && !url.isEmpty ? url : nil
             }
 
         case "screenshot.capture":

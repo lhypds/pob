@@ -1,4 +1,4 @@
-package webui
+package server
 
 import (
 	"io"
@@ -12,8 +12,8 @@ import (
 //
 // The instance id still names it — http://192.168.1.40:8033/pb-a703 — so an
 // address written down or handed to Pob Keyboard keeps working, and so the
-// page can say which machine it is driving. Both serve the same page; a path
-// naming some other instance is a 404, since there is nothing else here.
+// web UI can say which machine it is driving. Both are the same server; a
+// path naming some other instance is a 404, since there is nothing else here.
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	id, _ := splitInstance(r.URL.Path)
@@ -38,7 +38,7 @@ func splitInstance(path string) (id, rest string) {
 	return id, "/" + rest
 }
 
-// serve is the web UI itself: the page on GET, a command on POST.
+// serve is the server itself: the web UI page on GET, a command on POST.
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
