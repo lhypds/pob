@@ -59,11 +59,6 @@ const char *app_version(void) {
 // than the macOS compact toolbar, so render slightly smaller.
 #define POB_ICON_SIZE 12
 
-// Width of the window-edge band kept inside the input shape while
-// click-through is on, so the frame can still be grabbed to resize. Stays
-// within GTK's own CSD resize handle ("decoration-resize-handle", 20 px).
-#define POB_RESIZE_BORDER 12
-
 static const char *pick_icon(const char *const names[]) {
     GtkIconTheme *theme = gtk_icon_theme_get_default();
     for (int i = 0; names[i]; i++)
@@ -228,32 +223,37 @@ void app_update_click_through(void) {
                     !g_state.is_targeting && !g_state.is_cropping;
 
     if (pass) {
-        GtkAllocation hb, content;
+        GtkAllocation alloc, hb, content;
+        gtk_widget_get_allocation(win, &alloc);
         gtk_widget_get_allocation(g_state.headerbar, &hb);
         gtk_widget_get_allocation(g_state.content, &content);
 
-        // Interactive: the headerbar, plus a band along the visible frame's
-        // edges so the window can still be grabbed to resize. Bounded to the
-        // frame — the CSD shadow around it is invisible and must not catch
-        // clicks. A locked (or executing) window cannot be resized, so it
-        // keeps the band out and passes everything below the headerbar
-        // through.
+        // Interactive: the headerbar, plus — while the window can be resized
+        // — the CSD shadow band around the visible frame. GTK parks its eight
+        // input-only resize handles in that band (gtkwindow.c,
+        // update_border_windows: they sit *outside* the frame, the part of
+        // each corner handle that would reach inside is shaped away), and an
+        // input shape clipped to the frame takes them with it — no resize
+        // cursor, no resize. A locked (or executing) window cannot be resized
+        // anyway, so it keeps the band out and the invisible shadow catches
+        // no clicks.
+        gboolean resizable = !g_state.is_locked && !g_state.is_executing;
         cairo_rectangle_int_t frame = {
             content.x, hb.y, content.width, content.y + content.height - hb.y,
         };
+        if (resizable) {
+            frame.x = 0;
+            frame.y = 0;
+            frame.width = alloc.width;
+            frame.height = alloc.height;
+        }
         cairo_region_t *region = cairo_region_create_rectangle(&frame);
         cairo_rectangle_int_t hbr = {hb.x, hb.y, hb.width, hb.height};
         cairo_region_union_rectangle(region, &hbr);
 
-        int border = (g_state.is_locked || g_state.is_executing) ? 0 : POB_RESIZE_BORDER;
-        cairo_rectangle_int_t hole = {
-            content.x + border,
-            content.y,
-            content.width - 2 * border,
-            content.height - border,
-        };
-        if (hole.width > 0 && hole.height > 0)
-            cairo_region_subtract_rectangle(region, &hole);
+        cairo_rectangle_int_t hole = {content.x, content.y, content.width,
+                                      content.height};
+        cairo_region_subtract_rectangle(region, &hole);
 
         gtk_widget_input_shape_combine_region(win, region);
         cairo_region_destroy(region);
@@ -265,7 +265,7 @@ void app_update_click_through(void) {
 void app_update_window_lock(void) {
     gboolean locked = g_state.is_locked || g_state.is_executing;
     gtk_window_set_resizable(g_state.window, !locked);
-    // The resize band in the input shape only exists while resizing is allowed.
+    // The input shape only keeps GTK's resize handles while resizing is allowed.
     app_update_click_through();
 }
 

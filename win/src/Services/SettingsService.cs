@@ -276,6 +276,33 @@ public static class SettingsService
         }
     }
 
+    // Whether a command is on the PATH, the same lookup cmd.exe does, PATHEXT
+    // included. Worth asking first: `cmd /c code` exits quietly when VS Code
+    // isn't installed, and a quiet exit is exactly what leaves the toolbar
+    // button looking dead.
+    private static bool ExistsOnPath(string command)
+    {
+        string exts = Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD";
+        string dirs = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (string dir in dirs.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            foreach (string ext in exts.Split(';'))
+            {
+                // A PATH entry with invalid characters is one bad entry, not a
+                // reason to stop looking through the rest.
+                try
+                {
+                    if (File.Exists(Path.Combine(dir.Trim(), command + ext))) return true;
+                }
+                catch (ArgumentException)
+                {
+                }
+            }
+        }
+        return false;
+    }
+
     private static void OpenWithEditor(string path)
     {
         string editor = LoadStringKey("editor", "system");
@@ -284,31 +311,46 @@ public static class SettingsService
         {
             case "vscode":
                 // VS Code's CLI is code.cmd — go through cmd so PATH lookup works.
-                SpawnDetached("cmd.exe", "/c", "code", path);
+                if (ExistsOnPath("code")) { SpawnDetached("cmd.exe", "/c", "code", path); return; }
                 break;
             case "zed":
-                SpawnDetached("cmd.exe", "/c", "zed", path);
+                if (ExistsOnPath("zed")) { SpawnDetached("cmd.exe", "/c", "zed", path); return; }
                 break;
             case "sublime_text":
-                SpawnDetached("cmd.exe", "/c", "subl", path);
+                if (ExistsOnPath("subl")) { SpawnDetached("cmd.exe", "/c", "subl", path); return; }
                 break;
             case "vim":
-                string terminal = LoadStringKey("terminal", "system");
-                if (terminal == "wt" || terminal == "windows_terminal")
-                    SpawnDetached("wt.exe", "vim", path);
-                else // "system": a plain console window
-                    SpawnDetached("cmd.exe", "/c", "start", "vim", path);
-                break;
-            default: // "system": the file-type association (xdg-open equivalent)
-                try
+                if (ExistsOnPath("vim"))
                 {
-                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-                }
-                catch
-                {
-                    SpawnDetached("notepad.exe", path); // .log & friends without an association
+                    string terminal = LoadStringKey("terminal", "system");
+                    if ((terminal == "wt" || terminal == "windows_terminal") && ExistsOnPath("wt"))
+                        SpawnDetached("wt.exe", "vim", path);
+                    else // "system": a plain console window
+                        SpawnDetached("cmd.exe", "/c", "start", "vim", path);
+                    return;
                 }
                 break;
+        }
+
+        // "system", or an editor settings.json names that isn't installed here
+        // — the setting travels between machines, the editor does not.
+        if (editor != "system")
+            AppLogger.Log($"Settings: {editor} is not installed — opening {path} with the system editor");
+        OpenWithSystemEditor(path);
+    }
+
+    // The file-type association (the xdg-open equivalent), with Notepad behind
+    // it for .log & friends that have none.
+    private static void OpenWithSystemEditor(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            AppLogger.Log($"Settings: nothing is registered for {path} ({e.Message}) — using Notepad");
+            SpawnDetached("notepad.exe", path);
         }
     }
 

@@ -6,6 +6,7 @@
 #include "frame_channel.h"
 #include "mouse_service.h"
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <cairo.h>
@@ -51,54 +52,84 @@ static PendingShot *pending = NULL;
 
 // ── keeping the window out of the picture ───────────────────────────────────
 //
-// The content area draws nothing while a capture is in flight (see
-// content_view_set_capture_hidden), which is the X11 answer to what macOS
-// gets from .optionOnScreenBelowWindow. Doing that per frame is what made the
-// view page's stream strobe, so it is done per *burst* instead: the area goes
-// blank for the first frame and stays blank while frames keep arriving,
-// coming back once they stop. A stream costs one fade, not one per frame —
-// and the frames after the first are grabbed with no wait at all, which is
-// most of what the old 80 ms per capture was spending.
-static gboolean content_hidden = FALSE;
+// X11 has no "capture everything below this window" the way macOS does, so
+// the window has to be off the screen when the grab happens — and it has to
+// go as a *window*, not merely stop drawing, or its compositor drop shadow
+// stays lying on the desktop for the grab to read (see set_x_window_opacity).
+//
+// Doing that per frame is what made the view page's stream strobe, so it is
+// done per *burst*: the window goes at the first frame and stays gone while
+// frames keep arriving, coming back once they stop. A stream costs one fade,
+// not one per frame — and every frame after the first is grabbed with no wait
+// at all, which is most of what the old 80 ms per capture was spending.
+static gboolean window_hidden = FALSE;
 static guint restore_timeout = 0;
 static gint64 last_capture_us = 0; // when the previous capture was asked for
 static gint64 last_gap_us = 0;     // and how long before it the one before was
 
-// One compositor frame, generously: how long to let the blank content area
+// One compositor frame, generously: how long to let the window's disappearance
 // reach the screen before grabbing it. Paid once per burst.
 #define COMPOSITOR_SETTLE_MS 80
 
-// How long the content area stays blank after a capture: two frame intervals,
-// so the next frame of a stream always arrives before the area comes back and
-// nothing blinks mid-stream. Frames further apart than STREAM_GAP are not a
-// stream — the agent's own screenshots, seconds apart — and get the floor
-// instead, so the window looks like itself between them.
-#define RESTORE_MIN_MS 300
+// How long the window stays away after a capture: two frame intervals, so the
+// next frame of a stream always arrives before it comes back and nothing
+// blinks mid-stream. Frames further apart than STREAM_GAP are not a stream —
+// the agent's own screenshots, seconds apart — and bring the window straight
+// back, which is what this always did for a single capture.
 #define RESTORE_MAX_MS 1500
 #define STREAM_GAP_MAX_US (1500 * 1000)
 
 static guint restore_delay_ms(void) {
-    if (last_gap_us <= 0 || last_gap_us > STREAM_GAP_MAX_US) return RESTORE_MIN_MS;
+    if (last_gap_us <= 0 || last_gap_us > STREAM_GAP_MAX_US) return 0;
     gint64 ms = last_gap_us * 2 / 1000;
-    return (guint)CLAMP(ms, RESTORE_MIN_MS, RESTORE_MAX_MS);
+    return (guint)MIN(ms, RESTORE_MAX_MS);
 }
 
-static void set_content_hidden(gboolean hidden) {
-    content_hidden = hidden;
+// The opacity the *compositor* reads. gtk_widget_set_opacity() is no use for
+// this: on a toplevel with an RGBA visual — which is every Pob window, since
+// that is what the translucent content area needs — GTK applies the alpha
+// when it draws, and never sets _NET_WM_WINDOW_OPACITY at all. The window's
+// own pixels go, and the compositor carries on drawing its drop shadow behind
+// them at full strength; the grab then reads the shadow instead of the
+// desktop, which is where the desktop's own 128 gray came back as 36 under
+// xcompmgr -c. This property is the one that takes the shadow with the
+// window, because a compositor scales the one by the other.
+static void set_x_window_opacity(gboolean opaque) {
+    if (!g_state.window) return;
+    GdkWindow *gw = gtk_widget_get_window(GTK_WIDGET(g_state.window));
+    if (!gw) return;
+
+    Display *dpy = GDK_DISPLAY_XDISPLAY(gdk_display_get_default());
+    Atom prop = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
+    unsigned long value = opaque ? 0xffffffffUL : 0UL;
+    XChangeProperty(dpy, GDK_WINDOW_XID(gw), prop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&value, 1);
+    XFlush(dpy);
+}
+
+static void set_window_hidden(gboolean hidden) {
+    window_hidden = hidden;
+    set_x_window_opacity(!hidden);
+    // Belt and braces for the compositors that ignore the property, and it
+    // holds the flash back until there is something to see it on: with no
+    // compositor at all there is no shadow either, and drawing nothing is
+    // then the only thing keeping the tint out of the shot.
+    if (g_state.window)
+        gtk_widget_set_opacity(GTK_WIDGET(g_state.window), hidden ? 0.0 : 1.0);
     content_view_set_capture_hidden(hidden);
 }
 
-static gboolean on_restore_content(gpointer data) {
+static gboolean on_restore_window(gpointer data) {
     (void)data;
     restore_timeout = 0;
-    set_content_hidden(FALSE);
+    set_window_hidden(FALSE);
     return G_SOURCE_REMOVE;
 }
 
 // Called when a capture is done with the screen, one way or the other.
-static void schedule_content_restore(void) {
+static void schedule_window_restore(void) {
     if (restore_timeout) g_source_remove(restore_timeout);
-    restore_timeout = g_timeout_add(restore_delay_ms(), on_restore_content, NULL);
+    restore_timeout = g_timeout_add(restore_delay_ms(), on_restore_window, NULL);
 }
 
 // ── XImage → cairo surface ──────────────────────────────────────────────────
@@ -256,9 +287,9 @@ static gboolean surface_to_bytes(cairo_surface_t *surface, const char *format,
 // ── capture flow ────────────────────────────────────────────────────────────
 
 static void finish_pending(void) {
-    // The screen is free again: start the clock on bringing the content area
-    // back, which the next frame of a stream will push out ahead of itself.
-    schedule_content_restore();
+    // The screen is free again: start the clock on bringing the window back,
+    // which the next frame of a stream will push out ahead of itself.
+    schedule_window_restore();
 
     if (!pending) return;
     g_free(pending->id);
@@ -285,8 +316,8 @@ static void deliver(const char *id, const guchar *bytes, gsize len, int width,
 
 static gboolean do_capture(gpointer data) {
     (void)data;
-    if (!pending) { // nothing to grab — don't leave the area blank over it
-        schedule_content_restore();
+    if (!pending) { // nothing to grab — don't leave the window hidden over it
+        schedule_window_restore();
         return G_SOURCE_REMOVE;
     }
 
@@ -452,16 +483,17 @@ void screenshot_handle_capture(const char *id, gboolean with_cursor,
         restore_timeout = 0;
     }
 
-    if (content_hidden) {
-        // Mid-burst: the area is already blank on screen, so there is nothing
+    if (window_hidden) {
+        // Mid-burst: the window is already off the screen, so there is nothing
         // to wait for. This is the path every frame of a stream takes.
         do_capture(NULL);
         return;
     }
 
-    // First of a burst: blank the content area so the capture shows the
-    // desktop beneath it (macOS: .optionOnScreenBelowWindow), give the frame
-    // clock and the compositor time to put that on the screen, then grab.
-    set_content_hidden(TRUE);
+    // First of a burst: take the window off the screen so the capture shows
+    // the desktop beneath it (macOS: .optionOnScreenBelowWindow), give the
+    // compositor a frame to do it, then grab.
+    set_window_hidden(TRUE);
+    gdk_display_sync(gdk_display_get_default());
     g_timeout_add(COMPOSITOR_SETTLE_MS, do_capture, NULL);
 }

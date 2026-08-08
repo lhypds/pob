@@ -31,6 +31,13 @@ the rest are left where they are to be copied across by hand.
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
 | `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web UI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
+
+`editor` names a preference, not a requirement: an editor that is not installed
+on this machine falls back to the system one, since the setting travels between
+machines and the editor does not. On Linux that means `xdg-open` and, where
+nothing is registered for `.json` and `.txt`, the text editor the desktop ships
+— so a toolbar button always opens something.
+
 Everything here is something you set, and it applies to the machine. Where the
 window was last left is neither — it is written by the shell as `window_x`,
 `window_y`, `window_width` and `window_height` in

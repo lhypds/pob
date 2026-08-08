@@ -1,4 +1,6 @@
 #include "settings_service.h"
+#include "app_logger.h"
+#include "content_view.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -8,6 +10,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 // ── project root ────────────────────────────────────────────────────────────
@@ -298,40 +301,217 @@ void settings_save_window_frame(int x, int y, int w, int h) {
 
 // ── opening files ───────────────────────────────────────────────────────────
 
-static void spawn_detached(gchar **argv) {
-    g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
+// One way of opening a file: a program, and the arguments that go in front of
+// the path.
+//
+// `dispatcher` marks the programs that do not open the file themselves but
+// hand it to whatever the desktop has registered for it — xdg-open and gio.
+// They exit straight away, non-zero when nothing was registered, and that exit
+// status is the only sign that no window appeared. A real editor is the
+// opposite: it stays running with the file on screen, and the status it exits
+// with whenever the user closes it says nothing about whether the file opened.
+typedef struct {
+    const char *program;
+    const char *args[4]; // NULL-terminated, placed before the path
+    gboolean dispatcher;
+} open_command;
+
+// The system's own way of opening a text file, in the order it is tried: the
+// desktop's file association first, then the editors the common desktops ship.
+// A machine can have no xdg-open at all, or an xdg-open with nothing
+// registered for .txt and .json — a bare X session, a container, a trimmed
+// down install — and the toolbar button still has to put the file on screen.
+// macOS never needs this list: `open -t` always has TextEdit behind it.
+static const open_command SYSTEM_EDITORS[] = {
+    {"xdg-open", {NULL}, TRUE},
+    {"gio", {"open", NULL}, TRUE},
+    {"gnome-text-editor", {NULL}, FALSE},
+    {"gedit", {NULL}, FALSE},
+    {"kate", {NULL}, FALSE},
+    {"kwrite", {NULL}, FALSE},
+    {"mousepad", {NULL}, FALSE},
+    {"xed", {NULL}, FALSE},
+    {"pluma", {NULL}, FALSE},
+    {"leafpad", {NULL}, FALSE},
+};
+
+// The same idea for a directory: the file managers the common desktops ship,
+// behind the association.
+static const open_command FILE_MANAGERS[] = {
+    {"xdg-open", {NULL}, TRUE},
+    {"gio", {"open", NULL}, TRUE},
+    {"nautilus", {NULL}, FALSE},
+    {"dolphin", {NULL}, FALSE},
+    {"thunar", {NULL}, FALSE},
+    {"nemo", {NULL}, FALSE},
+    {"caja", {NULL}, FALSE},
+    {"pcmanfm", {NULL}, FALSE},
+};
+
+// settings.json's editor names and the command each one opens a file with.
+// Any other value — "system", or a name nothing matches — starts at
+// SYSTEM_EDITORS. vim is not here: it needs a terminal window to live in,
+// which is a setting of its own.
+static const struct {
+    const char *name;
+    open_command command;
+} EDITORS[] = {
+    {"vscode", {"code", {NULL}, FALSE}},
+    {"zed", {"zed", {NULL}, FALSE}},
+    {"sublime_text", {"subl", {NULL}, FALSE}},
+};
+
+// The terminals vim can be opened in, in the order they are tried when the
+// configured one is absent. gnome-terminal leads because "system" means it.
+static const open_command VIM_TERMINALS[] = {
+    {"gnome-terminal", {"--", "vim", NULL}, FALSE},
+    {"konsole", {"-e", "vim", NULL}, FALSE},
+    {"xterm", {"-e", "vim", NULL}, FALSE},
+    {"x-terminal-emulator", {"-e", "vim", NULL}, FALSE},
+};
+
+// A walk down a chain of open_commands. It outlives the call that started it:
+// a dispatcher's failure only shows up when the child exits, so the rest of
+// the chain has to be waited for on the main loop rather than run in a loop.
+typedef struct {
+    open_command *chain; // heap copy — the head is built from settings.json
+    guint count;
+    guint index;
+    gchar *path;
+    const char *what; // "text editor" / "file manager", for the failure message
+} open_attempt;
+
+static void run_open_attempt(open_attempt *attempt);
+
+static void open_attempt_free(open_attempt *attempt) {
+    g_free(attempt->chain);
+    g_free(attempt->path);
+    g_free(attempt);
 }
 
+static void on_open_exit(GPid pid, gint status, gpointer data) {
+    open_attempt *attempt = data;
+    g_spawn_close_pid(pid);
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        open_attempt_free(attempt);
+        return;
+    }
+
+    // xdg-open exits 3 when nothing is registered for the file and 4 when the
+    // program it picked failed to start. Either way no window appeared, so
+    // carry on down the chain from where run_open_attempt left off.
+    app_logger_log("Settings: %s did not open %s (status %d) — trying the next one",
+                   attempt->chain[attempt->index - 1].program, attempt->path, status);
+    run_open_attempt(attempt);
+}
+
+// Runs the chain from its current position, skipping programs that are not
+// installed, until one of them starts. Consumes the attempt.
+static void run_open_attempt(open_attempt *attempt) {
+    for (; attempt->index < attempt->count; attempt->index++) {
+        const open_command *cmd = &attempt->chain[attempt->index];
+
+        // Asking the PATH first is what makes the fall-through work for the
+        // editors: g_spawn_async reports a missing program too, but only
+        // after the fork, and this keeps both answers in one place.
+        gchar *program = g_find_program_in_path(cmd->program);
+        if (!program) continue;
+
+        gchar *argv[8];
+        int n = 0;
+        argv[n++] = program;
+        for (int i = 0; cmd->args[i]; i++) argv[n++] = (gchar *)cmd->args[i];
+        argv[n++] = attempt->path;
+        argv[n] = NULL;
+
+        GSpawnFlags flags = G_SPAWN_SEARCH_PATH;
+        // Only a dispatcher's exit status is worth waiting for; anything else
+        // GLib may reap itself.
+        if (cmd->dispatcher) flags |= G_SPAWN_DO_NOT_REAP_CHILD;
+
+        GPid pid = 0;
+        GError *error = NULL;
+        gboolean spawned = g_spawn_async(NULL, argv, NULL, flags, NULL, NULL,
+                                         cmd->dispatcher ? &pid : NULL, &error);
+        g_free(program);
+
+        if (!spawned) {
+            app_logger_log("Settings: cannot run %s: %s", cmd->program,
+                           error ? error->message : "unknown error");
+            if (error) g_error_free(error);
+            continue;
+        }
+
+        if (!cmd->dispatcher) {
+            open_attempt_free(attempt);
+            return;
+        }
+        attempt->index++; // where on_open_exit resumes if nothing opened
+        g_child_watch_add(pid, on_open_exit, attempt);
+        return;
+    }
+
+    // Nothing on this machine could open the file. A toolbar button that does
+    // nothing at all just looks broken, so say so on screen and in the log.
+    app_logger_log("Settings: no %s on this machine — cannot open %s",
+                   attempt->what, attempt->path);
+    gchar *msg = g_strdup_printf("Cannot open it — no %s on this machine", attempt->what);
+    content_view_show_message(msg);
+    g_free(msg);
+    open_attempt_free(attempt);
+}
+
+// Takes a copy of the chain, so callers can build the head of one on the
+// stack, and walks it.
+static void start_open(const open_command *chain, guint count, const char *path,
+                       const char *what) {
+    open_attempt *attempt = g_new0(open_attempt, 1);
+    attempt->chain = g_new0(open_command, count);
+    for (guint i = 0; i < count; i++) attempt->chain[i] = chain[i];
+    attempt->count = count;
+    attempt->path = g_strdup(path);
+    attempt->what = what;
+    run_open_attempt(attempt);
+}
+
+// The editor named in settings.json, with the system's own openers behind it:
+// an editor that is not installed — the setting was carried over from another
+// machine, or the app was never installed here in the first place — should
+// leave the file opening in whatever this machine does have, not leave the
+// button dead.
 static void open_with_editor(const char *path) {
     gchar *editor = load_string_key("editor", "system");
 
-    if (g_str_equal(editor, "vscode")) {
-        gchar *argv[] = {"code", (gchar *)path, NULL};
-        spawn_detached(argv);
-    } else if (g_str_equal(editor, "zed")) {
-        gchar *argv[] = {"zed", (gchar *)path, NULL};
-        spawn_detached(argv);
-    } else if (g_str_equal(editor, "sublime_text")) {
-        gchar *argv[] = {"subl", (gchar *)path, NULL};
-        spawn_detached(argv);
-    } else if (g_str_equal(editor, "vim")) {
+    open_command chain[G_N_ELEMENTS(VIM_TERMINALS) + G_N_ELEMENTS(SYSTEM_EDITORS)];
+    guint n = 0;
+
+    // vim is looked up here rather than in the chain: what the chain runs is
+    // the terminal, and a terminal that opens on a "vim: not found" is worse
+    // than the system editor.
+    gchar *vim = g_find_program_in_path("vim");
+    if (g_str_equal(editor, "vim") && vim) {
         gchar *terminal = load_string_key("terminal", "system");
-        if (g_str_equal(terminal, "konsole")) {
-            gchar *argv[] = {"konsole", "-e", "vim", (gchar *)path, NULL};
-            spawn_detached(argv);
-        } else if (g_str_equal(terminal, "xterm")) {
-            gchar *argv[] = {"xterm", "-e", "vim", (gchar *)path, NULL};
-            spawn_detached(argv);
-        } else { // "system" / "gnome-terminal"
-            gchar *argv[] = {"gnome-terminal", "--", "vim", (gchar *)path, NULL};
-            spawn_detached(argv);
-        }
+        // The configured terminal first, then the rest of the list, so a KDE
+        // box with konsole and no gnome-terminal still gets vim.
+        for (int preferred = 1; preferred >= 0; preferred--)
+            for (guint i = 0; i < G_N_ELEMENTS(VIM_TERMINALS); i++)
+                if (g_str_equal(terminal, VIM_TERMINALS[i].program) == (preferred == 1))
+                    chain[n++] = VIM_TERMINALS[i];
         g_free(terminal);
-    } else { // "system"
-        gchar *argv[] = {"xdg-open", (gchar *)path, NULL};
-        spawn_detached(argv);
+    } else {
+        for (guint i = 0; i < G_N_ELEMENTS(EDITORS); i++)
+            if (g_str_equal(editor, EDITORS[i].name)) {
+                chain[n++] = EDITORS[i].command;
+                break;
+            }
     }
+    g_free(vim);
     g_free(editor);
+
+    for (guint i = 0; i < G_N_ELEMENTS(SYSTEM_EDITORS); i++) chain[n++] = SYSTEM_EDITORS[i];
+
+    start_open(chain, n, path, "text editor");
 }
 
 static void ensure_file(const char *path) {
@@ -370,8 +550,7 @@ void settings_open_app_log(void) {
 void settings_open_logs_folder(void) {
     gchar *path = instance_path("logs");
     g_mkdir_with_parents(path, 0755);
-    gchar *argv[] = {"xdg-open", path, NULL};
-    spawn_detached(argv);
+    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "file manager");
     g_free(path);
 }
 

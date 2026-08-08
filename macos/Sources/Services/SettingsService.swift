@@ -297,8 +297,9 @@ class SettingsService {
     }
 
     private func openWithEditor(_ url: URL) {
+        let editor = getEditor()
         let process = Process()
-        switch getEditor() {
+        switch editor {
         case "vscode":
             process.launchPath = "/usr/bin/open"
             process.arguments = ["-a", "Visual Studio Code", url.path]
@@ -318,9 +319,35 @@ class SettingsService {
                 process.arguments = ["-e", "tell application \"Terminal\" to do script \"\(cmd)\"", "-e", "tell application \"Terminal\" to activate"]
             }
         default: // "system"
-            process.launchPath = "/usr/bin/open"
-            process.arguments = ["-t", url.path]
+            openWithSystemEditor(url)
+            return
         }
+
+        // An editor settings.json names may not be installed here: the setting
+        // travels between machines, the application does not. `open -a` and
+        // osascript both report that in their exit status, which is the only
+        // sign the file never appeared, so hand it to the system editor rather
+        // than leave the toolbar button looking dead.
+        process.terminationHandler = { [weak self] finished in
+            guard finished.terminationStatus != 0 else { return }
+            AppLogger.log("Settings: \(editor) could not open \(url.path) — using the system editor")
+            DispatchQueue.main.async { self?.openWithSystemEditor(url) }
+        }
+        do {
+            try process.run()
+        } catch {
+            AppLogger.log("Settings: cannot run \(process.launchPath ?? editor): \(error.localizedDescription)")
+            openWithSystemEditor(url)
+        }
+    }
+
+    /// The file in whatever is registered for it, TextEdit behind that. The
+    /// last resort on macOS, and one that always has something behind it —
+    /// unlike Linux, where xdg-open can come up empty.
+    private func openWithSystemEditor(_ url: URL) {
+        let process = Process()
+        process.launchPath = "/usr/bin/open"
+        process.arguments = ["-t", url.path]
         try? process.run()
     }
 

@@ -304,10 +304,9 @@
             .join("");
         }
 
-        // One line per network the machine is on: which of them a phone can
-        // reach depends on where the phone is.
-        const elsewhere = (status.urls || []).filter((u) => !u.startsWith(location.origin + "/"));
-        $("note").textContent = elsewhere.length ? "Also reachable at " + elsewhere.join(", ") : "";
+        // Cleared on every good reading, so a "lost the instance" from a
+        // moment ago does not sit there once it has answered again.
+        $("note").textContent = "";
       }
 
       function dot(on) {

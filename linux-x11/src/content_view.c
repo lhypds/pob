@@ -101,12 +101,11 @@ void content_view_reset_anim(void) {
 
 // ── capture mode ────────────────────────────────────────────────────────────
 //
-// X11 has no "capture everything below this window" the way macOS does, so
-// the only way to keep Pob out of Pob's own screenshots is for it not to be
-// on the screen when the grab happens. Hiding the whole window per frame is
-// what made the view page's stream strobe; drawing nothing in the content
-// area comes to the same thing for the grab — the pixels there are the
-// desktop, which is exactly what it wants — and leaves the toolbar alone.
+// On while the window is off the screen for a capture (screenshot_service.c
+// takes it to opacity 0, which is what also takes its compositor shadow with
+// it). Nothing here would be visible then anyway — but with no compositor
+// running, opacity 0 does nothing at all, and drawing nothing is the only
+// thing standing between the gray tint and the shot.
 static gboolean capture_hidden = FALSE;
 
 // A flash asked for while hidden, waiting for something to show it on.
