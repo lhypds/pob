@@ -39,6 +39,23 @@ func (r *Remote) KeyPress(key string) error  { return r.br.KeyPress(key) }
 // CaptureView takes the whole frame with the cursor in it: it is watched, not
 // measured, so there is nothing to crop to and the pointer is the one thing a
 // watcher most needs to see.
-func (r *Remote) CaptureView() ([]byte, error) { return r.br.CaptureScreenshot(true, nil) }
+//
+// format is "png" or "jpeg", maxWidth shrinks the picture to at most that many
+// pixels across (0 leaves it alone) and quality is JPEG quality (0 takes the
+// shell's default). It answers with the bytes and the frame's size in
+// screenshot pixels, which is what the picture would have been had it not been
+// shrunk — the space a click on it has to be sent back in.
+func (r *Remote) CaptureView(format string, maxWidth, quality int) ([]byte, int, int, error) {
+	shot, err := r.br.CaptureShot(ShotOptions{
+		WithCursor: true,
+		Format:     format,
+		MaxWidth:   maxWidth,
+		Quality:    quality,
+	})
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return shot.Bytes, shot.SourceWidth, shot.SourceHeight, nil
+}
 
 func (r *Remote) SetRemoteActive(active bool) { r.br.NotifyRemoteControl("server", active) }

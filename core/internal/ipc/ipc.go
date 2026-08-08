@@ -6,6 +6,10 @@
 //
 // One JSON object per line. Go request ids are prefixed "go-" so they can
 // never collide with ids minted by the Swift side.
+//
+// Captured frames are the one thing that does not travel this way: they go
+// down a second, binary connection instead, so a picture never sits in front
+// of a keystroke. See frames.go.
 package ipc
 
 import (
@@ -30,10 +34,15 @@ type Client struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan result
 	nextID    int
+
+	frames frameChannel
 }
 
 type result struct {
 	value map[string]any
+	// bytes is set only by the frame channel: a picture that came down the
+	// binary connection rather than as base64 inside value.
+	bytes []byte
 	err   error
 }
 
@@ -56,6 +65,18 @@ func (c *Client) Handle(method string, fn Handler) {
 // Call sends a request to the Swift side and blocks until the response
 // arrives or the stream closes.
 func (c *Client) Call(method string, params any) (map[string]any, error) {
+	_, ch, err := c.send(method, params)
+	if err != nil {
+		return nil, err
+	}
+	r := <-ch
+	return r.value, r.err
+}
+
+// send writes a request and registers what will answer it. Split out of Call
+// so CallFrame can wait on the same pending entry differently — its answer
+// may arrive on the frame channel instead, and it waits with a timeout.
+func (c *Client) send(method string, params any) (string, chan result, error) {
 	c.pendingMu.Lock()
 	c.nextID++
 	id := fmt.Sprintf("go-%d", c.nextID)
@@ -71,11 +92,23 @@ func (c *Client) Call(method string, params any) (map[string]any, error) {
 		c.pendingMu.Lock()
 		delete(c.pending, id)
 		c.pendingMu.Unlock()
-		return nil, err
+		return "", nil, err
 	}
+	return id, ch, nil
+}
 
-	r := <-ch
-	return r.value, r.err
+// deliver hands an answer to whoever is waiting for that id, from either
+// channel. The first answer wins and the entry is gone after it, so a shell
+// that replies on both — or a frame that lands after its call timed out —
+// cannot deliver twice.
+func (c *Client) deliver(id string, r result) {
+	c.pendingMu.Lock()
+	ch := c.pending[id]
+	delete(c.pending, id)
+	c.pendingMu.Unlock()
+	if ch != nil {
+		ch <- r
+	}
 }
 
 // Notify sends a notification (no response expected) to the Swift side.
@@ -116,7 +149,15 @@ func (c *Client) Run() {
 		}
 		c.dispatch(msg)
 	}
-	// Stream closed: fail all pending calls so waiting goroutines unblock.
+	// Stream closed: the shell is gone, so nothing more will arrive on the
+	// frame channel either.
+	c.frames.mu.Lock()
+	if c.frames.ln != nil {
+		_ = c.frames.ln.Close()
+	}
+	c.frames.mu.Unlock()
+
+	// Fail all pending calls so waiting goroutines unblock.
 	c.pendingMu.Lock()
 	for id, ch := range c.pending {
 		ch <- result{err: io.EOF}
@@ -129,18 +170,11 @@ func (c *Client) dispatch(msg map[string]any) {
 	// Response to one of our requests?
 	if id, ok := msg["id"].(string); ok {
 		if _, isReq := msg["method"]; !isReq {
-			c.pendingMu.Lock()
-			ch := c.pending[id]
-			delete(c.pending, id)
-			c.pendingMu.Unlock()
-			if ch == nil {
-				return
-			}
 			if errObj, ok := msg["error"].(map[string]any); ok {
-				ch <- result{err: fmt.Errorf("%v", errObj["message"])}
+				c.deliver(id, result{err: fmt.Errorf("%v", errObj["message"])})
 			} else {
 				value, _ := msg["result"].(map[string]any)
-				ch <- result{value: value}
+				c.deliver(id, result{value: value})
 			}
 			return
 		}

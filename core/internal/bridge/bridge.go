@@ -41,22 +41,103 @@ func pointFrom(result map[string]any) Point {
 	return Point{X: int(x), Y: int(y)}
 }
 
+// ShotOptions is what to capture and how to encode it.
+//
+// The defaults are the agent's: a full-size PNG, nothing thrown away, because
+// what it does with a frame is read the text in it. A browser watching from
+// across the room wants the opposite — the smallest picture that still looks
+// like the screen, as fast as the machine can make them — which is what the
+// other three fields are for.
+type ShotOptions struct {
+	WithCursor bool
+	Crop       *CropRect
+	// Format is "png" or "jpeg"; empty means PNG.
+	//
+	// PNG on a desktop is the slow choice twice over: it is the heaviest
+	// encode of the two by an order of magnitude, and it is lossless about
+	// gradients and shadows nobody is reading. JPEG is what makes a watchable
+	// frame rate possible at all.
+	Format string
+	// MaxWidth shrinks the picture to at most this many pixels across before
+	// encoding, keeping its shape. 0 leaves it alone. Every step after this
+	// one costs by the pixel, so it is the cheapest thing that can be done.
+	MaxWidth int
+	// Quality is JPEG quality, 1-100. 0 takes the shell's default.
+	Quality int
+}
+
+// Shot is a captured frame and the sizes needed to make sense of it.
+type Shot struct {
+	Bytes  []byte
+	Format string
+	// Width and Height are the picture's own size, after any shrinking.
+	Width, Height int
+	// SourceWidth and SourceHeight are its size in screenshot pixels — the
+	// space Pob's coordinates live in. They are the same as Width and Height
+	// unless MaxWidth shrank the picture, and a client that turns a click on
+	// the picture back into a position on the machine needs the difference:
+	// without it every click on a shrunk frame lands short.
+	SourceWidth, SourceHeight int
+}
+
 // CaptureScreenshot captures the Pob window content area. withCursor draws
 // the virtual cursor into the image. Returns raw PNG bytes.
 func (b *Bridge) CaptureScreenshot(withCursor bool, crop *CropRect) ([]byte, error) {
-	params := map[string]any{"withCursor": withCursor}
-	if crop != nil {
-		params["crop"] = map[string]any{"x": crop.X, "y": crop.Y, "width": crop.W, "height": crop.H}
-	}
-	result, err := b.ipc.Call("screenshot.capture", params)
+	shot, err := b.CaptureShot(ShotOptions{WithCursor: withCursor, Crop: crop})
 	if err != nil {
 		return nil, err
 	}
-	b64, _ := result["image"].(string)
-	if b64 == "" {
-		return nil, fmt.Errorf("screenshot capture returned no image")
+	return shot.Bytes, nil
+}
+
+// CaptureShot captures the Pob window content area to order.
+func (b *Bridge) CaptureShot(opts ShotOptions) (Shot, error) {
+	format := opts.Format
+	if format == "" {
+		format = "png"
 	}
-	return base64.StdEncoding.DecodeString(b64)
+	params := map[string]any{"withCursor": opts.WithCursor, "format": format}
+	if opts.Crop != nil {
+		params["crop"] = map[string]any{"x": opts.Crop.X, "y": opts.Crop.Y, "width": opts.Crop.W, "height": opts.Crop.H}
+	}
+	if opts.MaxWidth > 0 {
+		params["maxWidth"] = opts.MaxWidth
+	}
+	if opts.Quality > 0 {
+		params["quality"] = opts.Quality
+	}
+
+	data, result, err := b.ipc.CallFrame("screenshot.capture", params)
+	if err != nil {
+		return Shot{}, err
+	}
+	// No bytes means this shell has no frame channel open and answered on the
+	// JSON-RPC line, where the picture is base64 in the result.
+	if data == nil {
+		b64, _ := result["image"].(string)
+		if b64 == "" {
+			return Shot{}, fmt.Errorf("screenshot capture returned no image")
+		}
+		if data, err = base64.StdEncoding.DecodeString(b64); err != nil {
+			return Shot{}, err
+		}
+	}
+
+	shot := Shot{Bytes: data, Format: format}
+	shot.Width = intFrom(result, "width")
+	shot.Height = intFrom(result, "height")
+	shot.SourceWidth = intFrom(result, "sourceWidth")
+	shot.SourceHeight = intFrom(result, "sourceHeight")
+	// An older shell reports no sizes at all. It also does no shrinking, so
+	// the picture is its own source and reading the sizes back out of it is
+	// the caller's job — leaving them zero says "unknown", which is the
+	// honest answer and the one a client can test for.
+	return shot, nil
+}
+
+func intFrom(result map[string]any, key string) int {
+	v, _ := result[key].(float64)
+	return int(v)
 }
 
 func (b *Bridge) ResetCursor() (Point, error) {

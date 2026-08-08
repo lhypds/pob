@@ -65,6 +65,13 @@ func main() {
 	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
 
 	client := ipc.NewStdio()
+	// Frames go down their own connection rather than sharing the JSON-RPC
+	// line with every mouse move — opened here, before anything can ask for
+	// one. A shell that does not take up the offer keeps answering the old
+	// way, so this failing is not worth refusing to start over.
+	if err := client.ServeFrames(); err != nil {
+		applog.Logf("IPC: no frame channel (%v); frames will come down the JSON-RPC line", err)
+	}
 	br := bridge.New(client)
 	runner := agent.NewRunner(cfg, store, llm.New(cfg), br)
 

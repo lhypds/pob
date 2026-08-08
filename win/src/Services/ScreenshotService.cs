@@ -53,12 +53,14 @@ public static class ScreenshotService
     // ── pending request (core sends one capture at a time) ─────────────────
 
     private sealed record PendingShot(string Id, bool WithCursor, bool HasCrop,
-                                      double CropX, double CropY, double CropW, double CropH);
+                                      double CropX, double CropY, double CropW, double CropH,
+                                      string Format, int MaxWidth, int Quality);
 
     private static PendingShot? _pending;
 
     public static void HandleCapture(string id, bool withCursor, bool hasCrop,
-                                     double cropX, double cropY, double cropW, double cropH)
+                                     double cropX, double cropY, double cropW, double cropH,
+                                     string format, int maxWidth, int quality)
     {
         if (_pending != null)
         { // should not happen — the core awaits each capture
@@ -72,7 +74,8 @@ public static class ScreenshotService
             return;
         }
 
-        _pending = new PendingShot(id, withCursor, hasCrop, cropX, cropY, cropW, cropH);
+        _pending = new PendingShot(id, withCursor, hasCrop, cropX, cropY, cropW, cropH,
+                                   format, maxWidth, quality);
 
         // Hide the overlay so the capture shows the desktop beneath it
         // (macOS: .optionOnScreenBelowWindow), give the compositor a moment,
@@ -155,13 +158,12 @@ public static class ScreenshotService
 
         SetContext(devX, devY, devW, devH, scale);
 
+        // Crop, then shrink, then the cursor, then the encoder. The order
+        // matters more than any single step: shrinking first means the cursor
+        // is drawn onto — and the encoder runs over — a quarter of the pixels
+        // at half width, and both of those cost strictly by the pixel.
         BitmapSource result = shot;
-
-        if (pending.WithCursor)
-        {
-            MouseService.GetVirtualPos(out double px, out double py);
-            result = ComposeCursor(shot, devW, devH, px, py, scale);
-        }
+        double cropX = 0, cropY = 0;
 
         if (pending.HasCrop && pending.CropW > 0 && pending.CropH > 0)
         {
@@ -170,15 +172,71 @@ public static class ScreenshotService
             int cw = Math.Min((int)pending.CropW, devW - cx);
             int ch = Math.Min((int)pending.CropH, devH - cy);
             if (cw > 0 && ch > 0)
+            {
                 result = new CroppedBitmap(result, new Int32Rect(cx, cy, cw, ch));
+                cropX = cx;
+                cropY = cy;
+            }
         }
 
-        string? b64 = EncodePngBase64(result);
-        if (b64 != null)
-            CoreBridge.RespondImage(pending.Id, b64);
-        else
-            CoreBridge.RespondError(pending.Id, "Screenshot encoding failed");
+        int sourceW = result.PixelWidth;
+        int sourceH = result.PixelHeight;
+        int outW = sourceW, outH = sourceH;
+        // Only ever shrinks: asking for more pixels than were captured would
+        // invent them, so a width larger than the window simply gets the window.
+        if (pending.MaxWidth > 0 && pending.MaxWidth < sourceW)
+        {
+            outW = pending.MaxWidth;
+            outH = Math.Max(1, (int)Math.Round((double)sourceH * pending.MaxWidth / sourceW));
+        }
+        double factor = (double)outW / sourceW;
+
+        if (pending.WithCursor || outW != sourceW)
+        {
+            double px = 0, py = 0;
+            if (pending.WithCursor)
+            {
+                MouseService.GetVirtualPos(out px, out py);
+                // Into the shrunk picture's own coordinates: past the crop's
+                // origin, then scaled by however much the picture shrank.
+                px = (px - cropX) * factor;
+                py = (py - cropY) * factor;
+            }
+            result = Compose(result, outW, outH, pending.WithCursor, px, py, scale * factor);
+        }
+
+        // Frozen, so the encode can leave this thread. It is the expensive
+        // half and this is the UI thread, which is also where every mouse
+        // event is posted from — at a watchable frame rate, encoding here
+        // would put a picture in front of each one.
+        result.Freeze();
+        PendingShot shotRequest = pending;
         FinishPending();
+
+        Task.Run(() => EncodeAndDeliver(shotRequest, result, outW, outH, sourceW, sourceH));
+    }
+
+    private static void EncodeAndDeliver(PendingShot pending, BitmapSource image,
+                                         int width, int height, int sourceWidth, int sourceHeight)
+    {
+        byte[]? bytes = Encode(image, pending.Format, pending.Quality);
+        if (bytes == null)
+        {
+            CoreBridge.RespondError(pending.Id, "Screenshot encoding failed");
+            return;
+        }
+        var meta = new Dictionary<string, object?>
+        {
+            ["width"] = width,
+            ["height"] = height,
+            ["sourceWidth"] = sourceWidth,
+            ["sourceHeight"] = sourceHeight,
+        };
+        // The frame channel if it is up, the JSON-RPC line as base64 if not —
+        // which is what this shell did before the channel existed, and what an
+        // older core still expects.
+        if (FrameChannel.Send(pending.Id, meta, bytes)) return;
+        CoreBridge.RespondImage(pending.Id, Convert.ToBase64String(bytes), meta);
     }
 
     // ── BitBlt capture ──────────────────────────────────────────────────────
@@ -218,25 +276,31 @@ public static class ScreenshotService
         }
     }
 
-    // Draws the arrow cursor into the screenshot with its hotspot at (px, py)
-    // screenshot pixels. macOS renders the cursor 88 px tall on 2× displays;
-    // 44 × scale keeps the same apparent size on every density.
-    private static BitmapSource ComposeCursor(BitmapSource shot, int pxW, int pxH,
-                                              double px, double py, double scale)
+    // Shrinks the shot to (pxW, pxH) and, if asked, draws the arrow cursor
+    // into it with its hotspot at (px, py) — already in the shrunk picture's
+    // own coordinates. macOS renders the cursor 88 px tall on 2× displays;
+    // 44 × scale keeps the same apparent size on every density, and scale has
+    // the shrink folded into it so the cursor shrinks with the picture.
+    //
+    // Both jobs in one render: the shrink is free here, since the shot has to
+    // be drawn into the target either way.
+    private static BitmapSource Compose(BitmapSource shot, int pxW, int pxH,
+                                        bool withCursor, double px, double py, double scale)
     {
-        double targetH = 44.0 * scale;
-        double s = targetH / CursorArrow.Height;
-
         var visual = new DrawingVisual();
         using (DrawingContext dc = visual.RenderOpen())
         {
             // The bitmap may carry a non-96 DPI; draw it 1:1 into a 96-DPI target.
             dc.DrawImage(shot, new Rect(0, 0, pxW, pxH));
-            dc.PushTransform(new TranslateTransform(px, py)); // hotspot = (0, 0), the arrow tip
-            dc.PushTransform(new ScaleTransform(s, s));
-            CursorArrow.Draw(dc);
-            dc.Pop();
-            dc.Pop();
+            if (withCursor)
+            {
+                double s = 44.0 * scale / CursorArrow.Height;
+                dc.PushTransform(new TranslateTransform(px, py)); // hotspot = (0, 0), the arrow tip
+                dc.PushTransform(new ScaleTransform(s, s));
+                CursorArrow.Draw(dc);
+                dc.Pop();
+                dc.Pop();
+            }
         }
 
         var target = new RenderTargetBitmap(pxW, pxH, 96, 96, PixelFormats.Pbgra32);
@@ -245,15 +309,29 @@ public static class ScreenshotService
         return target;
     }
 
-    private static string? EncodePngBase64(BitmapSource source)
+    // PNG is the default because it is the agent's format: it reads the text
+    // in a frame, and a lossy encoder is no way to hand it one. A browser
+    // watching the machine wants the opposite trade, and asks for JPEG —
+    // which is the heavier half of what makes a watchable frame rate possible
+    // at all, being an order of magnitude cheaper to encode and to send.
+    private static byte[]? Encode(BitmapSource source, string format, int quality)
     {
         try
         {
-            var encoder = new PngBitmapEncoder();
+            BitmapEncoder encoder;
+            if (format == "jpeg")
+            {
+                int q = quality > 0 ? Math.Min(100, Math.Max(1, quality)) : 70;
+                encoder = new JpegBitmapEncoder { QualityLevel = q };
+            }
+            else
+            {
+                encoder = new PngBitmapEncoder();
+            }
             encoder.Frames.Add(BitmapFrame.Create(source));
             using var stream = new MemoryStream();
             encoder.Save(stream);
-            return Convert.ToBase64String(stream.ToArray());
+            return stream.ToArray();
         }
         catch (Exception)
         {

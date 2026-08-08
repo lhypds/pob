@@ -39,6 +39,17 @@ stdin/stdout with line-delimited JSON-RPC:
 - Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
   `keyboard.type`, `ui.confirmMaxStep`, … and `session.state` notifications
 
+Captured frames are the one thing that does not travel that way. They go down
+a second, binary connection instead: the core listens on loopback and offers
+the port and a token in a `frames.channel` notification, the shell connects
+back and pushes frames as `POBF`-tagged, length-prefixed blocks. A frame on
+the JSON-RPC line would be base64 — a third again as many bytes, parsed as one
+enormous string — and worse, it would sit in front of every mouse move and
+keystroke waiting behind it. At one frame a second that is invisible; at
+thirty it is the difference between a view you can work in and one you can
+only watch. A shell that does not connect keeps answering with base64 on the
+JSON-RPC line, which is what every shell did before the channel existed.
+
 Everything that drives the machine goes through those same calls — the agent
 loop, the MCP server, and the Pob server — so a tap on a phone and a tool call
 from a model take exactly the same path.

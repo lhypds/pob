@@ -39,9 +39,9 @@ That address is the machine itself, so the method says what you want of it:
 | Method | Path | What it answers |
 |--------|------|-----------------|
 | `POST` | `/<instance-id>/` | Runs a command — the rest of this page |
-| `GET` | `/<instance-id>/` | A PNG of what the machine looks like right now, virtual cursor included |
+| `GET` | `/<instance-id>/` | A PNG of what the machine looks like right now, virtual cursor included — or something cheaper, on request |
 | `GET` | `/<instance-id>/control` | The [Web UI](12_Web UI.md) control page — text field, keyboard mirror, trackpad |
-| `GET` | `/<instance-id>/view` | The [Web UI](12_Web UI.md) view page, which refetches that PNG on a clock you can set |
+| `GET` | `/<instance-id>/view` | The [Web UI](12_Web UI.md) view page, which refetches that frame on a clock you can set |
 | `GET` | `/<instance-id>/status` | What is running here, as JSON — the same facts `pob status` prints |
 | `GET` | `/<instance-id>/pob.js` | The script both pages drive the machine with |
 | `GET` | `/` | The [Web UI](12_Web UI.md) index page: those facts, and the address above to go on with |
@@ -58,6 +58,45 @@ The frame is a plain image, so watching the machine needs no more than an
 ```
 curl -o now.png http://192.168.1.40:8033/pb-a703/
 ```
+
+
+Asking for a cheaper frame
+--------------------------
+
+That plain `GET` is a full-size PNG, which is the right frame to read: it is
+what the agent works from, and lossless is the only honest way to hand
+something the text on a screen. It is also the most expensive frame the
+machine can make — the slowest to encode by an order of magnitude, and the
+biggest to send.
+
+Watching wants the opposite trade, and three query parameters make it:
+
+| Parameter | Means | Default |
+|-----------|-------|---------|
+| `format` | `png` or `jpeg` | `png` |
+| `w` | Shrink to at most this many pixels across, keeping its shape. Only ever shrinks | full size |
+| `q` | JPEG quality, 1–100 | `70` |
+
+```
+curl -o now.jpg 'http://192.168.1.40:8033/pb-a703/?format=jpeg&w=1280&q=70'
+```
+
+On a 2430×1584 window that is 58 KB against 329 KB, and about 50 ms against
+440 — which is the difference between two frames a second and twenty. The
+[view page](12_Web%20UI.md) asks for exactly this, sized to the box it is
+about to draw the frame in.
+
+A shrunk frame is no longer in screenshot pixels, so it cannot be clicked on
+as it stands. Every frame carries the size it would have been:
+
+```
+X-Pob-Source-Width: 2430
+X-Pob-Source-Height: 1584
+```
+
+Scale a point on the picture by `source ÷ picture` and it is back in the space
+`MOVE_TO` takes. Without that step every click lands short by exactly however
+much the frame was shrunk.
 
 It is sent `Cache-Control: no-store`: a cached frame is a moment that has
 already passed.

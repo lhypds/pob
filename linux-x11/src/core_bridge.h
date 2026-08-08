@@ -24,7 +24,11 @@ void core_bridge_resolve_max_step(gboolean should_continue);
 // Thread-safe JSON-RPC responders, usable from the mouse worker thread.
 void core_bridge_respond_position(const char *id); // {"x": .., "y": ..}
 void core_bridge_respond_empty(const char *id);    // {}
-void core_bridge_respond_image(const char *id, const char *png_base64);
+// The fallback for a captured frame, used when the frame channel is not up:
+// the picture as base64 on this line, with meta_json's whole-number members
+// (the picture's size, and its source's) folded in beside it.
+void core_bridge_respond_image(const char *id, const char *image_base64,
+                               const char *meta_json);
 void core_bridge_respond_error(const char *id, const char *message);
 
 #endif

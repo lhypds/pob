@@ -2,6 +2,7 @@
 #include "app.h"
 #include "app_logger.h"
 #include "core_bridge.h"
+#include "frame_channel.h"
 #include "mouse_service.h"
 
 #include <X11/Xlib.h>
@@ -40,6 +41,9 @@ typedef struct {
     gboolean with_cursor;
     gboolean has_crop;
     double crop_x, crop_y, crop_w, crop_h;
+    char *format;  // "png" (the agent's) or "jpeg" (the view page's)
+    int max_width; // shrink to at most this many pixels across; 0 leaves it
+    int quality;   // JPEG quality 1-100; 0 takes the default below
 } PendingShot;
 
 static PendingShot *pending = NULL;
@@ -141,7 +145,7 @@ static cairo_surface_t *cursor_surface(double *hot_x, double *hot_y,
 // Draws the arrow cursor into the screenshot with its hotspot at (px, py)
 // screenshot pixels. macOS renders the cursor 88 px tall on 2× displays;
 // 44 × scale keeps the same apparent size on every density.
-static void draw_cursor_into(cairo_t *cr, double px, double py, int scale) {
+static void draw_cursor_into(cairo_t *cr, double px, double py, double scale) {
     double hx, hy, cw, ch;
     cairo_surface_t *surf = cursor_surface(&hx, &hy, &cw, &ch);
     if (!surf || ch <= 0) return;
@@ -157,24 +161,41 @@ static void draw_cursor_into(cairo_t *cr, double px, double py, int scale) {
     cairo_restore(cr);
 }
 
-// ── PNG encoding ────────────────────────────────────────────────────────────
+// ── encoding ────────────────────────────────────────────────────────────────
 
-static cairo_status_t png_writer(void *closure, const unsigned char *data,
-                                 unsigned int length) {
-    g_byte_array_append((GByteArray *)closure, data, length);
-    return CAIRO_STATUS_SUCCESS;
-}
+// PNG is the default because it is the agent's format: it reads the text in a
+// frame, and a lossy encoder is no way to hand it one. A browser watching the
+// machine wants the opposite trade, and asks for JPEG — which is the heavier
+// half of what makes a watchable frame rate possible at all, being an order of
+// magnitude cheaper to encode and to send.
+#define DEFAULT_JPEG_QUALITY 70
 
-static gchar *surface_to_png_base64(cairo_surface_t *surface) {
-    GByteArray *bytes = g_byte_array_new();
-    if (cairo_surface_write_to_png_stream(surface, png_writer, bytes) !=
-        CAIRO_STATUS_SUCCESS) {
-        g_byte_array_unref(bytes);
-        return NULL;
+static gboolean surface_to_bytes(cairo_surface_t *surface, const char *format,
+                                 int quality, guchar **out, gsize *out_len) {
+    int w = cairo_image_surface_get_width(surface);
+    int h = cairo_image_surface_get_height(surface);
+    GdkPixbuf *pixbuf = gdk_pixbuf_get_from_surface(surface, 0, 0, w, h);
+    if (!pixbuf) return FALSE;
+
+    gboolean jpeg = format && g_str_equal(format, "jpeg");
+    GError *error = NULL;
+    gboolean ok;
+    if (jpeg) {
+        int q = quality > 0 ? CLAMP(quality, 1, 100) : DEFAULT_JPEG_QUALITY;
+        gchar *q_text = g_strdup_printf("%d", q);
+        ok = gdk_pixbuf_save_to_buffer(pixbuf, (gchar **)out, out_len, "jpeg",
+                                       &error, "quality", q_text, NULL);
+        g_free(q_text);
+    } else {
+        ok = gdk_pixbuf_save_to_buffer(pixbuf, (gchar **)out, out_len, "png",
+                                       &error, NULL);
     }
-    gchar *b64 = g_base64_encode(bytes->data, bytes->len);
-    g_byte_array_unref(bytes);
-    return b64;
+    g_object_unref(pixbuf);
+    if (!ok) {
+        if (error) g_error_free(error);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 // ── capture flow ────────────────────────────────────────────────────────────
@@ -182,8 +203,25 @@ static gchar *surface_to_png_base64(cairo_surface_t *surface) {
 static void finish_pending(void) {
     if (!pending) return;
     g_free(pending->id);
+    g_free(pending->format);
     g_free(pending);
     pending = NULL;
+}
+
+// Answers with a captured frame: down the frame channel if it is up, and as
+// base64 on the JSON-RPC line if not — which is what this shell did before the
+// channel existed, and what an older core still expects.
+static void deliver(const char *id, const guchar *bytes, gsize len, int width,
+                    int height, int source_width, int source_height) {
+    gchar *meta = g_strdup_printf(
+        "{\"width\":%d,\"height\":%d,\"sourceWidth\":%d,\"sourceHeight\":%d}",
+        width, height, source_width, source_height);
+    if (!frame_channel_send(id, meta, bytes, len)) {
+        gchar *b64 = g_base64_encode(bytes, len);
+        core_bridge_respond_image(id, b64, meta);
+        g_free(b64);
+    }
+    g_free(meta);
 }
 
 static gboolean do_capture(gpointer data) {
@@ -247,14 +285,11 @@ static gboolean do_capture(gpointer data) {
         return G_SOURCE_REMOVE;
     }
 
-    if (pending->with_cursor) {
-        double px, py;
-        mouse_get_virtual_pos(&px, &py);
-        cairo_t *cr = cairo_create(surface);
-        draw_cursor_into(cr, px, py, scale);
-        cairo_destroy(cr);
-    }
-
+    // Crop, then shrink, then the cursor, then the encoder. The order matters
+    // more than any single step: shrinking first means the cursor is drawn
+    // onto — and the encoder runs over — a quarter of the pixels at half
+    // width, and both of those cost strictly by the pixel.
+    double crop_x = 0, crop_y = 0;
     if (pending->has_crop && pending->crop_w > 0 && pending->crop_h > 0) {
         int cw = (int)pending->crop_w, ch = (int)pending->crop_h;
         cairo_surface_t *cropped =
@@ -265,14 +300,57 @@ static gboolean do_capture(gpointer data) {
         cairo_destroy(cr);
         cairo_surface_destroy(surface);
         surface = cropped;
+        crop_x = pending->crop_x;
+        crop_y = pending->crop_y;
     }
 
-    gchar *b64 = surface_to_png_base64(surface);
+    int source_w = cairo_image_surface_get_width(surface);
+    int source_h = cairo_image_surface_get_height(surface);
+    int out_w = source_w, out_h = source_h;
+    // Only ever shrinks: asking for more pixels than were captured would
+    // invent them, so a width larger than the window simply gets the window.
+    if (pending->max_width > 0 && pending->max_width < source_w) {
+        out_w = pending->max_width;
+        out_h = MAX(1, (int)((double)source_h * out_w / source_w + 0.5));
+    }
+    double factor = (double)out_w / source_w;
+
+    if (out_w != source_w) {
+        cairo_surface_t *shrunk =
+            cairo_image_surface_create(CAIRO_FORMAT_RGB24, out_w, out_h);
+        cairo_t *cr = cairo_create(shrunk);
+        cairo_scale(cr, factor, factor);
+        cairo_set_source_surface(cr, surface, 0, 0);
+        // Cheaper than BEST and, at these ratios, not tellable apart on a
+        // frame that is about to be JPEG'd anyway.
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        cairo_surface_destroy(surface);
+        surface = shrunk;
+    }
+
+    if (pending->with_cursor) {
+        double px, py;
+        mouse_get_virtual_pos(&px, &py);
+        cairo_t *cr = cairo_create(surface);
+        // Into the shrunk picture's own coordinates: past the crop's origin,
+        // then scaled by however much the picture shrank. The cursor scales
+        // with it, so it stays the same size relative to the screen.
+        draw_cursor_into(cr, (px - crop_x) * factor, (py - crop_y) * factor,
+                         scale * factor);
+        cairo_destroy(cr);
+    }
+
+    guchar *bytes = NULL;
+    gsize len = 0;
+    gboolean encoded = surface_to_bytes(surface, pending->format,
+                                        pending->quality, &bytes, &len);
     cairo_surface_destroy(surface);
 
-    if (b64) {
-        core_bridge_respond_image(pending->id, b64);
-        g_free(b64);
+    if (encoded) {
+        deliver(pending->id, bytes, len, out_w, out_h, source_w, source_h);
+        g_free(bytes);
     } else {
         core_bridge_respond_error(pending->id, "Screenshot encoding failed");
     }
@@ -282,7 +360,8 @@ static gboolean do_capture(gpointer data) {
 
 void screenshot_handle_capture(const char *id, gboolean with_cursor,
                                gboolean has_crop, double crop_x, double crop_y,
-                               double crop_w, double crop_h) {
+                               double crop_w, double crop_h, const char *format,
+                               int max_width, int quality) {
     if (pending) { // should not happen — the core awaits each capture
         core_bridge_respond_error(id, "Capture already in progress");
         return;
@@ -300,6 +379,9 @@ void screenshot_handle_capture(const char *id, gboolean with_cursor,
     pending->crop_y = crop_y;
     pending->crop_w = crop_w;
     pending->crop_h = crop_h;
+    pending->format = g_strdup(format && *format ? format : "png");
+    pending->max_width = max_width;
+    pending->quality = quality;
 
     // Hide the overlay for one compositor frame so the capture shows the
     // desktop beneath it (macOS: .optionOnScreenBelowWindow), then grab.

@@ -47,6 +47,12 @@ curl -X POST --data 'mouse=CLICK(0,0)'  http://192.168.1.40:8033/pb-a703/
 curl -o now.png                         http://192.168.1.40:8033/pb-a703/
 ```
 
+  A full-size PNG is the frame to *read* and the most expensive one to make.
+  For watching, `?format=jpeg&w=1280&q=70` asks for a JPEG no wider than
+  1280 px — around a fifth of the bytes and an eighth of the time, which is
+  what makes a watchable frame rate possible. See
+  [Operation API](10_Operation%20API.md#asking-for-a-cheaper-frame).
+
 Three pages sit around it, all part of the [Web UI](12_Web UI.md):
 
 - **`/`** — the index. What is running here — instance, root, model, session,

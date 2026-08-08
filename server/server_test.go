@@ -90,9 +90,11 @@ func (f *fakeTarget) TypeText(text string) error  { f.record("type %s", text); r
 func (f *fakeTarget) KeyPress(key string) error   { f.record("key %s", key); return nil }
 func (f *fakeTarget) SetRemoteActive(active bool) { f.record("active %v", active) }
 
-func (f *fakeTarget) CaptureView() ([]byte, error) {
-	f.record("capture")
-	return []byte("\x89PNG\r\n\x1a\n"), nil
+func (f *fakeTarget) CaptureView(format string, maxWidth, quality int) ([]byte, int, int, error) {
+	f.record("capture %s w=%d q=%d", format, maxWidth, quality)
+	// The source is 3200×2000 whatever was asked for, so a test can tell the
+	// picture's own size apart from the space clicks come back in.
+	return []byte("\x89PNG\r\n\x1a\n"), 3200, 2000, nil
 }
 
 func (f *fakeTarget) record(format string, a ...any) {
@@ -333,8 +335,69 @@ func TestWatchingDoesNotMarkTheServerActive(t *testing.T) {
 	target := &fakeTarget{}
 	base := serve(t, target)
 	get(t, base+"/pb-aaaa")
-	if want := []string{"capture"}; !reflect.DeepEqual(target.calls, want) {
+	if want := []string{"capture png w=0 q=0"}; !reflect.DeepEqual(target.calls, want) {
 		t.Errorf("got %q, want %q", target.calls, want)
+	}
+}
+
+// The bare frame is what it has always been — a full-size PNG — and the
+// parameters are additions to it, not a new default. Anything already pointed
+// at this address is reading that first case.
+func TestFrameParameters(t *testing.T) {
+	cases := []struct {
+		query      string
+		wantCall   string
+		wantType   string
+		wantStatus int
+	}{
+		{"", "capture png w=0 q=0", "image/png", http.StatusOK},
+		{"?format=png", "capture png w=0 q=0", "image/png", http.StatusOK},
+		{"?format=jpeg&w=1280&q=55", "capture jpeg w=1280 q=55", "image/jpeg", http.StatusOK},
+		{"?format=jpg", "capture jpeg w=0 q=70", "image/jpeg", http.StatusOK},             // quality defaults
+		{"?format=jpeg&w=99999", "capture jpeg w=4096 q=70", "image/jpeg", http.StatusOK}, // clamped
+		{"?format=jpeg&q=0", "capture jpeg w=0 q=70", "image/jpeg", http.StatusOK},        // unreadable = unasked
+		{"?format=jpeg&w=abc", "capture jpeg w=0 q=70", "image/jpeg", http.StatusOK},
+		{"?format=webp", "", "", http.StatusBadRequest},
+	}
+	for _, c := range cases {
+		target := &fakeTarget{}
+		base := serve(t, target)
+		resp, err := http.Get(base + "/pb-aaaa" + c.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != c.wantStatus {
+			t.Errorf("GET %q = %d, want %d", c.query, resp.StatusCode, c.wantStatus)
+			continue
+		}
+		if c.wantStatus != http.StatusOK {
+			continue
+		}
+		if got := resp.Header.Get("Content-Type"); got != c.wantType {
+			t.Errorf("GET %q content type = %q, want %q", c.query, got, c.wantType)
+		}
+		if want := []string{c.wantCall}; !reflect.DeepEqual(target.calls, want) {
+			t.Errorf("GET %q made %q, want %q", c.query, target.calls, want)
+		}
+	}
+}
+
+// A shrunk frame is not the space Pob's coordinates are in, so the frame has
+// to say how big it would have been. Without this a click on the view page
+// lands short by exactly however much the picture was shrunk.
+func TestFrameReportsItsSourceSize(t *testing.T) {
+	base := serve(t, &fakeTarget{})
+	resp, err := http.Get(base + "/pb-aaaa?format=jpeg&w=800")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Get("X-Pob-Source-Width"); got != "3200" {
+		t.Errorf("source width = %q, want 3200", got)
+	}
+	if got := resp.Header.Get("X-Pob-Source-Height"); got != "2000" {
+		t.Errorf("source height = %q, want 2000", got)
 	}
 }
 

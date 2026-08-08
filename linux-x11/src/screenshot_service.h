@@ -26,9 +26,16 @@ typedef struct {
 ShotContext screenshot_get_context(void);
 
 // Handles a "screenshot.capture" request. Main thread only; responds
-// asynchronously through core_bridge once the capture completes.
+// asynchronously through the frame channel, or core_bridge if that is not up,
+// once the capture completes.
+//
+// format is "png" or "jpeg", max_width shrinks the picture to at most that
+// many pixels across (0 leaves it alone) and quality is JPEG quality (0 takes
+// the default). The defaults are the agent's — a full-size PNG — and the rest
+// is for the view page, which is watching the machine rather than reading it.
 void screenshot_handle_capture(const char *id, gboolean with_cursor,
                                gboolean has_crop, double crop_x, double crop_y,
-                               double crop_w, double crop_h);
+                               double crop_w, double crop_h, const char *format,
+                               int max_width, int quality);
 
 #endif

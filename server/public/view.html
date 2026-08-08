@@ -12,6 +12,10 @@
         --dim: #777;
         --page: 1100px; /* wider than the control page: this holds a screen */
         --control: 46px; /* row height and button square; ≥44px touch target */
+        /* Named first, then whatever monospace the machine has: the page is
+           served over a LAN with no internet behind it, so a webfont would be
+           a request that never lands. Same list as the index page. */
+        --code: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
 
       * {
@@ -44,9 +48,9 @@
          screenshot with a pale edge still ends somewhere visible. */
       #stage {
         position: relative;
-        /* One grid cell, which every frame is put into. Two of them overlap
-           for a moment during a swap — laid out identically, so the swap is
-           never a layout change. */
+        /* One grid cell, holding the canvas and the status text on top of it,
+           so the text can sit over the picture without being laid out beside
+           it. */
         display: grid;
         min-height: 120px;
         border: 1px solid var(--ink);
@@ -60,15 +64,15 @@
         cursor: crosshair;
       }
 
-      /* Every frame is its own element, put in on top of the one before it and
-         never written over. See the swap in the script for why. */
-      .frame {
+      /* One canvas, drawn over and over. See the script for why it is a canvas
+         and not a picture. */
+      #frame {
         grid-area: 1 / 1;
         display: block;
         width: 100%;
         height: auto;
-        /* A picture is draggable by default, and dragging one is what this
-           page does with the machine instead. */
+        /* A canvas is draggable by default, and dragging one is what this page
+           does with the machine instead. */
         -webkit-user-drag: none;
       }
 
@@ -101,7 +105,11 @@
         appearance: none;
         background: var(--bg);
         color: var(--ink);
-        font: inherit; /* stays ≥16px so iOS doesn't zoom in on focus */
+        /* Set like the values on the index page — a reading off a running
+           machine. Under 16px, so iOS zooms in when it takes focus; the page
+           holds a whole screen and zooming back out is one pinch. */
+        font-family: var(--code);
+        font-size: 13px;
         text-align: center;
         font-variant-numeric: tabular-nums;
         outline: none;
@@ -114,8 +122,12 @@
         padding: 0 10px;
         margin-left: -1px; /* collapse the doubled border */
         border: 1px solid var(--ink);
-        color: var(--dim);
-        font-size: 14px;
+        color: var(--ink);
+        /* Set like the small labels on the index page: the word in front of a
+           reading, not the reading itself. */
+        font-family: var(--code);
+        font-size: 12px;
+        letter-spacing: 0.02em;
         white-space: nowrap;
         user-select: none;
         -webkit-user-select: none;
@@ -188,11 +200,12 @@
   <body>
     <main class="container">
       <div id="stage">
+        <canvas id="frame"></canvas>
         <p id="status">Waiting for the machine…</p>
       </div>
 
       <div class="row">
-        <input id="rate" type="number" min="0.1" max="10" step="0.1" inputmode="decimal" aria-label="Frames per second" />
+        <input id="rate" type="number" min="0.1" max="30" step="0.1" inputmode="decimal" aria-label="Frames per second" />
         <span class="unit">fps</span>
         <input id="text-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <button id="send-btn" type="button" class="filled" aria-label="Send">↵</button>
@@ -206,18 +219,35 @@
     </main>
     <script src="pob.js"></script>
     <script>
-      // The machine, in a picture you can click on. Each frame is a plain GET
-      // on the instance root — the same address the commands go to — and a
-      // click on it is a position in that picture, which is the space Pob
-      // works in, so it can be sent as it was read.
+      // The machine, in a picture you can click on. Each frame is a GET on the
+      // instance root — the same address the commands go to — asked for as a
+      // JPEG no wider than the box it is about to be drawn in, since this page
+      // is watching the machine rather than reading it. That is most of what
+      // makes a watchable rate possible: the bare address still answers with
+      // the full-size PNG the agent works from, and that one costs an order of
+      // magnitude more to make and to send.
+      //
+      // Shrinking the picture means it is no longer in Pob's own coordinates,
+      // so every frame carries the size it would have been, and a click is
+      // scaled back into that space before it is sent. See pointAt.
       //
       // The text field and the keyboard mirror are the control page's, from
       // pob.js: with a view of the machine in front of you, being able to type
       // at it is the other half of the same thing.
       const MIN_FPS = 0.1;
-      const MAX_FPS = 10;
-      const DEFAULT_FPS = 1;
+      const MAX_FPS = 30;
+      const DEFAULT_FPS = 5;
       const FPS_KEY = "pob-view-fps"; // remembered per browser, per host
+
+      const QUALITY = 70; // JPEG; past ~80 the bytes climb faster than the picture improves
+      // Asking for exactly the box width would mean a new size on every pixel
+      // of a window drag, and a shell rescaling to each one. Round up to a
+      // step instead: a handful of sizes, each good for a range of widths.
+      const WIDTH_STEP = 160;
+      const MAX_FRAME_WIDTH = 4096;
+      // A fetch that never settles would wedge the loop, since one frame is in
+      // flight at a time. Long enough for a slow capture on a busy machine.
+      const FRAME_TIMEOUT_MS = 10000;
 
       const CLICK_MOVE_THRESHOLD = 6; // px below which a gesture is a tap, not a drag
       const DOUBLE_CLICK_WINDOW_MS = 300;
@@ -234,71 +264,117 @@
       });
 
       // --- the frame ---------------------------------------------------------
-      // Every frame gets its own element, and no element is ever written over.
+      // One canvas, drawn over and over, because a canvas cannot blink.
       //
-      // The obvious way — two <img>s, load into the hidden one, swap — blinks,
-      // and not in the way you would expect: what shows for that instant is
-      // not a blank but an *older* picture. Writing a new src into an element
-      // does not replace what it is presenting; the element goes on showing
-      // what it had until the new picture is decoded and composited, which is
-      // some time after decode() says it is ready. Reveal it in between and
-      // the frame from two ticks ago comes back for one paint. Reused
-      // elements, in other words, have a past.
+      // Swapping <img> elements can, and does. Two of them — load into the
+      // hidden one, reveal it — blinks with an *older* picture: an element
+      // goes on presenting what it had until the new picture is not merely
+      // decoded but composited, which is some time after decode() says it is
+      // ready, so revealing it in between brings back the frame from two ticks
+      // ago for one paint. Reused elements have a past.
       //
-      // A fresh element has none. It is put into the page already holding a
-      // decoded picture, so the first paint it takes part in is the new frame
-      // — nothing older can surface, because it never held anything older. The
-      // one it replaces stays underneath for a frame and is dropped after,
-      // which leaves no gap either.
+      // A fresh element per frame has no past, but it has the opposite
+      // problem, and that one is a white flash. It has to be put in and the
+      // old one taken out, and requestAnimationFrame — the obvious place to
+      // take the old one out — runs *before* the paint, not after. So the
+      // paint that first shows the new element is the same paint that loses
+      // the old one, and if the new one is not composited yet there is nothing
+      // in the box for that frame: the stage's own background, which is white.
+      // Once a second that is a blip. Twenty times a second it is a strobe.
+      //
+      // A canvas has no such moment. It presents whatever was last drawn into
+      // it and goes on presenting exactly that until something else is drawn —
+      // there is no swap to be caught halfway through, no element entering the
+      // page with nothing to show, and nothing to take out afterwards. The
+      // frame is decoded before it is drawn, and drawing it is a single
+      // synchronous call that either has happened or has not.
       let period = 1000 / DEFAULT_FPS;
-      let frame = null; // the element on screen
+      let sourceW = 0; // the frame's size in screenshot pixels, which is not
+      let sourceH = 0; // the picture's own size once it has been shrunk
       let loading = false; // one request at a time; a slow capture must not pile up
       let timer = null;
 
-      function tick() {
-        if (loading || document.hidden) return;
-        loading = true;
+      const canvas = document.getElementById("frame");
+      // Opaque: a screenshot has nothing to see through, and saying so lets
+      // the browser skip blending the whole frame on every paint.
+      const paint = canvas.getContext("2d", { alpha: false });
 
-        const next = new Image();
-        next.className = "frame";
-        next.alt = "";
-        next.draggable = false;
+      // How wide a picture is worth asking for: the box it is drawn in, in
+      // real device pixels, and never more. Anything past that is detail the
+      // screen cannot show, paid for twice — once on the machine encoding it
+      // and again on the network.
+      function askedWidth() {
+        const box = stage.clientWidth || document.documentElement.clientWidth || 0;
+        const want = box * (window.devicePixelRatio || 1);
+        if (!want) return 0; // not laid out yet; let the machine send its own size
+        return Math.min(MAX_FRAME_WIDTH, Math.ceil(want / WIDTH_STEP) * WIDTH_STEP);
+      }
 
-        const show = () => {
-          loading = false;
-          const previous = frame;
-          // Before the status text, so a frame is always underneath it, and
-          // after the previous frame, so it covers it rather than the reverse.
-          stage.insertBefore(next, status);
-          frame = next;
-          status.textContent = "";
-          // Let the new frame have its paint before the old one goes, so there
-          // is never an instant with nothing in the box.
-          if (previous) requestAnimationFrame(() => previous.remove());
-          schedule();
-        };
-        const failed = () => {
-          loading = false;
-          // Keep the last frame up rather than blanking the page: the machine
-          // being briefly unreachable is not news worth losing the picture over.
-          if (!frame) status.textContent = "Cannot reach the machine.";
-          schedule();
-        };
-
+      function frameURLFor() {
+        const params = new URLSearchParams({ format: "jpeg", q: String(QUALITY) });
+        const width = askedWidth();
+        if (width) params.set("w", String(width));
         // A fresh URL every time. The frames are sent no-store, but a repeated
         // URL is exactly what anything in between would be tempted to answer
         // from its own copy, and one stale frame is this page's whole point
         // missed.
-        next.src = Pob.ENDPOINT + "?t=" + Date.now();
+        params.set("t", String(Date.now()));
+        return Pob.ENDPOINT + "?" + params;
+      }
 
-        // Decoded, not merely loaded: onload only means the bytes arrived, and
-        // an element put in before its picture is ready is a blank one.
-        if (next.decode) {
-          next.decode().then(show, failed);
-        } else {
-          next.onload = show;
-          next.onerror = failed;
+      async function tick() {
+        if (loading || document.hidden) return;
+        loading = true;
+
+        // Fetched rather than pointed at with an <img src>, because the size
+        // the frame would have been unshrunk comes back in a header, and an
+        // <img> cannot read one. It is the same picture either way.
+        const abort = new AbortController();
+        const bail = setTimeout(() => abort.abort(), FRAME_TIMEOUT_MS);
+        try {
+          const response = await fetch(frameURLFor(), { cache: "no-store", signal: abort.signal });
+          if (!response.ok) throw new Error("frame " + response.status);
+          const width = parseInt(response.headers.get("X-Pob-Source-Width"), 10);
+          const height = parseInt(response.headers.get("X-Pob-Source-Height"), 10);
+          // Decoded off the main thread and handed over ready to draw, rather
+          // than as an element that still has to be laid out and composited.
+          // At twenty frames a second, decoding on the thread that also has to
+          // answer every tap is what makes a page feel stuck.
+          const bitmap = await createImageBitmap(await response.blob());
+          show(bitmap, width, height);
+        } catch {
+          failed();
+        } finally {
+          clearTimeout(bail);
         }
+      }
+
+      function show(bitmap, width, height) {
+        loading = false;
+        // Setting either dimension clears the canvas even when the value does
+        // not change, so it is worth asking first: on a resize this is the one
+        // frame that starts from blank, and the rest never do.
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+        }
+        paint.drawImage(bitmap, 0, 0);
+        // An older shell reports no size, in which case the picture was never
+        // shrunk and is its own source.
+        sourceW = width > 0 ? width : bitmap.width;
+        sourceH = height > 0 ? height : bitmap.height;
+        // Held open, the decoded frames add up fast at this rate.
+        bitmap.close();
+        status.textContent = "";
+        schedule();
+      }
+
+      function failed() {
+        loading = false;
+        // Keep the last frame up rather than blanking the page: the machine
+        // being briefly unreachable is not news worth losing the picture over.
+        if (!sourceW) status.textContent = "Cannot reach the machine.";
+        schedule();
       }
 
       // The clock starts when a frame lands, not when one was asked for: a
@@ -347,15 +423,19 @@
       // --- clicking on it ----------------------------------------------------
       // The frame is drawn to fit the box, so a point on screen is that same
       // point in the screenshot scaled by however much it was shrunk to get
-      // there. Pob's coordinates are screenshot pixels, so that is the whole
-      // conversion.
+      // there. Two shrinks, in fact: the machine shrank the picture before
+      // sending it, and the box shrank it again to fit. Scaling by the source
+      // size rather than the picture's own size undoes both at once — using
+      // the canvas's own width here instead would land every click short by
+      // exactly the first of them.
       function pointAt(e) {
-        if (!frame) return null;
-        const box = frame.getBoundingClientRect();
-        if (!frame.naturalWidth || !box.width) return null;
+        const box = canvas.getBoundingClientRect();
+        // No source size means no frame has landed yet, so there is nothing
+        // on screen to have clicked on.
+        if (!sourceW || !sourceH || !box.width || !box.height) return null;
         return [
-          Math.round((e.clientX - box.left) * (frame.naturalWidth / box.width)),
-          Math.round((e.clientY - box.top) * (frame.naturalHeight / box.height)),
+          Math.round((e.clientX - box.left) * (sourceW / box.width)),
+          Math.round((e.clientY - box.top) * (sourceH / box.height)),
         ];
       }
 

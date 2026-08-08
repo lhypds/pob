@@ -35,6 +35,16 @@ final class CoreBridge: ObservableObject {
     private var stdinHandle: FileHandle?
     private var buffer = Data()
     private let writeQueue = DispatchQueue(label: "corebridge.write")
+    
+    /// Where captured frames go, so a picture never sits in front of a
+    /// keystroke on the JSON-RPC line. Offered by the core at startup; until
+    /// it is up, captures answer the old way.
+    private let frames = FrameChannel()
+    /// Encoding is by the pixel and has no business on the main thread, which
+    /// is also the thread every mouse event is posted from. Serial, because
+    /// two full-screen encodes at once would cost more in memory than they
+    /// win in time.
+    private let encodeQueue = DispatchQueue(label: "corebridge.encode", qos: .userInitiated)
 
     /// Coordinate context of the most recent capture; used to convert
     /// screenshot pixels to CGEvent screen positions for mouse actions.
@@ -215,6 +225,13 @@ final class CoreBridge: ObservableObject {
                 self.serverURL = running && !url.isEmpty ? url : nil
             }
 
+        case "frames.channel":
+            let port = params["port"] as? Int ?? 0
+            let token = params["token"] as? String ?? ""
+            if port > 0, port <= Int(UInt16.max), !token.isEmpty {
+                frames.connect(port: UInt16(port), token: token)
+            }
+
         case "screenshot.capture":
             guard let id else { return }
             handleScreenshotCapture(id: id, params: params)
@@ -367,6 +384,9 @@ final class CoreBridge: ObservableObject {
 
     private func handleScreenshotCapture(id: Any, params: [String: Any]) {
         let withCursor = params["withCursor"] as? Bool ?? true
+        let format = params["format"] as? String ?? "png"
+        let maxWidth = params["maxWidth"] as? Int ?? 0
+        let quality = params["quality"] as? Int ?? 0
         let cropRect: CGRect? = (params["crop"] as? [String: Any]).flatMap { crop in
             guard let x = crop["x"] as? Double,
                   let y = crop["y"] as? Double,
@@ -375,31 +395,55 @@ final class CoreBridge: ObservableObject {
             return CGRect(x: x, y: y, width: w, height: h)
         }
 
+        // The capture itself has to happen on the main thread — it reads the
+        // window's geometry, which only the main thread may — but that is all
+        // that does. Everything after it is pixels, and pixels are what the
+        // encode queue is for: at a watchable frame rate, encoding here would
+        // mean the UI and every mouse event queueing behind a picture.
         DispatchQueue.main.async {
             guard let window = self.window,
-                  let (shot, ctx) = ScreenshotService.shared.captureWindowContentAreaWithContext(window: window)
+                  let (image, ctx) = ScreenshotService.shared.captureWindowContentCGImage(window: window)
             else {
                 self.respondError(id: id, message: "Screenshot capture failed")
                 return
             }
             self.lastContext = ctx
+            let cursor = withCursor ? self.mouse.virtualCursorPosition : nil
 
-            var image = shot
-            if withCursor {
-                image = ScreenshotService.shared.imageWithCursor(shot, at: self.mouse.virtualCursorPosition)
+            self.encodeQueue.async {
+                guard let shot = ScreenshotService.shared.encode(
+                    image,
+                    cursorAt: cursor,
+                    crop: cropRect,
+                    maxWidth: maxWidth,
+                    format: format,
+                    quality: quality
+                ) else {
+                    self.respondError(id: id, message: "Screenshot encoding failed")
+                    return
+                }
+                self.deliver(id: id, shot: shot)
             }
-            if let rect = cropRect, let cropped = ScreenshotService.shared.crop(image, to: rect) {
-                image = cropped
-            }
-
-            guard let tiff = image.tiffRepresentation,
-                  let rep = NSBitmapImageRep(data: tiff),
-                  let png = rep.representation(using: .png, properties: [:])
-            else {
-                self.respondError(id: id, message: "Screenshot encoding failed")
-                return
-            }
-            self.respond(id: id, result: ["image": png.base64EncodedString()])
         }
+    }
+
+    /// Sends a captured frame down the frame channel, or — if it is not up —
+    /// the JSON-RPC line as base64, which is what every shell did before the
+    /// channel existed and what an older core still expects.
+    private func deliver(id: Any, shot: ScreenshotService.EncodedShot) {
+        let meta: [String: Any] = [
+            "width": shot.width,
+            "height": shot.height,
+            "sourceWidth": shot.sourceWidth,
+            "sourceHeight": shot.sourceHeight,
+        ]
+        // Ids are minted by the core as strings ("go-42"); anything else did
+        // not come from a channel-aware core.
+        if let requestID = id as? String, frames.send(id: requestID, meta: meta, payload: shot.data) {
+            return
+        }
+        var result = meta
+        result["image"] = shot.data.base64EncodedString()
+        respond(id: id, result: result)
     }
 }

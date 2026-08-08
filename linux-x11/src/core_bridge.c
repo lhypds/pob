@@ -2,6 +2,7 @@
 #include "app.h"
 #include "app_logger.h"
 #include "content_view.h"
+#include "frame_channel.h"
 #include "mouse_service.h"
 #include "screenshot_service.h"
 #include "settings_service.h"
@@ -108,10 +109,31 @@ void core_bridge_respond_empty(const char *id) {
     end_response(b);
 }
 
-void core_bridge_respond_image(const char *id, const char *png_base64) {
+void core_bridge_respond_image(const char *id, const char *image_base64,
+                               const char *meta_json) {
     JsonBuilder *b = begin_response(id);
+    // The same sizes the frame channel carries beside the picture, so a
+    // caller reads them the same way whichever channel answered.
+    if (meta_json && *meta_json) {
+        JsonParser *parser = json_parser_new();
+        if (json_parser_load_from_data(parser, meta_json, -1, NULL)) {
+            JsonNode *root = json_parser_get_root(parser);
+            if (root && JSON_NODE_HOLDS_OBJECT(root)) {
+                JsonObject *meta = json_node_get_object(root);
+                GList *names = json_object_get_members(meta);
+                for (GList *n = names; n; n = n->next) {
+                    const gchar *name = n->data;
+                    json_builder_set_member_name(b, name);
+                    json_builder_add_int_value(
+                        b, json_object_get_int_member_with_default(meta, name, 0));
+                }
+                g_list_free(names);
+            }
+        }
+        g_object_unref(parser);
+    }
     json_builder_set_member_name(b, "image");
-    json_builder_add_string_value(b, png_base64);
+    json_builder_add_string_value(b, image_base64);
     end_response(b);
 }
 
@@ -224,7 +246,20 @@ static void dispatch(JsonObject *msg) {
                 has_crop = TRUE;
             }
         }
-        screenshot_handle_capture(id, with_cursor, has_crop, cx, cy, cw, ch);
+        const gchar *format = params
+            ? json_object_get_string_member_with_default(params, "format", "png")
+            : "png";
+        int max_width = (int)member_double(params, "maxWidth", 0);
+        int quality = (int)member_double(params, "quality", 0);
+        screenshot_handle_capture(id, with_cursor, has_crop, cx, cy, cw, ch,
+                                  format, max_width, quality);
+
+    } else if (g_str_equal(method, "frames.channel")) {
+        int port = (int)member_double(params, "port", 0);
+        const gchar *token = params
+            ? json_object_get_string_member_with_default(params, "token", NULL)
+            : NULL;
+        if (port > 0 && token) frame_channel_connect(port, token);
 
     } else if (g_str_equal(method, "cursor.reset")) {
         if (!id) return;

@@ -3,6 +3,7 @@ package server
 import (
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -95,6 +96,22 @@ func serveAsset(w http.ResponseWriter, r *http.Request, contentType string, body
 	_, _ = w.Write(body)
 }
 
+// Frames are answered to order, through the query string:
+//
+//	?format=jpeg&w=1280&q=70
+//
+// with no parameters meaning what it has always meant — a full-size PNG. That
+// default is the documented API and the agent's own capture, and it stays
+// exactly as it was; the parameters are for the view page, which wants
+// something else entirely. It is watching, not reading: a picture no bigger
+// than the box it is drawn in, encoded as cheaply as still looks like the
+// screen, as often as the machine can manage. Same address, same frame, told
+// what it is for.
+const (
+	defaultQuality = 70   // JPEG; past ~80 the bytes climb faster than the picture improves
+	maxFrameWidth  = 4096 // a shrink is the point; asking to grow one is not
+)
+
 // serveFrame answers with what the machine looks like right now.
 func (s *Server) serveFrame(w http.ResponseWriter, r *http.Request) {
 	if !isRead(r) {
@@ -102,20 +119,69 @@ func (s *Server) serveFrame(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	// No touch() here on purpose: watching is not driving. The view page asks
-	// once a second, so counting it would keep the virtual cursor pinned on
-	// screen for as long as a tab is left open.
-	shot, err := s.target.CaptureView()
+	query := r.URL.Query()
+
+	format := "png"
+	contentType := "image/png"
+	switch strings.ToLower(query.Get("format")) {
+	case "", "png":
+	case "jpeg", "jpg":
+		format = "jpeg"
+		contentType = "image/jpeg"
+	default:
+		http.Error(w, "unknown format: png or jpeg", http.StatusBadRequest)
+		return
+	}
+
+	width := clampParam(query.Get("w"), 1, maxFrameWidth)
+	quality := clampParam(query.Get("q"), 1, 100)
+	if format == "jpeg" && quality == 0 {
+		quality = defaultQuality
+	}
+
+	// No touch() here on purpose: watching is not driving. Counting it would
+	// keep the virtual cursor pinned on screen for as long as a tab is left
+	// open — and at a watchable frame rate, permanently.
+	shot, sourceW, sourceH, err := s.target.CaptureView(format, width, quality)
 	if err != nil {
 		s.logf("Server: cannot capture the view: %v", err)
 		http.Error(w, "cannot capture the view", http.StatusServiceUnavailable)
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Type", contentType)
 	// Every frame is a moment that has passed; a cached one is the whole point
 	// of asking missed.
 	w.Header().Set("Cache-Control", "no-store")
+	// How big the frame would have been unshrunk, which is the only way a
+	// client can turn a click on it back into a position on the machine. Sent
+	// on every frame rather than looked up once: the window is resizable, so
+	// the answer changes underneath a page that is already open.
+	if sourceW > 0 && sourceH > 0 {
+		w.Header().Set("X-Pob-Source-Width", strconv.Itoa(sourceW))
+		w.Header().Set("X-Pob-Source-Height", strconv.Itoa(sourceH))
+	}
 	_, _ = w.Write(shot)
+}
+
+// clampParam reads a whole-number query parameter, answering 0 — "not asked
+// for" — for anything missing or unreadable. A number out of range is pulled
+// into it rather than refused: these are hints about what to send back, and
+// failing a whole frame over one would be a strange way to treat them.
+func clampParam(raw string, low, high int) int {
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	if n < low {
+		return low
+	}
+	if n > high {
+		return high
+	}
+	return n
 }
 
 func (s *Server) serveCommand(w http.ResponseWriter, r *http.Request) {

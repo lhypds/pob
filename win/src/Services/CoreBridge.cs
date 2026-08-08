@@ -74,13 +74,16 @@ public static class CoreBridge
         });
     }
 
-    public static void RespondImage(string id, string pngBase64)
+    // The fallback for a captured frame, used when the frame channel is not
+    // up: the picture as base64 on this line, with the sizes beside it.
+    public static void RespondImage(string id, string imageBase64, Dictionary<string, object?> meta)
     {
+        var result = new Dictionary<string, object?>(meta) { ["image"] = imageBase64 };
         Send(new Dictionary<string, object?>
         {
             ["jsonrpc"] = "2.0",
             ["id"] = id,
-            ["result"] = new Dictionary<string, object?> { ["image"] = pngBase64 },
+            ["result"] = result,
         });
     }
 
@@ -201,7 +204,19 @@ public static class CoreBridge
                     ch = MemberDouble(cn, "height", 0);
                     hasCrop = true;
                 }
-                ScreenshotService.HandleCapture(id, withCursor, hasCrop, cx, cy, cw, ch);
+                string format = MemberString(parameters, "format", "png");
+                int maxWidth = (int)MemberDouble(parameters, "maxWidth", 0);
+                int quality = (int)MemberDouble(parameters, "quality", 0);
+                ScreenshotService.HandleCapture(id, withCursor, hasCrop, cx, cy, cw, ch,
+                                                format, maxWidth, quality);
+                break;
+            }
+
+            case "frames.channel":
+            {
+                int port = (int)MemberDouble(parameters, "port", 0);
+                string token = MemberString(parameters, "token", "");
+                if (port > 0 && token.Length > 0) FrameChannel.Connect(port, token);
                 break;
             }
 

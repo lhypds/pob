@@ -50,19 +50,24 @@ View
 ----
 
 The machine in a picture you can work in. The frame comes from the instance
-root — the plain `GET` of the [Operation API](10_Operation%20API.md) — so it
-shows the machine as the agent, the trackpad, or a person at the keyboard
-leaves it, virtual cursor included. The border sits on the picture's own edge,
-so what you see is exactly what is there.
+root — the `GET` of the [Operation API](10_Operation%20API.md) — so it shows
+the machine as the agent, the trackpad, or a person at the keyboard leaves it,
+virtual cursor included. The border sits on the picture's own edge, so what
+you see is exactly what is there.
+
+It is watching the machine rather than reading it, so it does not ask for the
+full-size PNG the agent works from. It asks for a JPEG no wider than the box
+it is about to draw the frame in — on a typical window, a fifth of the bytes
+and an eighth of the time, which is what a watchable frame rate is made of.
 
 **Click straight on it.** Where you click is where it lands: the point is read
-off the picture and sent as `MOVE_TO`, which is in screenshot pixels already,
-so nothing has to be aimed. Click, double-click, right-click, drag and scroll
-all work, the same gestures as the trackpad — minus the guessing, since here
-you can see what you are pointing at.
+off the picture, scaled back up by however much the frame was shrunk on the
+way over, and sent as `MOVE_TO`. Click, double-click, right-click, drag and
+scroll all work, the same gestures as the trackpad — minus the guessing, since
+here you can see what you are pointing at.
 
-Along the bottom: **fps**, how many frames a second to fetch, from 0.1 to 10,
-starting at 1 and remembered in the browser — then the same text field,
+Along the bottom: **fps**, how many frames a second to fetch, from 0.1 to 30,
+starting at 5 and remembered in the browser — then the same text field,
 send button and keyboard mirror as the control page. With the machine in front
 of you, being able to type at it is the other half of the same thing.
 
@@ -70,19 +75,30 @@ The clock starts when a frame *lands* rather than when it was asked for, so a
 slow capture never queues up requests, and a backgrounded tab stops asking
 altogether — every frame costs the machine a screen capture.
 
-Frames swap without a blink, which took some doing. Every frame is its own
-element, put into the page on top of the one before it and dropped a paint
-later; no element is ever written over.
+Frames arrive without a blink, which took some doing — and in the end took
+giving up on images altogether. The frame is a canvas, drawn over and over.
 
-The obvious way — two images, load into the hidden one, swap — blinks, and not
-in the way you would expect: what shows for that instant is not a blank but an
-*older* picture. Writing a new `src` into an element does not replace what it
-is presenting. The element goes on showing what it had until the new picture is
-decoded and composited, which is some time after `decode()` reports it ready;
-reveal it in between and the frame from two ticks ago comes back for one paint.
-Reused elements have a past. A fresh one does not — it enters the page already
-holding a decoded picture, so the first paint it takes part in is the new
-frame, and nothing older can surface because it never held anything older.
+Swapping `<img>` elements blinks, twice over. Two of them — load into the
+hidden one, reveal it — blinks with an *older* picture: writing a new `src`
+into an element does not replace what it is presenting, and the element goes
+on showing what it had until the new picture is not merely decoded but
+composited, which is some time after `decode()` reports it ready. Reveal it in
+between and the frame from two ticks ago comes back for one paint. Reused
+elements have a past.
+
+A fresh element per frame has no past, and the opposite problem: a white
+flash. It has to be put in and the old one taken out, and
+`requestAnimationFrame` — the obvious place to take the old one out — runs
+*before* the paint rather than after. So the paint that first shows the new
+element is the same paint that loses the old one, and if the new one is not
+composited yet, what is in the box for that frame is the page's own
+background. Once a second that is a blip; twenty times a second it is a
+strobe.
+
+A canvas has no such moment. It presents whatever was last drawn into it and
+goes on presenting exactly that until something else is drawn — there is no
+swap to be caught halfway through, no element entering the page with nothing
+to show, and nothing to take out afterwards.
 
 Watching does not count as driving: a view left open all afternoon will not
 keep the virtual cursor pinned on screen the way the trackpad does while it is
