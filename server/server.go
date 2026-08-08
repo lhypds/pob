@@ -8,11 +8,11 @@
 // and keyboard calls the MCP server makes. A GET at the same address answers
 // with what the machine looks like right now, as a PNG.
 //
-// Two pages in webui/ ride along, served from the same address so a phone on
-// the network needs nothing installed: webcontrol.html at /control — a text
-// field, a keyboard-mirror button and a trackpad, the API's own client — and
-// webview.html at /view, which just watches, refetching the frame once a
-// second.
+// Three pages in webui/ ride along, served from the same address so a phone on
+// the network needs nothing installed: control.html at /control — a text
+// field, a keyboard-mirror button and a trackpad, the API's own client —
+// view.html at /view, which just watches, and index.html at the bare root,
+// which says what is running here and where to find it (see router.go).
 //
 // The server starts with the instance, on the port in settings.json — the same
 // on every machine unless someone changes it, so the address can be typed from
@@ -47,14 +47,17 @@ const idleAfter = 90 * time.Second
 // text field; a megabyte of it is already far past what anyone types.
 const maxBody = 1 << 20
 
-// The two pages are the server's own clients, kept in their own directory
-// because they are the one part of this package that isn't Go — and built into
-// the binary, so serving them needs nothing on disk.
+// The pages are the server's own clients, kept in their own directory because
+// they are the one part of this package that isn't Go — and built into the
+// binary, so serving them needs nothing on disk.
 //
-//go:embed webui/webcontrol.html
+//go:embed webui/index.html
+var indexPage []byte
+
+//go:embed webui/control.html
 var controlPage []byte
 
-//go:embed webui/webview.html
+//go:embed webui/view.html
 var viewPage []byte
 
 type Server struct {
@@ -69,6 +72,7 @@ type Server struct {
 	server  *http.Server
 	active  bool
 	idle    *time.Timer
+	status  func() Status
 }
 
 // New prepares the server. instance is the instance id, which is also a path

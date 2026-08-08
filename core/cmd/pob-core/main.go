@@ -9,6 +9,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -97,6 +98,24 @@ func main() {
 	// http://<machine>:<port> for anyone on the same network, which is why
 	// "server": false in settings.json turns it off.
 	srv := server.New(store.InstanceID(), br.Remote(), applog.Logf)
+	// What the index page reports. The server knows its own address and
+	// nothing else about the instance running behind it, so the rest is read
+	// here, where it is known — and read on each request, since the whole
+	// point of the page is what is true now.
+	srv.SetStatus(func() server.Status {
+		mcpURL := ""
+		if mcp.Running() {
+			mcpURL = fmt.Sprintf("http://127.0.0.1:%d/sse", mcp.Port())
+		}
+		return server.Status{
+			Root:      cfg.Root,
+			Model:     cfg.Model(),
+			Executing: runner.Running(),
+			Session:   runner.CurrentSession(),
+			Recording: runner.Recording(),
+			MCP:       mcpURL,
+		}
+	})
 	if cfg.ServerEnabled() {
 		if err := srv.Start(cfg.ServerPort()); err != nil {
 			applog.Logf("Server: not started: %v", err)

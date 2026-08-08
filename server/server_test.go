@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -219,15 +220,14 @@ func serve(t *testing.T, target Target) string {
 	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
-// The bare root and the path naming the instance are the same server, so an
-// address written down before and one typed from memory both arrive — and
-// every page can be reached either way.
-func TestRootAndInstancePathAreTheSameServer(t *testing.T) {
+// Each address answers with the one thing it names, and a page can be reached
+// with or without the instance in the path — an address written down before
+// and one typed from memory both arrive.
+func TestEachAddressServesItsOwnThing(t *testing.T) {
 	base := serve(t, &fakeTarget{})
 	cases := []struct{ path, want string }{
-		// The root is the machine itself, so what it answers with is a
-		// picture of it, not a page.
-		{"/", "\x89PNG"},
+		// The address that names the instance is the machine itself, so what
+		// it answers with is a picture of it, not a page.
 		{"/pb-aaaa", "\x89PNG"},
 		{"/pb-aaaa/", "\x89PNG"},
 		{"/control", `id="trackpad"`},
@@ -235,6 +235,8 @@ func TestRootAndInstancePathAreTheSameServer(t *testing.T) {
 		{"/pb-aaaa/control/", `id="trackpad"`},
 		{"/view", `id="frame-a"`},
 		{"/pb-aaaa/view", `id="frame-a"`},
+		{"/status", `"instance":"pb-aaaa"`},
+		{"/pb-aaaa/status", `"instance":"pb-aaaa"`},
 	}
 	for _, c := range cases {
 		if body := get(t, base+c.path); !bytes.Contains(body, []byte(c.want)) {
@@ -243,9 +245,21 @@ func TestRootAndInstancePathAreTheSameServer(t *testing.T) {
 	}
 }
 
-// A GET at the root is a frame, and it must be typed as one — an <img> is all
-// that ever asks for it.
-func TestViewFrameIsAnImage(t *testing.T) {
+// The bare root is the index, not the machine: the shortest address on the
+// network must not answer with a picture of someone's screen.
+func TestBareRootIsTheIndexNotTheMachine(t *testing.T) {
+	target := &fakeTarget{}
+	base := serve(t, target)
+	if body := get(t, base+"/"); !bytes.Contains(body, []byte(`id="addresses"`)) {
+		t.Errorf("GET / did not serve the index page: %.80s", body)
+	}
+	if len(target.calls) != 0 {
+		t.Errorf("GET / captured the machine anyway: %q", target.calls)
+	}
+}
+
+// A frame must be typed as one — an <img> is all that ever asks for it.
+func TestFrameIsAnImage(t *testing.T) {
 	base := serve(t, &fakeTarget{})
 	resp, err := http.Get(base + "/pb-aaaa")
 	if err != nil {
@@ -258,6 +272,32 @@ func TestViewFrameIsAnImage(t *testing.T) {
 	// A cached frame is a moment that has already passed.
 	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+// The index page reads the instance's state from here, so what the server was
+// told must come back out — with the server's own address alongside it.
+func TestStatusReportsTheInstanceAndTheServer(t *testing.T) {
+	port := freePort(t)
+	server := New("pb-aaaa", &fakeTarget{}, nil)
+	server.SetStatus(func() Status {
+		return Status{Root: "/tmp/pob", Model: "a-model", Executing: true, Session: "s-1"}
+	})
+	if err := server.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer server.Stop()
+
+	var got Status
+	body := get(t, fmt.Sprintf("http://127.0.0.1:%d/status", port))
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Instance != "pb-aaaa" || got.Root != "/tmp/pob" || got.Session != "s-1" || !got.Executing {
+		t.Errorf("status = %+v", got)
+	}
+	if got.Port != port {
+		t.Errorf("status port = %d, want %d", got.Port, port)
 	}
 }
 

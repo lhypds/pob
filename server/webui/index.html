@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pob</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --ink: #111;
+        --bg: #fff;
+        --dim: #777;
+        --page: 630px;
+        --control: 46px; /* row height, matching the control page */
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        display: flex;
+        justify-content: center;
+        padding: 18px 16px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: var(--page);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+
+      h1 .instance {
+        font-weight: 400;
+        color: var(--dim);
+      }
+
+      /* One box per section, sharing the control page's flat 1px border. */
+      .box {
+        border: 1px solid var(--ink);
+      }
+
+      .box h2 {
+        margin: 0;
+        padding: 0 12px;
+        height: var(--control);
+        display: flex;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--ink);
+      }
+
+      dl {
+        margin: 0;
+        display: grid;
+        /* The value column takes the slack, so the labels stay a straight
+           edge however long the paths and model names get. */
+        grid-template-columns: minmax(88px, auto) 1fr;
+      }
+
+      dt,
+      dd {
+        margin: 0;
+        padding: 9px 12px;
+        min-width: 0;
+      }
+
+      dt {
+        color: var(--dim);
+      }
+
+      dd {
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+      }
+
+      dt + dd + dt,
+      dt + dd + dt + dd {
+        border-top: 1px solid #e6e6e6;
+      }
+
+      /* The addresses, one per network the machine is on. */
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      li + li {
+        border-top: 1px solid #e6e6e6;
+      }
+
+      li a {
+        display: block;
+        padding: 12px;
+        color: var(--ink);
+        text-decoration: none;
+        overflow-wrap: anywhere;
+      }
+
+      li a:hover {
+        background: #f4f4f4;
+      }
+
+      .where {
+        display: block;
+        margin-top: 3px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+
+      .note {
+        margin: 0;
+        font-size: 13px;
+        color: var(--dim);
+      }
+
+      .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 7px;
+        border: 1px solid var(--ink);
+        border-radius: 50%;
+        vertical-align: 1px;
+      }
+
+      .dot.on {
+        background: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Pob <span class="instance" id="instance">…</span></h1>
+
+      <section class="box">
+        <h2>Machine</h2>
+        <ul id="addresses">
+          <li><a href="#">…</a></li>
+        </ul>
+      </section>
+
+      <section class="box">
+        <h2>Instance</h2>
+        <dl>
+          <dt>Root</dt>
+          <dd id="root">…</dd>
+          <dt>Model</dt>
+          <dd id="model">…</dd>
+          <dt>Executing</dt>
+          <dd id="executing">…</dd>
+          <dt>Recording</dt>
+          <dd id="recording">…</dd>
+          <dt>MCP</dt>
+          <dd id="mcp">…</dd>
+          <dt>Server</dt>
+          <dd id="port">…</dd>
+        </dl>
+      </section>
+
+      <p class="note" id="note"></p>
+    </main>
+
+    <script>
+      // The index: what is running here, and where to go on with it. The bare
+      // root is deliberately not the machine itself — that address is one
+      // path element further along, and it is the one this page hands out.
+      const STATUS_MS = 3000;
+
+      const $ = (id) => document.getElementById(id);
+      const yesNo = (v) => (v ? "yes" : "no");
+
+      // Where the pages live, given the instance id: the machine's own address
+      // is the id, and control and view hang off it. Built from this page's
+      // origin, so whatever host and port got here is what gets handed on.
+      function addresses(status) {
+        const root = location.origin + "/" + status.instance;
+        return [
+          [root, "the machine — a picture of it right now"],
+          [root + "/control", "drive it: type, keyboard, trackpad"],
+          [root + "/view", "watch it, refreshing on its own"],
+        ];
+      }
+
+      function fill(status) {
+        $("instance").textContent = status.instance || "";
+        document.title = status.instance ? "Pob — " + status.instance : "Pob";
+
+        $("root").textContent = status.root || "—";
+        $("model").textContent = status.model || "—";
+        $("executing").innerHTML =
+          dot(status.executing) +
+          (status.executing && status.session
+            ? "yes — session " + escapeText(status.session)
+            : yesNo(status.executing));
+        $("recording").innerHTML = dot(status.recording) + yesNo(status.recording);
+        $("mcp").innerHTML = status.mcp
+          ? dot(true) + "running — " + escapeText(status.mcp)
+          : dot(false) + "stopped";
+        $("port").innerHTML = dot(true) + "running on port " + escapeText(String(status.port || ""));
+
+        // Only rebuild the addresses when they have actually changed: they are
+        // links, and relaying them under a hovering finger every few seconds
+        // would be its own small annoyance.
+        const links = addresses(status);
+        const key = links.map((l) => l[0]).join(" ");
+        if (key !== addressKey) {
+          addressKey = key;
+          $("addresses").innerHTML = links
+            .map(
+              ([href, what]) =>
+                `<li><a href="${escapeText(href)}">${escapeText(href)}<span class="where">${what}</span></a></li>`,
+            )
+            .join("");
+        }
+
+        // One line per network the machine is on: which of them a phone can
+        // reach depends on where the phone is.
+        const others = (status.urls || []).filter((u) => !u.startsWith(location.origin + "/"));
+        $("note").textContent = others.length
+          ? "Also reachable at " + others.join(", ")
+          : "";
+      }
+
+      function dot(on) {
+        return '<span class="dot' + (on ? " on" : "") + '"></span>';
+      }
+
+      // Everything here comes off the machine's own status, but it is put into
+      // the page as markup, so it gets escaped like anything else would.
+      function escapeText(value) {
+        return String(value).replace(
+          /[&<>"]/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+        );
+      }
+
+      let addressKey = "";
+
+      async function refresh() {
+        try {
+          const resp = await fetch("status", { cache: "no-store" });
+          if (!resp.ok) throw new Error(resp.status);
+          fill(await resp.json());
+        } catch {
+          $("note").textContent = "Lost the instance — it may have been quit.";
+        }
+      }
+
+      refresh();
+      setInterval(refresh, STATUS_MS);
+    </script>
+  </body>
+</html>

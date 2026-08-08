@@ -41,11 +41,15 @@ That address is the machine itself, so the method says what you want of it:
 | `POST` | `/<instance-id>/` | Runs a command — the rest of this page |
 | `GET` | `/<instance-id>/` | A PNG of what the machine looks like right now, virtual cursor included |
 | `GET` | `/<instance-id>/control` | The [Web UI](12_WebUI.md) control page — text field, keyboard mirror, trackpad |
-| `GET` | `/<instance-id>/view` | The [Web UI](12_WebUI.md) view page, which refetches that PNG once a second |
+| `GET` | `/<instance-id>/view` | The [Web UI](12_WebUI.md) view page, which refetches that PNG on a clock you can set |
+| `GET` | `/<instance-id>/status` | What is running here, as JSON — the same facts `pob status` prints |
+| `GET` | `/` | The [Web UI](12_WebUI.md) index page: those facts, and the address above to go on with |
 
-Both pages work off the bare root as well — `http://192.168.1.40:8033/control`
-is the same page. Anything else under the address is a 404; nothing else is
-there.
+The three pages answer without the instance in the path as well —
+`http://192.168.1.40:8033/control` is the same page. A **GET** on the bare root
+is the one exception: it is the index, not the machine, so the shortest address
+on the network does not answer with a picture of someone's screen. Anything
+else under the address is a 404; nothing else is there.
 
 The frame is a plain image, so watching the machine needs no more than an
 `<img>` — or a shell:

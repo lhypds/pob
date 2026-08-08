@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pob</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --ink: #111;
+        --bg: #fff;
+        --dim: #777;
+        --page: 1100px; /* wider than the control page: this holds a screen */
+        --control: 46px; /* row height, matching the control page */
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        display: flex;
+        justify-content: center;
+        padding: 18px 16px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: var(--page);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+      }
+
+      /* The label, field and unit read as one control, the way the text field
+         and its buttons do on the control page. */
+      .cell {
+        display: flex;
+        align-items: center;
+        height: var(--control);
+        padding: 0 12px;
+        border: 1px solid var(--ink);
+        color: var(--dim);
+        font-size: 14px;
+        white-space: nowrap;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .cell + #rate,
+      #rate + .cell {
+        border-left: none;
+      }
+
+      #rate {
+        width: 76px;
+        height: var(--control);
+        padding: 0 10px;
+        border: 1px solid var(--ink);
+        border-radius: 0; /* iOS rounds inputs by default */
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit; /* stays ≥16px so iOS doesn't zoom in on focus */
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        outline: none;
+      }
+
+      #state {
+        margin-left: auto;
+        padding-left: 12px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+
+      /* The frame sits in a box of its own so a screenshot with a pale edge
+         still ends somewhere visible. */
+      #stage {
+        --chrome: 100px; /* body padding + the row + the gap */
+        display: grid;
+        /* One cell, sized to the box rather than to the picture in it: an
+           auto track would take its width from the frame's own pixels, and
+           the frame's max-width would then have nothing to measure against. */
+        grid-template: 100% / 100%;
+        place-items: center;
+        padding: 10px;
+        height: calc(100vh - var(--chrome));
+        height: calc(100dvh - var(--chrome)); /* iOS Safari: vh runs behind the URL bar */
+        border: 1px solid var(--ink);
+        background: var(--bg);
+        overflow: hidden;
+      }
+
+      /* Two frames in the one grid cell, so they stack: the next one loads in
+         the hidden one and they swap once it has arrived, and the page never
+         flashes empty between refreshes. */
+      .frame {
+        grid-area: 1 / 1;
+        max-width: 100%;
+        max-height: 100%;
+        visibility: hidden;
+      }
+
+      .frame.shown {
+        visibility: visible;
+      }
+
+      #status {
+        grid-area: 1 / 1;
+        margin: 0;
+        font-size: 14px;
+        color: var(--dim);
+      }
+
+      #status:empty {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <div class="row">
+        <span class="cell">Refresh every</span>
+        <input id="rate" type="number" min="0.2" max="60" step="0.1" inputmode="decimal" />
+        <span class="cell">seconds</span>
+        <span id="state"></span>
+      </div>
+
+      <div id="stage">
+        <img id="frame-a" class="frame" alt="" />
+        <img id="frame-b" class="frame" alt="" />
+        <p id="status">Waiting for the machine…</p>
+      </div>
+    </main>
+
+    <script>
+      // A view of the machine. Each frame is a plain GET on the instance root
+      // — the same address the control page POSTs to — so this page is only
+      // the thing that asks for it over and over.
+      const MIN_S = 0.2; // faster than this is asking for frames nobody sees
+      const MAX_S = 60;
+      const DEFAULT_S = 1;
+      const RATE_KEY = "pob-view-refresh"; // remembered per browser, per host
+
+      // The machine is this page's own path with /view taken off, which keeps
+      // the page working however it was reached: by instance name, by bare
+      // address, on whatever port the machine was given.
+      const MACHINE = location.pathname.replace(/\/view\/?$/, "/");
+
+      const frames = [document.getElementById("frame-a"), document.getElementById("frame-b")];
+      const status = document.getElementById("status");
+      const state = document.getElementById("state");
+      const rate = document.getElementById("rate");
+
+      let period = DEFAULT_S * 1000;
+      let shown = 0; // which of the two frames is on screen
+      let started = false; // a frame has arrived at least once
+      let loading = false; // one request at a time; a slow capture must not pile up
+      let timer = null;
+
+      function tick() {
+        if (loading || document.hidden) return;
+        loading = true;
+        const back = frames[1 - shown];
+        back.onload = () => {
+          loading = false;
+          frames[shown].classList.remove("shown");
+          back.classList.add("shown");
+          shown = 1 - shown;
+          started = true;
+          status.textContent = "";
+          state.textContent = "";
+          schedule();
+        };
+        back.onerror = () => {
+          loading = false;
+          // Keep the last frame up rather than blanking the page: the machine
+          // being briefly unreachable is not news worth losing the picture
+          // over, so say so in the corner instead.
+          state.textContent = "cannot reach the machine";
+          if (!started) status.textContent = "Cannot reach the machine.";
+          schedule();
+        };
+        // A fresh URL every time. The frames are sent no-store, but a repeated
+        // URL is exactly what anything in between would be tempted to answer
+        // from its own copy, and one stale frame is this page's whole point
+        // missed.
+        back.src = MACHINE + "?t=" + Date.now();
+      }
+
+      // The clock starts when a frame lands, not when one was asked for: a
+      // capture slower than the interval would otherwise queue up requests
+      // nobody will ever see.
+      function schedule() {
+        clearTimeout(timer);
+        timer = null;
+        if (document.hidden) return;
+        timer = setTimeout(tick, period);
+      }
+
+      function setRate(seconds, remember) {
+        if (!isFinite(seconds)) seconds = DEFAULT_S;
+        seconds = Math.min(MAX_S, Math.max(MIN_S, seconds));
+        period = seconds * 1000;
+        if (remember) {
+          try {
+            localStorage.setItem(RATE_KEY, String(seconds));
+          } catch {
+            // Private browsing refuses to store; the rate just won't be kept.
+          }
+        }
+        return seconds;
+      }
+
+      // Typing in the field takes effect on the next frame, not on the next
+      // keystroke: rewriting "10" one character at a time would otherwise pass
+      // through 1 second on the way, and fire a request for it.
+      rate.addEventListener("change", () => {
+        rate.value = setRate(parseFloat(rate.value), true);
+        schedule();
+      });
+
+      // A backgrounded tab is nobody watching, and every frame costs the
+      // machine a screen capture. Stop asking until it comes back.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          clearTimeout(timer);
+          timer = null;
+        } else {
+          tick();
+        }
+      });
+
+      let saved = null;
+      try {
+        saved = localStorage.getItem(RATE_KEY);
+      } catch {
+        // Storage is unreadable here; the default rate stands.
+      }
+      rate.value = setRate(saved === null ? DEFAULT_S : parseFloat(saved), false);
+      tick();
+    </script>
+  </body>
+</html>
