@@ -47,7 +47,7 @@ curl -X POST --data 'mouse=CLICK(0,0)'  http://192.168.1.40:8033/pb-a703/
 curl -o now.png                         http://192.168.1.40:8033/pb-a703/
 ```
 
-Three pages sit around it, all part of the [Web UI](12_WebUI.md):
+Three pages sit around it, all part of the [Web UI](12_Web UI.md):
 
 - **`/`** — the index. What is running here — instance, root, model, session,
   MCP, server — and the machine's own address to go on with. The bare root is
@@ -75,6 +75,6 @@ See also
 --------
 
 - [Operation API](10_Operation%20API.md) — the command grammar
-- [Web UI](12_WebUI.md) — the pages this server hosts
+- [Web UI](12_Web UI.md) — the pages this server hosts
 - [Pob Keyboard](13_Keyboard.md) — a desktop client for the same API
 - [Settings](06_Settings.md) — `server` and `server_port`

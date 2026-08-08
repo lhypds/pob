@@ -23,7 +23,7 @@ It allows AI to:
 The same bridge works for people, not only for AI: every instance runs a
 server, so there is a web page you can open on your phone, and a desktop app
 with a full-size keyboard and a trackpad — see [Pob Server](docs/09_Server.md),
-[Web UI](docs/12_WebUI.md) and [Pob Keyboard](docs/13_Keyboard.md).
+[Web UI](docs/12_Web UI.md) and [Pob Keyboard](docs/13_Keyboard.md).
 
 
 Getting started
@@ -55,6 +55,6 @@ Documentation
 | [Pob Server](docs/09_Server.md) | The server every instance runs, and its address |
 | [Operation API](docs/10_Operation%20API.md) | The HTTP command grammar for driving the machine |
 | [Control API](docs/11_Control%20API.md) | The localhost API the `pob` CLI drives the app with |
-| [Web UI](docs/12_WebUI.md) | The remote control page, for a phone |
+| [Web UI](docs/12_Web UI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
