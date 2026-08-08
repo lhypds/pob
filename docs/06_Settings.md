@@ -42,6 +42,41 @@ Example:
 }
 ```
 
+Pointed at Claude — the API is OpenAI-compatible, so only `base_url` and
+`model` change:
+
+```json
+{
+  "openai_api_key": "",
+  "base_url": "https://api.anthropic.com/v1",
+  "model": "claude-opus-4-8",
+  "max_steps": 50,
+  "max_resumes": 5,
+  "max_steplogs": 10,
+  "macro_default_delay": 1000,
+  "editor": "system",
+  "terminal": "iterm2",
+  "stop_hook": ""
+}
+```
+
+Pointed at Gemini, through its OpenAI-compatible endpoint:
+
+```json
+{
+  "openai_api_key": "",
+  "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+  "model": "gemini-2.5-flash",
+  "max_steps": 50,
+  "max_resumes": 5,
+  "max_steplogs": 10,
+  "macro_default_delay": 1000,
+  "editor": "system",
+  "terminal": "iterm2",
+  "stop_hook": ""
+}
+```
+
 
 See also
 --------
