@@ -84,6 +84,15 @@ func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, arg
 			applog.Logf("[%s] Macro move(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
 		}
 
+	case "resetCursor":
+		// Recorded when something sent the cursor home mid-sequence. Replaying
+		// it matters because every move around it is a relative offset: skip the
+		// jump back to the origin and each following move starts from the wrong
+		// place.
+		if pos, err := r.br.ResetCursor(); err == nil {
+			applog.Logf("[%s] Macro resetCursor -> (%d, %d)", sessionID, pos.X, pos.Y)
+		}
+
 	case "click":
 		if pos, err := r.br.Click(); err == nil {
 			applog.Logf("[%s] Macro click at (%d, %d)", sessionID, pos.X, pos.Y)

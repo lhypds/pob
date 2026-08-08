@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -344,5 +345,136 @@ func TestScreenshotReportsItsDimensions(t *testing.T) {
 	}
 	if text := resultText(t, resp); !bytes.Contains([]byte(text), []byte("800×600")) {
 		t.Errorf("size note missing dimensions: %q", text)
+	}
+}
+
+// fakeRecorder stands in for macro.txt and the shell's record toggle.
+type fakeRecorder struct {
+	mu    sync.Mutex
+	on    bool
+	lines []string
+}
+
+func (f *fakeRecorder) Recording() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.on
+}
+
+func (f *fakeRecorder) AppendToMacro(line string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lines = append(f.lines, line)
+}
+
+func (f *fakeRecorder) recorded() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.lines...)
+}
+
+// An MCP client drives the same machine the agent loop does, so a running
+// recording has to capture what it did — in the grammar replay reads back, with
+// absolute moves written down as the relative offsets replay chains.
+func TestToolCallsAreRecordedAsMacroLines(t *testing.T) {
+	srv, _ := newTestServer(t)
+	rec := &fakeRecorder{on: true}
+	srv.SetRecorder(rec)
+
+	srv.callTool(1, "reset_cursor", map[string]any{}) // cursor is now at (20, 20)
+	srv.callTool(1, "move_and_click", map[string]any{"x": 100.0, "y": 120.0})
+	srv.callTool(1, "scroll", map[string]any{"dx": 0.0, "dy": 120.0})
+	srv.callTool(1, "type_text", map[string]any{"text": `say "hi"`})
+	srv.callTool(1, "key_press", map[string]any{"key": "cmd+v"})
+	srv.callTool(1, "wait", map[string]any{"milliseconds": 250.0})
+	srv.callTool(1, "take_screenshot", map[string]any{})
+
+	want := []string{
+		"resetCursor()",
+		"move(80, 100)",
+		"click()",
+		"scroll(0, 120)",
+		`typeText("say \"hi\"")`,
+		`keyPress("cmd+v")`,
+		"sleep(250)",
+		"take_screenshot()",
+	}
+	got := rec.recorded()
+	if len(got) != len(want) {
+		t.Fatalf("recorded %d lines, want %d:\n got: %q\nwant: %q", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// Recorded lines must replay: every action name written here has to be one the
+// macro runner dispatches, or a recording turns into a file of skipped lines.
+func TestRecordedActionNamesAreReplayable(t *testing.T) {
+	srv, _ := newTestServer(t)
+	rec := &fakeRecorder{on: true}
+	srv.SetRecorder(rec)
+
+	args := map[string]map[string]any{
+		"move_cursor":           {"dx": 10.0, "dy": 10.0},
+		"move_cursor_to":        {"x": 100.0, "y": 120.0},
+		"move_and_click":        {"x": 100.0, "y": 120.0},
+		"move_and_right_click":  {"x": 100.0, "y": 120.0},
+		"move_and_double_click": {"x": 100.0, "y": 120.0},
+		"drag":                  {"dx": 5.0, "dy": 5.0},
+		"drag_to":               {"x": 50.0, "y": 60.0},
+		"scroll":                {"dx": 0.0, "dy": 120.0},
+		"move_and_scroll":       {"x": 100.0, "y": 120.0, "dx": 0.0, "dy": 120.0},
+		"type_text":             {"text": "hello"},
+		"key_press":             {"key": "return"},
+		"wait":                  {"milliseconds": 1.0},
+	}
+	for _, name := range ToolNames() {
+		srv.callTool(1, name, args[name])
+	}
+
+	// Mirrors the switch in agent.runMacroAction; get_cursor_position is the one
+	// tool that reads without acting, so it records nothing.
+	replayable := map[string]bool{
+		"move": true, "click": true, "rightClick": true, "doubleClick": true,
+		"drag": true, "scroll": true, "typeText": true, "keyPress": true,
+		"sleep": true, "take_screenshot": true, "resetCursor": true,
+	}
+	for _, line := range rec.recorded() {
+		name, _, ok := strings.Cut(line, "(")
+		if !ok || !replayable[name] {
+			t.Errorf("recorded line %q is not a replayable macro action", line)
+		}
+	}
+}
+
+// The toggle is the shell's: with recording off, nothing reaches macro.txt.
+func TestNothingIsRecordedWhileRecordingIsOff(t *testing.T) {
+	srv, shell := newTestServer(t)
+	rec := &fakeRecorder{on: false}
+	srv.SetRecorder(rec)
+
+	srv.callTool(1, "move_and_click", map[string]any{"x": 100.0, "y": 120.0})
+	srv.callTool(1, "type_text", map[string]any{"text": "hello"})
+
+	if lines := rec.recorded(); len(lines) != 0 {
+		t.Errorf("recorded %q while the toggle was off", lines)
+	}
+	// The position read that recording needs must not be issued either.
+	for _, m := range shell.methods() {
+		if m == "cursor.position" {
+			t.Error("queried the cursor for a recording that was not running")
+			break
+		}
+	}
+}
+
+// A server with no recorder attached (the CLI path) must not panic.
+func TestToolCallsSurviveWithoutARecorder(t *testing.T) {
+	srv, _ := newTestServer(t)
+	if resp := srv.callTool(1, "move_and_click", map[string]any{"x": 10.0, "y": 10.0}); resp["error"] != nil {
+		t.Errorf("call failed without a recorder: %v", resp["error"])
 	}
 }

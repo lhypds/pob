@@ -17,6 +17,13 @@ keyPress("return")
 
 Use the record button (⏺) in the toolbar to record actions during an AI session — they are appended to `macro.txt` automatically. Use the play button (▶) to run the macro directly without the AI.
 
+Recording captures every action that drives the machine, whichever one of the three is
+driving it: your own mouse and keyboard, the AI session's tool calls, and the tools an
+[MCP](08_MCP.md) client calls. They all append to the same `macro.txt`, in the order
+things happened. The MCP tools that take an absolute `(x, y)` are written down as the
+relative `move(dx, dy)` this vocabulary replays, so a recording made through MCP plays
+back like any other.
+
 
 Functions
 ---------
@@ -35,6 +42,7 @@ macro line is written in:
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
 | `keyPress(key)` | `key`: string | Press a key, optionally with `+`-joined modifiers in front of it (see [Key names](04_Keys.md)) — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. |
 | `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
+| `resetCursor()` | — | Send the cursor back to the origin it starts at. Recorded when something reset it mid-sequence; replaying it keeps the relative moves around it landing where they did. |
 | `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<instanceId>/<sessionId>/screenshots/<unixtime>.png`. |
 
 All coordinates are in screenshot pixel space (origin = top-left, x increases right, y increases down).  

@@ -26,6 +26,18 @@ import (
 	"pob/server"
 )
 
+// macroRecorder lets the MCP server write to macro.txt under the one toggle
+// everything else obeys — the shell's record button, which flips
+// runner.SetRecording. An MCP client drives the same machine the agent loop
+// does, so what it did belongs in the same recording.
+type macroRecorder struct {
+	runner *agent.Runner
+	cfg    *config.Config
+}
+
+func (m macroRecorder) Recording() bool           { return m.runner.Recording() }
+func (m macroRecorder) AppendToMacro(line string) { m.cfg.AppendToMacro(line) }
+
 func main() {
 	root := flag.String("root", "", "project root holding settings.json, instruction.txt, macro.txt and logs/")
 	instance := flag.String("instance", "", "logs/<instance> directory resolved by the shell; holds this instance's settings.json and session logs")
@@ -78,6 +90,7 @@ func main() {
 	// The MCP server never starts with the app — it is started on demand via
 	// `pob mcp start` (see internal/ctlserver).
 	mcp := mcpserver.New(br)
+	mcp.SetRecorder(macroRecorder{runner: runner, cfg: cfg})
 
 	// The Pob server does start with the instance, so that reaching for a
 	// phone is all it takes: it serves the API and the web UI at

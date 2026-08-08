@@ -26,7 +26,8 @@ import (
 )
 
 type Server struct {
-	br *bridge.Bridge
+	br  *bridge.Bridge
+	rec MacroRecorder
 
 	mu       sync.Mutex
 	sessions map[string]chan []byte
@@ -34,11 +35,46 @@ type Server struct {
 	port     int
 }
 
+// MacroRecorder is the macro.txt sink. An action driven over MCP is an action
+// the machine performed, so a recording that is running captures it the same
+// as one the agent loop performed: same file, same grammar, one stream in the
+// order things happened.
+type MacroRecorder interface {
+	Recording() bool
+	AppendToMacro(line string)
+}
+
 // DefaultPort is used when `pob mcp start` is not given an explicit port.
 const DefaultPort = 8032
 
 func New(br *bridge.Bridge) *Server {
 	return &Server{br: br, sessions: map[string]chan []byte{}}
+}
+
+// SetRecorder attaches the macro sink. Called once before Start; a server
+// without one simply records nothing.
+func (s *Server) SetRecorder(rec MacroRecorder) { s.rec = rec }
+
+func (s *Server) recording() bool { return s.rec != nil && s.rec.Recording() }
+
+func (s *Server) record(format string, args ...any) {
+	if s.recording() {
+		s.rec.AppendToMacro(fmt.Sprintf(format, args...))
+	}
+}
+
+// originForMove reads where the cursor is before an absolute move, so the move
+// can be written down as the relative move(dx, dy) that replay understands.
+// The origin is read back from the shell every time rather than remembered:
+// the cursor is moved by the agent loop, the `pob` CLI and the user's own hand
+// too, and a delta measured from a stale origin would send replay somewhere
+// else entirely. Off the recording path this costs nothing — it does not run.
+func (s *Server) originForMove() (bridge.Point, bool) {
+	if !s.recording() {
+		return bridge.Point{}, false
+	}
+	pos, err := s.br.CursorPosition()
+	return pos, err == nil
 }
 
 // Start binds the listener synchronously (so callers see port conflicts) and
@@ -471,10 +507,16 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 
 	case "reset_cursor":
 		pos, err := s.br.ResetCursor()
+		if err == nil {
+			s.record("resetCursor()")
+		}
 		return position(pos, err, "Cursor reset")
 
 	case "move_cursor":
 		pos, err := s.br.MoveCursor(opt("dx"), opt("dy"))
+		if err == nil {
+			s.record("move(%d, %d)", int(opt("dx")), int(opt("dy")))
+		}
 		return position(pos, err, "Cursor moved")
 
 	case "move_cursor_to":
@@ -482,19 +524,32 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if bad != nil {
 			return bad
 		}
+		from, tracked := s.originForMove()
 		pos, err := s.br.MoveCursorTo(x, y)
+		if err == nil && tracked {
+			s.record("move(%d, %d)", pos.X-from.X, pos.Y-from.Y)
+		}
 		return position(pos, err, "Cursor moved")
 
 	case "click":
 		pos, err := s.br.Click()
+		if err == nil {
+			s.record("click()")
+		}
 		return position(pos, err, "Clicked")
 
 	case "right_click":
 		pos, err := s.br.RightClick()
+		if err == nil {
+			s.record("rightClick()")
+		}
 		return position(pos, err, "Right-clicked")
 
 	case "double_click":
 		pos, err := s.br.DoubleClick()
+		if err == nil {
+			s.record("doubleClick()")
+		}
 		return position(pos, err, "Double-clicked")
 
 	case "move_and_click", "move_and_right_click", "move_and_double_click":
@@ -502,21 +557,32 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if bad != nil {
 			return bad
 		}
-		action, do := "Moved and clicked", s.br.Click
+		action, do, macro := "Moved and clicked", s.br.Click, "click()"
 		switch name {
 		case "move_and_right_click":
-			action, do = "Moved and right-clicked", s.br.RightClick
+			action, do, macro = "Moved and right-clicked", s.br.RightClick, "rightClick()"
 		case "move_and_double_click":
-			action, do = "Moved and double-clicked", s.br.DoubleClick
+			action, do, macro = "Moved and double-clicked", s.br.DoubleClick, "doubleClick()"
 		}
-		if _, err := s.br.MoveCursorTo(x, y); err != nil {
+		from, tracked := s.originForMove()
+		moved, err := s.br.MoveCursorTo(x, y)
+		if err != nil {
 			return rpcError(id, -32603, action+" failed: "+err.Error())
 		}
+		if tracked {
+			s.record("move(%d, %d)", moved.X-from.X, moved.Y-from.Y)
+		}
 		pos, err := do()
+		if err == nil {
+			s.record("%s", macro)
+		}
 		return position(pos, err, action)
 
 	case "drag":
 		pos, err := s.br.Drag(opt("dx"), opt("dy"))
+		if err == nil {
+			s.record("drag(%d, %d)", int(opt("dx")), int(opt("dy")))
+		}
 		return position(pos, err, "Dragged")
 
 	case "drag_to":
@@ -524,11 +590,18 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if bad != nil {
 			return bad
 		}
+		from, tracked := s.originForMove()
 		pos, err := s.br.DragTo(x, y)
+		if err == nil && tracked {
+			s.record("drag(%d, %d)", pos.X-from.X, pos.Y-from.Y)
+		}
 		return position(pos, err, "Dragged")
 
 	case "scroll":
 		pos, err := s.br.Scroll(int(opt("dx")), int(opt("dy")))
+		if err == nil {
+			s.record("scroll(%d, %d)", int(opt("dx")), int(opt("dy")))
+		}
 		return position(pos, err, "Scrolled")
 
 	case "move_and_scroll":
@@ -536,10 +609,18 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if bad != nil {
 			return bad
 		}
-		if _, err := s.br.MoveCursorTo(x, y); err != nil {
+		from, tracked := s.originForMove()
+		moved, err := s.br.MoveCursorTo(x, y)
+		if err != nil {
 			return rpcError(id, -32603, "Moved and scrolled failed: "+err.Error())
 		}
+		if tracked {
+			s.record("move(%d, %d)", moved.X-from.X, moved.Y-from.Y)
+		}
 		pos, err := s.br.Scroll(int(opt("dx")), int(opt("dy")))
+		if err == nil {
+			s.record("scroll(%d, %d)", int(opt("dx")), int(opt("dy")))
+		}
 		return position(pos, err, "Moved and scrolled")
 
 	case "type_text":
@@ -547,6 +628,7 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if err := s.br.TypeText(text); err != nil {
 			return rpcError(id, -32603, "Type failed: "+err.Error())
 		}
+		s.record("typeText(%q)", text)
 		return textResult(id, fmt.Sprintf("Typed %d characters.", len([]rune(text))))
 
 	case "key_press":
@@ -554,6 +636,7 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if err := s.br.KeyPress(key); err != nil {
 			return rpcError(id, -32603, "Key press failed: "+err.Error())
 		}
+		s.record("keyPress(%q)", key)
 		return textResult(id, "Pressed "+key+".")
 
 	case "wait":
@@ -565,6 +648,7 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 			ms = maxWaitMillis
 		}
 		time.Sleep(time.Duration(ms) * time.Millisecond)
+		s.record("sleep(%d)", int(ms))
 		return textResult(id, fmt.Sprintf("Waited %d ms.", int(ms)))
 
 	default:
@@ -592,6 +676,11 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 	shot, err := s.br.CaptureScreenshot(withCursor, crop)
 	if err != nil {
 		return rpcError(id, -32603, "Screenshot capture failed")
+	}
+	if crop != nil {
+		s.record("take_screenshot(%d, %d, %d, %d)", int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
+	} else {
+		s.record("take_screenshot()")
 	}
 
 	content := []any{map[string]any{
