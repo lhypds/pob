@@ -25,7 +25,7 @@ win/     The same hands and eyes for Windows (C# / WPF). Identical UI and
 server/  The Pob server (Go, zero dependencies), compiled into pob-core and
          started with the instance: an HTTP server serving the remote-control
          API and the machine's current frame, and hosting the three Web UI
-         pages it keeps in server/webui/.
+         pages it keeps in server/public/.
 
 keyboard/  Pob Keyboard (Go + Fyne), a separate desktop app: a full-size
            on-screen keyboard and a trackpad in their own window, driving Pob

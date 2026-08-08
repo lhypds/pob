@@ -25,7 +25,7 @@ import (
 // known are the paths under the instance root, and also the only leading path
 // elements that are not an instance id — which is what lets /control be read
 // as this machine's control page rather than as a machine that isn't here.
-var known = map[string]bool{"control": true, "view": true, "status": true}
+var known = map[string]bool{"control": true, "view": true, "status": true, "pob.js": true}
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	head, rest := splitHead(r.URL.Path)
@@ -43,9 +43,13 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case head == "control":
-		servePage(w, r, controlPage)
+		serveAsset(w, r, "text/html; charset=utf-8", controlPage)
 	case head == "view":
-		servePage(w, r, viewPage)
+		serveAsset(w, r, "text/html; charset=utf-8", viewPage)
+	case head == "pob.js":
+		// The pages ask for this relatively, so it is reached by whichever
+		// address they were — with the instance in the path or without it.
+		serveAsset(w, r, "text/javascript; charset=utf-8", script)
 	case head == "status":
 		s.serveStatus(w, r)
 	case r.Method == http.MethodPost:
@@ -53,7 +57,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	case named:
 		s.serveFrame(w, r)
 	default:
-		servePage(w, r, indexPage)
+		serveAsset(w, r, "text/html; charset=utf-8", indexPage)
 	}
 }
 
@@ -77,13 +81,13 @@ func isRead(r *http.Request) bool {
 	return r.Method == http.MethodGet || r.Method == http.MethodHead
 }
 
-func servePage(w http.ResponseWriter, r *http.Request, body []byte) {
+func serveAsset(w http.ResponseWriter, r *http.Request, contentType string, body []byte) {
 	if !isRead(r) {
 		w.Header().Set("Allow", "GET")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", contentType)
 	// The pages are built into this binary, so a cached copy from an older
 	// version would be a page talking to a server that has moved on. They are
 	// a few kilobytes over a LAN; re-fetching them costs nothing.

@@ -8,11 +8,12 @@
 // and keyboard calls the MCP server makes. A GET at the same address answers
 // with what the machine looks like right now, as a PNG.
 //
-// Three pages in webui/ ride along, served from the same address so a phone on
+// Three pages in public/ ride along, served from the same address so a phone on
 // the network needs nothing installed: control.html at /control — a text
 // field, a keyboard-mirror button and a trackpad, the API's own client —
-// view.html at /view, which just watches, and index.html at the bare root,
-// which says what is running here and where to find it (see router.go).
+// view.html at /view, which shows that PNG and turns a click on it back into
+// a command, and index.html at the bare root, which says what is running here
+// and where to find it (see router.go).
 //
 // The server starts with the instance, on the port in settings.json — the same
 // on every machine unless someone changes it, so the address can be typed from
@@ -51,14 +52,21 @@ const maxBody = 1 << 20
 // they are the one part of this package that isn't Go — and built into the
 // binary, so serving them needs nothing on disk.
 //
-//go:embed webui/index.html
+//go:embed public/index.html
 var indexPage []byte
 
-//go:embed webui/control.html
+//go:embed public/control.html
 var controlPage []byte
 
-//go:embed webui/view.html
+//go:embed public/view.html
 var viewPage []byte
+
+// The one thing the pages share: the send queue, the text field and the
+// keyboard mirror. Both pages drive the machine the same way, and being the
+// same code is the only thing that keeps it that way.
+//
+//go:embed public/pob.js
+var script []byte
 
 type Server struct {
 	instance string

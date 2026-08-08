@@ -138,6 +138,14 @@ func (c *controller) mouse(argument string) {
 	case "MOVE":
 		c.fail("move", c.target.MoveCursor(float64(x), float64(y)))
 
+	case "MOVE_TO":
+		// Absolute, in screenshot pixels. The board has no such action and its
+		// clients never send one — it is here for the view page, where a click
+		// on the picture knows exactly where it landed and nothing about where
+		// the cursor was. Everything below still works off the cursor's
+		// position, so a MOVE_TO before a CLICK or a PRESS is all it takes.
+		c.fail("move", c.target.MoveCursorTo(float64(x), float64(y)))
+
 	case "CLICK":
 		moveFirst()
 		c.fail("click", c.target.Click())

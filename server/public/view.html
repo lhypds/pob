@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Pob</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --ink: #111;
+        --bg: #fff;
+        --dim: #777;
+        --page: 1100px; /* wider than the control page: this holds a screen */
+        --control: 46px; /* row height and button square; ≥44px touch target */
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        display: flex;
+        justify-content: center;
+        padding: 18px 16px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: var(--page);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .row {
+        display: flex;
+      }
+
+      /* The frame is the box: the border sits on the picture's own edge, so a
+         screenshot with a pale edge still ends somewhere visible. */
+      #stage {
+        position: relative;
+        /* One grid cell, which every frame is put into. Two of them overlap
+           for a moment during a swap — laid out identically, so the swap is
+           never a layout change. */
+        display: grid;
+        min-height: 120px;
+        border: 1px solid var(--ink);
+        background: var(--bg);
+        line-height: 0; /* no descender gap between the image and the border */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none; /* no long-press callout on iOS */
+        -webkit-tap-highlight-color: transparent;
+        cursor: crosshair;
+      }
+
+      /* Every frame is its own element, put in on top of the one before it and
+         never written over. See the swap in the script for why. */
+      .frame {
+        grid-area: 1 / 1;
+        display: block;
+        width: 100%;
+        height: auto;
+        /* A picture is draggable by default, and dragging one is what this
+           page does with the machine instead. */
+        -webkit-user-drag: none;
+      }
+
+      #status {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.4;
+        color: var(--dim);
+        pointer-events: none; /* the picture underneath is the thing to click */
+      }
+
+      #status:empty {
+        display: none;
+      }
+
+      /* The bottom row: how often to refetch on the left, then the text field
+         and its two buttons — the same three controls as the control page. */
+      #rate {
+        width: 68px;
+        height: var(--control);
+        padding: 0 8px;
+        border: 1px solid var(--ink);
+        border-radius: 0; /* iOS rounds inputs by default */
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit; /* stays ≥16px so iOS doesn't zoom in on focus */
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        outline: none;
+      }
+
+      .unit {
+        display: flex;
+        align-items: center;
+        height: var(--control);
+        padding: 0 10px;
+        margin-left: -1px; /* collapse the doubled border */
+        border: 1px solid var(--ink);
+        color: var(--dim);
+        font-size: 14px;
+        white-space: nowrap;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      #text-input {
+        flex: 1;
+        min-width: 0;
+        height: var(--control);
+        margin-left: 12px;
+        padding: 0 12px;
+        border: 1px solid var(--ink);
+        border-right: none;
+        border-radius: 0;
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit;
+        outline: none;
+      }
+
+      button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* Fixed square, not aspect-ratio: Safari doesn't reliably transfer a
+           flex-stretched height through aspect-ratio, leaving tiny buttons. */
+        width: var(--control);
+        height: var(--control);
+        flex: none;
+        padding: 0;
+        border: 1px solid var(--ink);
+        border-radius: 0;
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit;
+        font-size: 18px;
+        cursor: pointer;
+        touch-action: manipulation; /* no double-tap zoom on repeated taps */
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      /* Marks which button is the live one; the two swap on mode change. */
+      button.filled {
+        background: var(--ink);
+        color: var(--bg);
+      }
+
+      .row button + button {
+        margin-left: -1px;
+      }
+
+      @media (hover: hover) {
+        button:hover {
+          opacity: 0.85;
+        }
+      }
+
+      button:active {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <div id="stage">
+        <p id="status">Waiting for the machine…</p>
+      </div>
+
+      <div class="row">
+        <input id="rate" type="number" min="0.1" max="10" step="0.1" inputmode="decimal" aria-label="Frames per second" />
+        <span class="unit">fps</span>
+        <input id="text-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button id="send-btn" type="button" class="filled" aria-label="Send">↵</button>
+        <button id="kb-btn" type="button" aria-label="Keyboard mirror mode" aria-pressed="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="2" y="6" width="20" height="12" />
+            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+          </svg>
+        </button>
+      </div>
+    </main>
+    <script src="pob.js"></script>
+    <script>
+      // The machine, in a picture you can click on. Each frame is a plain GET
+      // on the instance root — the same address the commands go to — and a
+      // click on it is a position in that picture, which is the space Pob
+      // works in, so it can be sent as it was read.
+      //
+      // The text field and the keyboard mirror are the control page's, from
+      // pob.js: with a view of the machine in front of you, being able to type
+      // at it is the other half of the same thing.
+      const MIN_FPS = 0.1;
+      const MAX_FPS = 10;
+      const DEFAULT_FPS = 1;
+      const FPS_KEY = "pob-view-fps"; // remembered per browser, per host
+
+      const CLICK_MOVE_THRESHOLD = 6; // px below which a gesture is a tap, not a drag
+      const DOUBLE_CLICK_WINDOW_MS = 300;
+      const SCROLL_PX_PER_NOTCH = 20;
+
+      const stage = document.getElementById("stage");
+      const status = document.getElementById("status");
+      const rate = document.getElementById("rate");
+
+      Pob.attachInput({
+        input: document.getElementById("text-input"),
+        sendBtn: document.getElementById("send-btn"),
+        kbBtn: document.getElementById("kb-btn"),
+      });
+
+      // --- the frame ---------------------------------------------------------
+      // Every frame gets its own element, and no element is ever written over.
+      //
+      // The obvious way — two <img>s, load into the hidden one, swap — blinks,
+      // and not in the way you would expect: what shows for that instant is
+      // not a blank but an *older* picture. Writing a new src into an element
+      // does not replace what it is presenting; the element goes on showing
+      // what it had until the new picture is decoded and composited, which is
+      // some time after decode() says it is ready. Reveal it in between and
+      // the frame from two ticks ago comes back for one paint. Reused
+      // elements, in other words, have a past.
+      //
+      // A fresh element has none. It is put into the page already holding a
+      // decoded picture, so the first paint it takes part in is the new frame
+      // — nothing older can surface, because it never held anything older. The
+      // one it replaces stays underneath for a frame and is dropped after,
+      // which leaves no gap either.
+      let period = 1000 / DEFAULT_FPS;
+      let frame = null; // the element on screen
+      let loading = false; // one request at a time; a slow capture must not pile up
+      let timer = null;
+
+      function tick() {
+        if (loading || document.hidden) return;
+        loading = true;
+
+        const next = new Image();
+        next.className = "frame";
+        next.alt = "";
+        next.draggable = false;
+
+        const show = () => {
+          loading = false;
+          const previous = frame;
+          // Before the status text, so a frame is always underneath it, and
+          // after the previous frame, so it covers it rather than the reverse.
+          stage.insertBefore(next, status);
+          frame = next;
+          status.textContent = "";
+          // Let the new frame have its paint before the old one goes, so there
+          // is never an instant with nothing in the box.
+          if (previous) requestAnimationFrame(() => previous.remove());
+          schedule();
+        };
+        const failed = () => {
+          loading = false;
+          // Keep the last frame up rather than blanking the page: the machine
+          // being briefly unreachable is not news worth losing the picture over.
+          if (!frame) status.textContent = "Cannot reach the machine.";
+          schedule();
+        };
+
+        // A fresh URL every time. The frames are sent no-store, but a repeated
+        // URL is exactly what anything in between would be tempted to answer
+        // from its own copy, and one stale frame is this page's whole point
+        // missed.
+        next.src = Pob.ENDPOINT + "?t=" + Date.now();
+
+        // Decoded, not merely loaded: onload only means the bytes arrived, and
+        // an element put in before its picture is ready is a blank one.
+        if (next.decode) {
+          next.decode().then(show, failed);
+        } else {
+          next.onload = show;
+          next.onerror = failed;
+        }
+      }
+
+      // The clock starts when a frame lands, not when one was asked for: a
+      // capture slower than the interval would otherwise queue up requests
+      // nobody will ever see.
+      function schedule() {
+        clearTimeout(timer);
+        timer = null;
+        if (document.hidden) return;
+        timer = setTimeout(tick, period);
+      }
+
+      function setFPS(fps, remember) {
+        if (!isFinite(fps)) fps = DEFAULT_FPS;
+        fps = Math.min(MAX_FPS, Math.max(MIN_FPS, fps));
+        period = 1000 / fps;
+        if (remember) {
+          try {
+            localStorage.setItem(FPS_KEY, String(fps));
+          } catch {
+            // Private browsing refuses to store; the rate just won't be kept.
+          }
+        }
+        return fps;
+      }
+
+      // Typing in the field takes effect on the next frame, not on the next
+      // keystroke: rewriting "10" one character at a time would otherwise pass
+      // through 1 fps on the way, and wait a whole second there.
+      rate.addEventListener("change", () => {
+        rate.value = setFPS(parseFloat(rate.value), true);
+        schedule();
+      });
+
+      // A backgrounded tab is nobody watching, and every frame costs the
+      // machine a screen capture. Stop asking until it comes back.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          clearTimeout(timer);
+          timer = null;
+        } else {
+          tick();
+        }
+      });
+
+      // --- clicking on it ----------------------------------------------------
+      // The frame is drawn to fit the box, so a point on screen is that same
+      // point in the screenshot scaled by however much it was shrunk to get
+      // there. Pob's coordinates are screenshot pixels, so that is the whole
+      // conversion.
+      function pointAt(e) {
+        if (!frame) return null;
+        const box = frame.getBoundingClientRect();
+        if (!frame.naturalWidth || !box.width) return null;
+        return [
+          Math.round((e.clientX - box.left) * (frame.naturalWidth / box.width)),
+          Math.round((e.clientY - box.top) * (frame.naturalHeight / box.height)),
+        ];
+      }
+
+      let start = null; // where the press went down, in screenshot pixels
+      let startClient = null; // and on screen, to measure the slop against
+      let dragging = false; // past the slop: Pob is holding the button
+      let pendingClickTimer = null; // a click held back in case a second tap follows
+      let claimed = false; // this gesture claimed a pending click, so it is the second tap
+
+      stage.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      stage.addEventListener("pointerdown", (e) => {
+        // Don't steal focus: mid-mirroring, a tap here would otherwise blur
+        // the text field and close the soft keyboard being mirrored.
+        e.preventDefault();
+        const point = pointAt(e);
+        if (!point) return;
+        stage.setPointerCapture(e.pointerId);
+        start = point;
+        startClient = [e.clientX, e.clientY];
+        dragging = false;
+        // A touch inside the double-click window is the second half of a
+        // double-tap: claim the click that was held back, and let this
+        // gesture's lift decide whether it was a double-click or a drag.
+        claimed = false;
+        if (pendingClickTimer) {
+          clearTimeout(pendingClickTimer);
+          pendingClickTimer = null;
+          claimed = true;
+        }
+      });
+
+      stage.addEventListener("pointermove", (e) => {
+        if (!start) return;
+        const point = pointAt(e);
+        if (!point) return;
+        if (!dragging) {
+          if (Math.hypot(e.clientX - startClient[0], e.clientY - startClient[1]) <= CLICK_MOVE_THRESHOLD) {
+            return; // still a tap as far as anyone knows
+          }
+          // Past the slop: grab where the finger went down, not where it is
+          // now, so the drag picks up what was under it to begin with.
+          dragging = true;
+          Pob.enqueue(`mouse=MOVE_TO(${start[0]},${start[1]})`);
+          Pob.enqueue("mouse=PRESS(0,0)");
+        }
+        // Coalesced: the newest position is the only one worth sending.
+        Pob.moveTo(point[0], point[1]);
+        Pob.pump();
+      });
+
+      function endGesture(e) {
+        if (!start) return;
+        const point = pointAt(e) || start;
+        const wasDragging = dragging;
+        const secondTap = claimed;
+        start = null;
+        dragging = false;
+        claimed = false;
+        // Only if it is actually held: releasing a pointer that was never
+        // captured throws, and pointerup releases it implicitly anyway.
+        if (stage.hasPointerCapture?.(e.pointerId)) stage.releasePointerCapture(e.pointerId);
+
+        if (wasDragging) {
+          // Put the last position in the queue rather than leaving it
+          // coalesced, so the release cannot overtake the move that says
+          // where the drop happened.
+          Pob.moveTo(point[0], point[1]);
+          Pob.flushMoveTo();
+          Pob.enqueue("mouse=RELEASE(0,0)");
+          return;
+        }
+
+        Pob.enqueue(`mouse=MOVE_TO(${point[0]},${point[1]})`);
+        if (e.button === 2) {
+          Pob.enqueue("mouse=RIGHT_CLICK(0,0)");
+          return;
+        }
+        if (secondTap) {
+          Pob.enqueue("mouse=DOUBLE_CLICK(0,0)");
+          return;
+        }
+        // Hold the single click back for a moment: a second tap turns it into
+        // a double-click, and a click already sent cannot be taken back.
+        pendingClickTimer = setTimeout(() => {
+          pendingClickTimer = null;
+          Pob.enqueue("mouse=CLICK(0,0)");
+        }, DOUBLE_CLICK_WINDOW_MS);
+      }
+
+      // A cancelled gesture (the system took over the touch, e.g. an edge
+      // swipe) must not turn into a click — but a held button must still be
+      // let go, or it stays stuck down on the target machine.
+      function cancelGesture() {
+        const wasDragging = dragging;
+        start = null;
+        dragging = false;
+        claimed = false;
+        if (wasDragging) Pob.enqueue("mouse=RELEASE(0,0)");
+      }
+
+      stage.addEventListener("pointerup", endGesture);
+      stage.addEventListener("pointercancel", cancelGesture);
+
+      // Scrolling acts where the pointer is, so go there first.
+      stage.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          const point = pointAt(e);
+          if (point) Pob.moveTo(point[0], point[1]);
+          // deltaMode 1 is lines (~3 per wheel notch); pixels (~100) otherwise.
+          Pob.scrollBy(-(e.deltaMode === 1 ? e.deltaY / 3 : e.deltaY / 100));
+          Pob.pump();
+        },
+        { passive: false },
+      );
+
+      let saved = null;
+      try {
+        saved = localStorage.getItem(FPS_KEY);
+      } catch {
+        // Storage is unreadable here; the default rate stands.
+      }
+      rate.value = setFPS(saved === null ? DEFAULT_FPS : parseFloat(saved), false);
+      tick();
+    </script>
+  </body>
+</html>

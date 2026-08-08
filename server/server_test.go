@@ -170,6 +170,28 @@ func TestPressAndReleaseInPlaceIsAClick(t *testing.T) {
 	}
 }
 
+// The view page works in screenshot pixels, so it says where to go rather than
+// how far — and a drag started that way still plays out whole.
+func TestAbsoluteMoveAndDrag(t *testing.T) {
+	got := run(t,
+		"mouse=MOVE_TO(100,50)",
+		"mouse=PRESS(0,0)",
+		"mouse=MOVE_TO(140,65)",
+		"mouse=RELEASE(0,0)",
+	).calls
+	want := []string{"moveTo 100 50", "moveTo 140 65", "moveTo 100 50", "drag 40 15"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestAbsoluteMoveThenClick(t *testing.T) {
+	got := run(t, "mouse=MOVE_TO(12,34)", "mouse=CLICK(0,0)").calls
+	if want := []string{"moveTo 12 34", "click"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestDoubleClickAfterPress(t *testing.T) {
 	// The page presses on the second tap of a double-tap, then sends a
 	// double-click rather than a release when the finger lifts in place.
@@ -233,10 +255,14 @@ func TestEachAddressServesItsOwnThing(t *testing.T) {
 		{"/control", `id="trackpad"`},
 		{"/pb-aaaa/control", `id="trackpad"`},
 		{"/pb-aaaa/control/", `id="trackpad"`},
-		{"/view", `id="frame-a"`},
-		{"/pb-aaaa/view", `id="frame-a"`},
+		{"/view", `id="stage"`},
+		{"/pb-aaaa/view", `id="stage"`},
 		{"/status", `"instance":"pb-aaaa"`},
 		{"/pb-aaaa/status", `"instance":"pb-aaaa"`},
+		// The pages ask for their shared script relatively, so it has to
+		// answer under both spellings too.
+		{"/pob.js", "window.Pob"},
+		{"/pb-aaaa/pob.js", "window.Pob"},
 	}
 	for _, c := range cases {
 		if body := get(t, base+c.path); !bytes.Contains(body, []byte(c.want)) {
@@ -250,7 +276,7 @@ func TestEachAddressServesItsOwnThing(t *testing.T) {
 func TestBareRootIsTheIndexNotTheMachine(t *testing.T) {
 	target := &fakeTarget{}
 	base := serve(t, target)
-	if body := get(t, base+"/"); !bytes.Contains(body, []byte(`id="addresses"`)) {
+	if body := get(t, base+"/"); !bytes.Contains(body, []byte(`id="endpoints"`)) {
 		t.Errorf("GET / did not serve the index page: %.80s", body)
 	}
 	if len(target.calls) != 0 {

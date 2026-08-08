@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Pob</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --ink: #111;
+        --bg: #fff;
+        --pad: 630px;
+        --control: 46px; /* row height and button square; ≥44px touch target */
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        display: flex;
+        justify-content: center;
+        padding: 18px 16px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: var(--pad);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .row {
+        display: flex;
+      }
+
+      #text-input {
+        flex: 1;
+        min-width: 0;
+        height: var(--control);
+        padding: 0 12px;
+        border: 1px solid var(--ink);
+        border-right: none;
+        border-radius: 0; /* iOS rounds inputs by default */
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit; /* stays ≥16px so iOS doesn't zoom in on focus */
+        outline: none;
+      }
+
+      button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* Fixed square, not aspect-ratio: Safari doesn't reliably transfer a
+           flex-stretched height through aspect-ratio, leaving tiny buttons. */
+        width: var(--control);
+        height: var(--control);
+        flex: none;
+        padding: 0;
+        border: 1px solid var(--ink);
+        border-radius: 0;
+        -webkit-appearance: none;
+        appearance: none;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit;
+        font-size: 18px;
+        cursor: pointer;
+        touch-action: manipulation; /* no double-tap zoom on repeated taps */
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none; /* no long-press callout on iOS */
+      }
+
+      /* Marks which button is the live one; the two swap on mode change. */
+      button.filled {
+        background: var(--ink);
+        color: var(--bg);
+      }
+
+      .row button + button {
+        margin-left: -1px; /* collapse the doubled border between buttons */
+      }
+
+      /* Hover only where hover exists — on touch it sticks after a tap. */
+      @media (hover: hover) {
+        button:hover {
+          opacity: 0.85;
+        }
+      }
+
+      button:active {
+        opacity: 0.7;
+      }
+
+      #trackpad {
+        --chrome: 100px; /* body padding + input row + gap */
+        width: 100%;
+        height: var(--pad);
+        max-height: calc(100vh - var(--chrome));
+        max-height: calc(100dvh - var(--chrome)); /* iOS Safari: vh extends behind the URL bar */
+        background: #f9f9f9;
+        border: 1px solid var(--ink);
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none; /* no long-press callout on iOS */
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #trackpad.active {
+        background: #e2e2e2;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <div class="row">
+        <input id="text-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button id="send-btn" type="button" class="filled" aria-label="Send">↵</button>
+        <button id="kb-btn" type="button" aria-label="Keyboard mirror mode" aria-pressed="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="2" y="6" width="20" height="12" />
+            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="trackpad"></div>
+    </main>
+    <script src="pob.js"></script>
+    <script>
+      // The queue, the text field and the keyboard mirror live in pob.js,
+      // shared with the view page. What is left here is the trackpad, which is
+      // this page's own.
+      Pob.attachInput({
+        input: document.getElementById("text-input"),
+        sendBtn: document.getElementById("send-btn"),
+        kbBtn: document.getElementById("kb-btn"),
+      });
+
+      const trackpad = document.getElementById("trackpad");
+      trackpad.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      const CLICK_MOVE_THRESHOLD = 6; // px per finger below which a gesture is a tap
+      const DOUBLE_CLICK_WINDOW_MS = 300;
+      const SCROLL_PX_PER_NOTCH = 20; // finger travel that equals one wheel notch
+
+      const pointers = new Map(); // fingers on the pad: pointerId -> last position
+      let primaryId = null; // the finger whose motion drives moves and scrolls
+      let gestureFingers = 0; // most fingers seen during the current gesture
+      let totalDX = 0,
+        totalDY = 0;
+      let pendingClickTimer = null;
+      // Double-tap-and-hold drags: the second touch of a double-tap presses
+      // the button the moment it lands, so the grab happens at the
+      // double-click point. Motion then drags; lifting lets go. A quick lift
+      // in place completes a double-click instead (see endGesture).
+      let dragging = false; // Pob is holding the button; motion now drags
+      let pressedAt = 0; // when the drag press went down, to tell tap from hold
+
+      trackpad.addEventListener("pointerdown", (e) => {
+        // Don't steal focus: mid-mirroring, a tap here would otherwise blur
+        // the text field and close the soft keyboard being mirrored.
+        e.preventDefault();
+        trackpad.setPointerCapture(e.pointerId);
+        trackpad.classList.add("active");
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        gestureFingers = Math.max(gestureFingers, pointers.size);
+        if (pointers.size === 1) {
+          primaryId = e.pointerId;
+          totalDX = 0;
+          totalDY = 0;
+          Pob.resetMove();
+          // A touch inside the double-click window is the second half of a
+          // double-tap: claim the pending single click and press right away,
+          // so the grab happens at the double-click point — waiting for
+          // movement instead loses the start of a fast drag to the slop test.
+          if (pendingClickTimer && e.button === 0) {
+            clearTimeout(pendingClickTimer);
+            pendingClickTimer = null;
+            dragging = true;
+            pressedAt = performance.now();
+            Pob.enqueue("mouse=PRESS(0,0)");
+          }
+        } else {
+          // A second finger turns the gesture into a scroll (or two-finger
+          // tap): the first finger's accumulated movement is no longer a
+          // pointer move.
+          Pob.resetMove();
+          // Fingers landing one-by-one right after a tap are that scroll,
+          // not a drag: let the still-unmoved button go. The press+release
+          // pair amounts to the single click the claimed tap was owed.
+          if (dragging && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+            dragging = false;
+            Pob.enqueue("mouse=RELEASE(0,0)");
+          }
+        }
+      });
+
+      trackpad.addEventListener("pointermove", (e) => {
+        const p = pointers.get(e.pointerId);
+        if (!p) return;
+        const dx = e.clientX - p.x;
+        const dy = e.clientY - p.y;
+        p.x = e.clientX;
+        p.y = e.clientY;
+        totalDX += dx;
+        totalDY += dy;
+        if (e.pointerId !== primaryId) return; // fingers travel together; count one
+        if (pointers.size >= 2 && !dragging) {
+          // Two-finger drag scrolls, touch-style: content follows the fingers.
+          Pob.scrollBy(dy / SCROLL_PX_PER_NOTCH);
+        } else if (dragging && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+          // Wobble under a still-unmoved press is held back: this may yet
+          // end as a double-click, which the host voids if the pointer
+          // strays between the clicks. Only sub-slop wobble is ever
+          // swallowed — the event that passes the slop flows through below
+          // whole, so a fast drag loses none of its motion.
+          return;
+        } else {
+          Pob.moveBy(dx, dy);
+        }
+        Pob.pump();
+      });
+
+      function dropPointer(e) {
+        if (!pointers.delete(e.pointerId)) return false;
+        if (pointers.size > 0) {
+          // Hand the lead to a remaining finger so motion keeps flowing.
+          if (e.pointerId === primaryId) primaryId = pointers.keys().next().value;
+          return false;
+        }
+        primaryId = null;
+        trackpad.classList.remove("active");
+        Pob.pump();
+        return true; // gesture over
+      }
+
+      function endGesture(e) {
+        if (!dropPointer(e)) return;
+        const fingers = gestureFingers;
+        gestureFingers = 0;
+
+        if (dragging) {
+          dragging = false;
+          const quickTap = performance.now() - pressedAt < DOUBLE_CLICK_WINDOW_MS;
+          if (quickTap && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+            // A quick lift in place: it was a double-tap after all.
+            Pob.enqueue("mouse=DOUBLE_CLICK(0,0)");
+          } else {
+            // A drag (or a deliberate press-and-hold, released as just the
+            // one click). Flush motion still coalesced, so the drop lands
+            // where the finger stopped instead of the last few pixels
+            // applying after the button is already up.
+            const [dx, dy] = Pob.takeMove();
+            Pob.resetMove();
+            if (dx !== 0 || dy !== 0) Pob.enqueue(`mouse=MOVE(${dx},${dy})`);
+            Pob.enqueue("mouse=RELEASE(0,0)");
+          }
+          return;
+        }
+
+        // Looser tap test for multi-finger taps: each finger wobbles a little.
+        if (Math.hypot(totalDX, totalDY) > CLICK_MOVE_THRESHOLD * fingers) return;
+
+        // Touch has no right button, so a two-finger tap fills in for it.
+        if (e.button === 2 || fingers === 2) {
+          Pob.enqueue("mouse=RIGHT_CLICK(0,0)");
+          return;
+        }
+        if (fingers > 2) return; // 3+ finger tap has no meaning here
+
+        pendingClickTimer = setTimeout(() => {
+          pendingClickTimer = null;
+          Pob.enqueue("mouse=CLICK(0,0)");
+        }, DOUBLE_CLICK_WINDOW_MS);
+      }
+
+      // A cancelled gesture (the system took over the touch, e.g. an edge
+      // swipe) must not turn into a click — but a held button must still be
+      // let go, or it stays stuck down on the target machine.
+      function cancelGesture(e) {
+        if (!dropPointer(e)) return;
+        gestureFingers = 0;
+        if (dragging) {
+          dragging = false;
+          Pob.enqueue("mouse=RELEASE(0,0)");
+        }
+      }
+
+      trackpad.addEventListener("pointerup", endGesture);
+      trackpad.addEventListener("pointercancel", cancelGesture);
+
+      // Physical mouse wheel / desktop trackpad scrolling over the pad.
+      trackpad.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault(); // the page itself has nowhere to scroll
+          // deltaMode 1 is lines (~3 per wheel notch); pixels (~100) otherwise.
+          Pob.scrollBy(-(e.deltaMode === 1 ? e.deltaY / 3 : e.deltaY / 100));
+          Pob.pump();
+        },
+        { passive: false },
+      );
+
+      // The CSS dvh cap doesn't account for the soft keyboard (dvh ignores
+      // it); the visual viewport does, so track it to keep the whole pad
+      // reachable above the keyboard while mirroring.
+      if (window.visualViewport) {
+        const fitTrackpad = () => {
+          // 100 matches the trackpad's --chrome: input row plus page padding.
+          trackpad.style.maxHeight = Math.max(120, window.visualViewport.height - 100) + "px";
+        };
+        window.visualViewport.addEventListener("resize", fitTrackpad);
+        fitTrackpad();
+      }
+    </script>
+  </body>
+</html>

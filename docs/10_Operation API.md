@@ -43,9 +43,10 @@ That address is the machine itself, so the method says what you want of it:
 | `GET` | `/<instance-id>/control` | The [Web UI](12_WebUI.md) control page — text field, keyboard mirror, trackpad |
 | `GET` | `/<instance-id>/view` | The [Web UI](12_WebUI.md) view page, which refetches that PNG on a clock you can set |
 | `GET` | `/<instance-id>/status` | What is running here, as JSON — the same facts `pob status` prints |
+| `GET` | `/<instance-id>/pob.js` | The script both pages drive the machine with |
 | `GET` | `/` | The [Web UI](12_WebUI.md) index page: those facts, and the address above to go on with |
 
-The three pages answer without the instance in the path as well —
+The pages answer without the instance in the path as well —
 `http://192.168.1.40:8033/control` is the same page. A **GET** on the bare root
 is the one exception: it is the index, not the machine, so the shortest address
 on the network does not answer with a picture of someone's screen. Anything
@@ -76,8 +77,25 @@ unchanged. One command per request body:
 |---------|------|-------------|
 | `typing` | `typing=<text>` | Type `<text>` at the current keyboard focus |
 | `keycode` | `keycode=<chord>` | Press keys. `,` separates keys pressed in turn, `+` joins keys held together — `CTRL+c,CTRL+v`. Uses the HID names in [Key names](04_Keys.md) |
-| `mouse` | `mouse=ACTION(x,y)` | Pointer action: `MOVE`, `CLICK`, `RIGHT_CLICK`, `DOUBLE_CLICK`, `PRESS`, `RELEASE`, `SCROLL` |
+| `mouse` | `mouse=ACTION(x,y)` | Pointer action: `MOVE`, `MOVE_TO`, `CLICK`, `RIGHT_CLICK`, `DOUBLE_CLICK`, `PRESS`, `RELEASE`, `SCROLL` |
 | `consumer` | `consumer=<usage>` | Media and brightness keys. Accepted and ignored — the shells post plain key events and have nowhere to put a consumer-control usage |
+
+`MOVE` is a delta, the way the board sends one. **`MOVE_TO` is absolute**, in
+screenshot pixels — the same coordinates the [MCP tools](08_MCP.md) use, and
+the ones a click on the [view page](12_WebUI.md) reads straight off the
+picture. It is the one action the board does not have, so nothing that speaks
+its protocol will ever send it.
+
+Everything else acts wherever the cursor already is, so a click somewhere
+specific is two commands:
+
+```
+curl -X POST --data 'mouse=MOVE_TO(640,400)' http://192.168.1.40:8033/pb-a703/
+curl -X POST --data 'mouse=CLICK(0,0)'       http://192.168.1.40:8033/pb-a703/
+```
+
+A drag is the same idea with `PRESS` and `RELEASE` around it: press where it
+starts, move to where it ends, release. Pob replays it as one drag.
 
 An optional `seq=<token>&` prefix makes a retry safe to send twice:
 

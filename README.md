@@ -1,8 +1,5 @@
 
 
-![Pob Icon](https://github.com/user-attachments/assets/8c4be5c7-0b4a-4f86-abc1-d5f8a7e92314)
-
-
 Pob
 ===
 
@@ -61,12 +58,3 @@ Documentation
 | [Web UI](docs/12_WebUI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
-
-
-Roadmap
--------
-
-Phase 1. Make AI see its frontend development result.  
-         To improve the frontend development automation. (DONE)  
-Phase 2. Make the AI can operate the desktop application. (DONE)  
-Phase 3. Make AI learn users operation and do it for the user with instructions, or repeat. (IN PROGRESS)  

@@ -10,8 +10,14 @@
         --ink: #111;
         --bg: #fff;
         --dim: #777;
+        --rule: #e6e6e6;
         --page: 630px;
         --control: 46px; /* row height, matching the control page */
+        /* Named first, then whatever monospace the machine has: the page is
+           served over a LAN with no internet behind it, so a webfont would be
+           a request that never lands. It looks right where the font is
+           installed and ordinary where it isn't. */
+        --code: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
 
       * {
@@ -38,16 +44,10 @@
 
       h1 {
         margin: 0;
-        font-size: 18px;
+        font-family: var(--code);
+        font-size: 22px;
         font-weight: 600;
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-      }
-
-      h1 .instance {
-        font-weight: 400;
-        color: var(--dim);
+        letter-spacing: 0.02em;
       }
 
       /* One box per section, sharing the control page's flat 1px border. */
@@ -81,23 +81,36 @@
         margin: 0;
         padding: 9px 12px;
         min-width: 0;
+        line-height: 18px; /* one height for both, so the two columns sit level */
       }
 
+      /* A label, not a reading: set like the GET and POST below it, which is
+         the same job in the same place — the small word in front that says
+         what the line to its right is. */
       dt {
+        font-family: var(--code);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: var(--dim);
       }
 
+      /* The same face and size as the endpoints below: these are values read
+         off a running machine — ids, paths, model names — and they line up and
+         read better set the way the addresses are. */
       dd {
-        font-variant-numeric: tabular-nums;
+        font-family: var(--code);
+        font-size: 13px;
         overflow-wrap: anywhere;
       }
 
       dt + dd + dt,
       dt + dd + dt + dd {
-        border-top: 1px solid #e6e6e6;
+        border-top: 1px solid var(--rule);
       }
 
-      /* The addresses, one per network the machine is on. */
+      /* Two lists: pages you click, endpoints you call. Same row shape, but
+         only one of them is somewhere to go. */
       ul {
         margin: 0;
         padding: 0;
@@ -105,22 +118,52 @@
       }
 
       li + li {
-        border-top: 1px solid #e6e6e6;
+        border-top: 1px solid var(--rule);
       }
 
-      li a {
-        display: block;
-        padding: 12px;
+      li > a,
+      li > .row {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 11px 12px;
         color: var(--ink);
         text-decoration: none;
-        overflow-wrap: anywhere;
       }
 
-      li a:hover {
+      li > a:hover {
         background: #f4f4f4;
       }
 
-      .where {
+      /* An endpoint is called, not visited, so its address is there to be read
+         and copied rather than followed — one click takes the whole of it, and
+         only it, which is why the caption is a sibling and not inside. */
+      li > .row .url {
+        user-select: all;
+      }
+
+      .method {
+        flex: none;
+        width: 46px;
+        font-family: var(--code);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--dim);
+      }
+
+      .text {
+        min-width: 0; /* lets a long address wrap instead of widening the row */
+      }
+
+      .url {
+        display: block;
+        font-family: var(--code);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .what {
         display: block;
         margin-top: 3px;
         font-size: 13px;
@@ -150,18 +193,13 @@
   </head>
   <body>
     <main class="container">
-      <h1>Pob <span class="instance" id="instance">…</span></h1>
-
-      <section class="box">
-        <h2>Machine</h2>
-        <ul id="addresses">
-          <li><a href="#">…</a></li>
-        </ul>
-      </section>
+      <h1>Pob</h1>
 
       <section class="box">
         <h2>Instance</h2>
         <dl>
+          <dt>ID</dt>
+          <dd id="instance">…</dd>
           <dt>Root</dt>
           <dd id="root">…</dd>
           <dt>Model</dt>
@@ -177,34 +215,58 @@
         </dl>
       </section>
 
+      <section class="box">
+        <h2>Pages</h2>
+        <ul id="pages">
+          <li><a href="#">…</a></li>
+        </ul>
+      </section>
+
+      <section class="box">
+        <h2>Endpoints</h2>
+        <ul id="endpoints">
+          <li><span class="row">…</span></li>
+        </ul>
+      </section>
+
       <p class="note" id="note"></p>
     </main>
 
     <script>
       // The index: what is running here, and where to go on with it. The bare
-      // root is deliberately not the machine itself — that address is one
-      // path element further along, and it is the one this page hands out.
+      // root is deliberately not the machine itself — that address is one path
+      // element further along, and it is the one this page hands out.
       const STATUS_MS = 3000;
 
       const $ = (id) => document.getElementById(id);
       const yesNo = (v) => (v ? "yes" : "no");
 
-      // Where the pages live, given the instance id: the machine's own address
-      // is the id, and control and view hang off it. Built from this page's
+      // What is where, given the instance id. Built from this page's own
       // origin, so whatever host and port got here is what gets handed on.
-      function addresses(status) {
-        const root = location.origin + "/" + status.instance;
+      //
+      // The same address twice under Endpoints, once per method: a GET there
+      // is a picture of the machine and a POST is a command to it, and those
+      // are two different things to know about, not one row with two words in
+      // front of it.
+      function pages(machine) {
         return [
-          [root, "the machine — a picture of it right now"],
-          [root + "/control", "drive it: type, keyboard, trackpad"],
-          [root + "/view", "watch it, refreshing on its own"],
+          [machine + "/control", "drive it: type, keyboard, trackpad"],
+          [machine + "/view", "watch it, and click straight on it"],
+        ];
+      }
+
+      function endpoints(machine) {
+        return [
+          ["GET", machine, "a PNG of the machine as it is right now"],
+          ["POST", machine, "one command, as text/plain — typing, keycode, mouse"],
+          ["GET", machine + "/status", "everything on this page, as JSON"],
         ];
       }
 
       function fill(status) {
-        $("instance").textContent = status.instance || "";
         document.title = status.instance ? "Pob — " + status.instance : "Pob";
 
+        $("instance").textContent = status.instance || "—";
         $("root").textContent = status.root || "—";
         $("model").textContent = status.model || "—";
         $("executing").innerHTML =
@@ -218,27 +280,34 @@
           : dot(false) + "stopped";
         $("port").innerHTML = dot(true) + "running on port " + escapeText(String(status.port || ""));
 
-        // Only rebuild the addresses when they have actually changed: they are
-        // links, and relaying them under a hovering finger every few seconds
-        // would be its own small annoyance.
-        const links = addresses(status);
-        const key = links.map((l) => l[0]).join(" ");
-        if (key !== addressKey) {
-          addressKey = key;
-          $("addresses").innerHTML = links
+        // Only rebuild the lists when they have actually changed: one of them
+        // is links, and relaying them under a hovering finger every few
+        // seconds would be its own small annoyance.
+        const machine = location.origin + "/" + status.instance;
+        if (machine !== listed) {
+          listed = machine;
+          $("pages").innerHTML = pages(machine)
             .map(
               ([href, what]) =>
-                `<li><a href="${escapeText(href)}">${escapeText(href)}<span class="where">${what}</span></a></li>`,
+                `<li><a href="${escapeText(href)}"><span class="text">` +
+                `<span class="url">${escapeText(href)}</span>` +
+                `<span class="what">${what}</span></span></a></li>`,
+            )
+            .join("");
+          $("endpoints").innerHTML = endpoints(machine)
+            .map(
+              ([method, url, what]) =>
+                `<li><span class="row"><span class="method">${method}</span><span class="text">` +
+                `<span class="url">${escapeText(url)}</span>` +
+                `<span class="what">${what}</span></span></span></li>`,
             )
             .join("");
         }
 
         // One line per network the machine is on: which of them a phone can
         // reach depends on where the phone is.
-        const others = (status.urls || []).filter((u) => !u.startsWith(location.origin + "/"));
-        $("note").textContent = others.length
-          ? "Also reachable at " + others.join(", ")
-          : "";
+        const elsewhere = (status.urls || []).filter((u) => !u.startsWith(location.origin + "/"));
+        $("note").textContent = elsewhere.length ? "Also reachable at " + elsewhere.join(", ") : "";
       }
 
       function dot(on) {
@@ -254,7 +323,7 @@
         );
       }
 
-      let addressKey = "";
+      let listed = "";
 
       async function refresh() {
         try {

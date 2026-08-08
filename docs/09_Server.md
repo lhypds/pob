@@ -55,8 +55,8 @@ Three pages sit around it, all part of the [Web UI](12_WebUI.md):
   not answer with a picture of someone's screen.
 - **`/pb-a703/control`** — the remote control page for a phone or any other
   browser on the network: text field, keyboard mirror, trackpad.
-- **`/pb-a703/view`** — the frame above, refetched on a clock you can set, so a
-  second screen can watch the machine work.
+- **`/pb-a703/view`** — the frame above, refetched at a rate you can set, with
+  a text field under it. Clicking on the picture clicks on the machine.
 
 `/status` answers with the index page's own facts as JSON, for anything that
 would rather read them than look at them.
