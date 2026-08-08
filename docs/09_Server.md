@@ -28,7 +28,7 @@ That is the point of it — but it is also why `"server": false` in
 What it serves
 --------------
 
-- **GET** — the [Web UI](WebUI.md), a remote control page for a phone or any
+- **GET** — the [Web UI](12_WebUI.md), a remote control page for a phone or any
   other browser on the network.
 - **POST** — a command, as `text/plain`, which makes driving the machine
   scriptable:
@@ -40,13 +40,13 @@ curl -X POST --data 'mouse=CLICK(0,0)'  http://192.168.1.40:8033/pb-a703/
 
 The protocol is the pico-hid board's, so its clients work against Pob
 unchanged. The full command grammar is in
-**[Operation API](Operation%20API.md)**.
+**[Operation API](10_Operation%20API.md)**.
 
 
 See also
 --------
 
-- [Operation API](Operation%20API.md) — the command grammar
-- [Web UI](WebUI.md) — the page this server hosts
-- [Pob Keyboard](Keyboard.md) — a desktop client for the same API
-- [Settings](Settings.md) — `server` and `server_port`
+- [Operation API](10_Operation%20API.md) — the command grammar
+- [Web UI](12_WebUI.md) — the page this server hosts
+- [Pob Keyboard](13_Keyboard.md) — a desktop client for the same API
+- [Settings](06_Settings.md) — `server` and `server_port`

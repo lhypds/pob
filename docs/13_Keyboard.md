@@ -33,7 +33,7 @@ scripts.
 See also
 --------
 
-- [Pob Server](Server.md) — what it talks to, and the address to give it
-- [Operation API](Operation%20API.md) — the protocol it speaks
-- [Key names](Keys.md) — what the keys resolve to
-- [Web UI](WebUI.md) — the same thing in a browser
+- [Pob Server](09_Server.md) — what it talks to, and the address to give it
+- [Operation API](10_Operation%20API.md) — the protocol it speaks
+- [Key names](04_Keys.md) — what the keys resolve to
+- [Web UI](12_WebUI.md) — the same thing in a browser

@@ -5,7 +5,7 @@ Key names
 `keyPress` / `key_press` takes one key, optionally preceded by `+`-joined
 modifiers: `ctrl+alt+shift+f5`. A name is a *position* on the keyboard rather
 than a character, so the machine's own layout decides what it produces — which
-is what lets the [Web UI](WebUI.md) and [Pob Keyboard](Keyboard.md) forward
+is what lets the [Web UI](12_WebUI.md) and [Pob Keyboard](13_Keyboard.md) forward
 real keypresses verbatim.
 
 | Modifier | Meaning |
@@ -31,6 +31,6 @@ on an Apple board.
 See also
 --------
 
-- [Macro](Macro.md) — `keyPress` in macros and AI sessions
-- [MCP Server](MCP.md) — `key_press` as an MCP tool
-- [Operation API](Operation%20API.md) — `keycode=`, the HID spelling of the same keys
+- [Macro](03_Macro.md) — `keyPress` in macros and AI sessions
+- [MCP Server](08_MCP.md) — `key_press` as an MCP tool
+- [Operation API](10_Operation%20API.md) — `keycode=`, the HID spelling of the same keys

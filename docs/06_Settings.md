@@ -20,8 +20,8 @@ starts from. `instruction.txt` and `macro.txt` stay shared at `~/.pob`.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
-| `server` | `true` | Run the [Pob Server](Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](WebUI.md) down with it |
-| `server_port` | `8033` | The port the [Pob Server](Server.md) is reached through. `POB_SERVER_PORT` overrides it |
+| `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_WebUI.md) down with it |
+| `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
 | `window_x` | — | Window position X (auto-saved) |
 | `window_y` | — | Window position Y (auto-saved) |
 | `window_width` | — | Window width (auto-saved) |
@@ -46,6 +46,6 @@ Example:
 See also
 --------
 
-- [Logs](Logs.md) — where the per-instance copy lives
-- [UI](UI.md) — the toolbar button that opens it
-- [Pob Server](Server.md) — what `server` and `server_port` control
+- [Logs](05_Logs.md) — where the per-instance copy lives
+- [UI](02_UI.md) — the toolbar button that opens it
+- [Pob Server](09_Server.md) — what `server` and `server_port` control

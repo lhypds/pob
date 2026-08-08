@@ -50,8 +50,8 @@ reimplementing only the shell — the brain is shared.
 See also
 --------
 
-- [Pob Server](Server.md) — the HTTP server started with every instance
-- [Control API](Control%20API.md) — the other server, loopback only, for the CLI
-- [Pob Keyboard](Keyboard.md) — the separate desktop client in `keyboard/`
-- [Development](Development.md) — building the core and the shells
-- [Logs](Logs.md) — what the core writes as it runs
+- [Pob Server](09_Server.md) — the HTTP server started with every instance
+- [Control API](11_Control%20API.md) — the other server, loopback only, for the CLI
+- [Pob Keyboard](13_Keyboard.md) — the separate desktop client in `keyboard/`
+- [Development](14_Development.md) — building the core and the shells
+- [Logs](05_Logs.md) — what the core writes as it runs

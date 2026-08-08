@@ -3,11 +3,11 @@ Operation API
 =============
 
 The API that *operates* the machine — pointer, keys, text. The [Pob
-server](Server.md) takes its commands as `text/plain` POSTs, which is what the
-[Web UI](WebUI.md) sends and what makes the same thing scriptable — anything
+server](09_Server.md) takes its commands as `text/plain` POSTs, which is what the
+[Web UI](12_WebUI.md) sends and what makes the same thing scriptable — anything
 that can send an HTTP request can move the pointer and type on the machine.
 
-(The other one is the [Control API](Control%20API.md), which drives the *app* —
+(The other one is the [Control API](11_Control%20API.md), which drives the *app* —
 run an instruction, stop a session — and is the `pob` CLI's private channel.)
 
 ```
@@ -34,7 +34,7 @@ POST to `http://192.168.1.40:8033/` lands the same way. It is served where it
 lands, never redirected, since most HTTP clients would turn a redirected POST
 into a GET and lose the keystroke.
 
-A GET on either address serves the [Web UI](WebUI.md) page instead.
+A GET on either address serves the [Web UI](12_WebUI.md) page instead.
 
 The port is yours to set: `server_port` in `settings.json`, or `POB_SERVER_PORT`
 in the environment. It is the same on every machine unless someone changes it,
@@ -50,7 +50,7 @@ unchanged. One command per request body:
 | Command | Form | Description |
 |---------|------|-------------|
 | `typing` | `typing=<text>` | Type `<text>` at the current keyboard focus |
-| `keycode` | `keycode=<chord>` | Press keys. `,` separates keys pressed in turn, `+` joins keys held together — `CTRL+c,CTRL+v`. Uses the HID names in [Key names](Keys.md) |
+| `keycode` | `keycode=<chord>` | Press keys. `,` separates keys pressed in turn, `+` joins keys held together — `CTRL+c,CTRL+v`. Uses the HID names in [Key names](04_Keys.md) |
 | `mouse` | `mouse=ACTION(x,y)` | Pointer action: `MOVE`, `CLICK`, `RIGHT_CLICK`, `DOUBLE_CLICK`, `PRESS`, `RELEASE`, `SCROLL` |
 | `consumer` | `consumer=<usage>` | Media and brightness keys. Accepted and ignored — the shells post plain key events and have nowhere to put a consumer-control usage |
 
@@ -73,9 +73,9 @@ That is the point of it — but it is also why `"server": false` in
 See also
 --------
 
-- [Pob Server](Server.md) — what serves these commands
-- [Web UI](WebUI.md) — the page that sends them
-- [Pob Keyboard](Keyboard.md) — a desktop client for this API
-- [Key names](Keys.md) — what `keycode` accepts
-- [MCP Server](MCP.md) — the same actions as MCP tools
-- [Control API](Control%20API.md) — the other API: driving the app itself
+- [Pob Server](09_Server.md) — what serves these commands
+- [Web UI](12_WebUI.md) — the page that sends them
+- [Pob Keyboard](13_Keyboard.md) — a desktop client for this API
+- [Key names](04_Keys.md) — what `keycode` accepts
+- [MCP Server](08_MCP.md) — the same actions as MCP tools
+- [Control API](11_Control%20API.md) — the other API: driving the app itself

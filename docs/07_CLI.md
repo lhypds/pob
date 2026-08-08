@@ -59,7 +59,7 @@ How it reaches the app
 
 The app owns `pob-core` as a child process and drives it over that process's
 stdin and stdout, a pipe a `pob` typed into a terminal has no way to join. So
-`pob-core` also serves the [Control API](Control%20API.md) on an ephemeral
+`pob-core` also serves the [Control API](11_Control%20API.md) on an ephemeral
 `127.0.0.1` port, and advertises it by writing
 `~/.pob/logs/<instance>/control.json`:
 
@@ -81,7 +81,7 @@ with the app closed.
 See also
 --------
 
-- [Control API](Control%20API.md) — the endpoints behind these commands
-- [Logs](Logs.md) — the tree `pob` reads for session detail
-- [MCP Server](MCP.md) — what `pob mcp start` brings up
-- [Pob Server](Server.md) — the address `pob status` prints
+- [Control API](11_Control%20API.md) — the endpoints behind these commands
+- [Logs](05_Logs.md) — the tree `pob` reads for session detail
+- [MCP Server](08_MCP.md) — what `pob mcp start` brings up
+- [Pob Server](09_Server.md) — the address `pob status` prints

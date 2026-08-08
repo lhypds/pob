@@ -19,7 +19,7 @@ The page is three controls:
 - a **trackpad** — drag to move the pointer, tap to click, two-finger tap to
   right-click, two fingers to scroll, double-tap-and-hold to drag
 
-It is served by the [Pob Server](Server.md), so `"server": false` takes the
+It is served by the [Pob Server](09_Server.md), so `"server": false` takes the
 page down with the rest of it. The page itself is one self-contained file,
 `server/webui/index.html`, compiled into `pob-core`.
 
@@ -27,6 +27,6 @@ page down with the rest of it. The page itself is one self-contained file,
 See also
 --------
 
-- [Pob Server](Server.md) — the address to open, and how to turn it off
-- [Operation API](Operation%20API.md) — what the page sends
-- [Pob Keyboard](Keyboard.md) — the same thing as a desktop app
+- [Pob Server](09_Server.md) — the address to open, and how to turn it off
+- [Operation API](10_Operation%20API.md) — what the page sends
+- [Pob Keyboard](13_Keyboard.md) — the same thing as a desktop app

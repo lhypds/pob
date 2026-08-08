@@ -10,7 +10,7 @@ Structure
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button.
          +--- settings.json                       this instance's settings file (copied from the root `settings.json`).
          +--- instance.json                       instance start/end times, etc.
-         +--- control.json                        written while the instance runs; advertises the [Control API](Control%20API.md) port used by the `pob` CLI.
+         +--- control.json                        written while the instance runs; advertises the [Control API](11_Control%20API.md) port used by the `pob` CLI.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over, and what Clear Logs checks.
 
          +--- <session>/ (instruction)            session executed from instruction.  
@@ -49,7 +49,7 @@ last; the others stay where they are as history.
 See also
 --------
 
-- [UI](UI.md) — the toolbar buttons that open and clear this tree
-- [CLI](CLI.md) — `pob` reads it directly, so it works with the app closed
-- [Control API](Control%20API.md) — what `control.json` advertises
-- [Settings](Settings.md) — the per-instance `settings.json` kept here
+- [UI](02_UI.md) — the toolbar buttons that open and clear this tree
+- [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
+- [Control API](11_Control%20API.md) — what `control.json` advertises
+- [Settings](06_Settings.md) — the per-instance `settings.json` kept here

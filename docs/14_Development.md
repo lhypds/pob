@@ -48,5 +48,5 @@ Update `VERSION`, then run `release.sh`. What it builds follows the
 See also
 --------
 
-- [Architecture](Architecture.md) — what each folder builds and how they talk
-- [Pob Keyboard](Keyboard.md) — the one component with its own toolchain needs
+- [Architecture](01_Architecture.md) — what each folder builds and how they talk
+- [Pob Keyboard](13_Keyboard.md) — the one component with its own toolchain needs

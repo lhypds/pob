@@ -33,7 +33,7 @@ macro line is written in:
 | `drag(dx, dy)` | `dx`: number, `dy`: number | Drag from the current cursor position by `(dx, dy)` pixels. Cursor ends at the new position. |
 | `scroll(dx, dy)` | `dx`: number, `dy`: number | Scroll at the current cursor position. `dy > 0` = down, `dy < 0` = up, `dx > 0` = right. |
 | `typeText(text)` | `text`: string | Type text at the current keyboard focus. |
-| `keyPress(key)` | `key`: string | Press a key, optionally with `+`-joined modifiers in front of it (see [Key names](Keys.md)) — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. |
+| `keyPress(key)` | `key`: string | Press a key, optionally with `+`-joined modifiers in front of it (see [Key names](04_Keys.md)) — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. |
 | `sleep(milliseconds)` | `milliseconds`: number | Pause execution for the given number of milliseconds. |
 | `take_screenshot(crop_x?, crop_y?, crop_width?, crop_height?)` | All optional: `crop_x`, `crop_y`, `crop_width`, `crop_height`: number | Capture a fresh screenshot. When all four crop parameters are provided, the image is cropped to that region (x, y, width, height in screenshot pixels). Saved to `logs/<instanceId>/<sessionId>/screenshots/<unixtime>.png`. |
 
@@ -45,7 +45,7 @@ everything it addresses — what the screenshots show, what the clicks are aimed
 See also
 --------
 
-- [Key names](Keys.md) — what `keyPress` accepts
-- [UI](UI.md) — the record and play buttons
-- [MCP Server](MCP.md) — the same actions as MCP tools
-- [CLI](CLI.md) — `pob macro` runs `macro.txt` from the terminal
+- [Key names](04_Keys.md) — what `keyPress` accepts
+- [UI](02_UI.md) — the record and play buttons
+- [MCP Server](08_MCP.md) — the same actions as MCP tools
+- [CLI](07_CLI.md) — `pob macro` runs `macro.txt` from the terminal

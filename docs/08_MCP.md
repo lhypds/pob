@@ -85,13 +85,13 @@ Keyboard and timing:
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `type_text` | `text`: string | Type text at the current keyboard focus (click the field first). |
-| `key_press` | `key`: string | Press a key or shortcut — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. See [Key names](Keys.md). |
+| `key_press` | `key`: string | Press a key or shortcut — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. See [Key names](04_Keys.md). |
 | `wait` | `milliseconds`: number | Pause to let the UI settle. Capped at 10000 ms. |
 
 
 See also
 --------
 
-- [Key names](Keys.md) — what `key_press` accepts
-- [Operation API](Operation%20API.md) — the same actions over plain HTTP
-- [CLI](CLI.md) — `pob mcp status` / `start` / `stop`
+- [Key names](04_Keys.md) — what `key_press` accepts
+- [Operation API](10_Operation%20API.md) — the same actions over plain HTTP
+- [CLI](07_CLI.md) — `pob mcp status` / `start` / `stop`
