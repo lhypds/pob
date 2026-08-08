@@ -55,6 +55,7 @@ Commands:
   run <text...>      Replace instruction.txt with <text>, then execute it
   macro              Execute macro.txt
   stop               Stop the running session
+  kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
   mcp status         Show MCP server info (URL, tools, client config)
   mcp start [port]   Start the MCP server and print its info (port defaults
@@ -135,6 +136,11 @@ func main() {
 
 	case "stop":
 		cmdStop(runningInstance(root))
+
+	// Not runningInstance: cmdKill decides for itself what a stopped Pob
+	// means, and an already-stopped one is an answer rather than an error.
+	case "kill":
+		cmdKill(root)
 
 	case "screenshot":
 		cmdScreenshot(runningInstance(root))

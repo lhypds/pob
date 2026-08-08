@@ -38,6 +38,7 @@ Flags:
 | `run <text...>` | Replace `instruction.txt` with `<text>`, then execute it |
 | `macro` | Execute `macro.txt` |
 | `stop` | Stop the running session |
+| `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
 | `mcp start [port]` | Start the MCP server and print its info (port defaults to `8032`). Registers the server in the user settings of installed agent CLIs (`claude`, `gemini`) |
@@ -80,6 +81,14 @@ launch and the file is the only way to find it. `status`, `start`, `run`,
 `macro`, `stop`, `screenshot` and the `mcp` commands are each one call to that
 API; the rest read the `logs/` tree directly, which is why they still work
 with the app closed.
+
+`kill` uses the API for one thing only — asking the instance which process it
+is — and then works on the processes themselves. The pid it gets back is
+`pob-core`'s, and core's parent is the shell that spawned it, so that is what
+gets signalled; core follows it down when their pipe closes. The parent is
+checked for the name the shell is built under (`Pob`, `pob`, `Pob.exe`) before
+anything is sent to it, so a `pob-core` started by hand from a terminal takes
+the signal itself rather than handing it to the terminal.
 
 
 See also
