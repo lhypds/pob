@@ -25,6 +25,10 @@ type Status struct {
 	// is also the case where this page is the thing that says so.
 	MCP []string `json:"mcp"`
 
+	// ViewFPS is the rate the /view page runs at, from settings.json. The page
+	// has no control for it, so this is the only place it is told.
+	ViewFPS float64 `json:"view_fps"`
+
 	// Filled in by the server itself, whatever the instance reports.
 	Port int      `json:"port"`
 	URLs []string `json:"urls"`
@@ -59,6 +63,11 @@ func (s *Server) serveStatus(w http.ResponseWriter, r *http.Request) {
 	status.Instance = s.instance
 	status.Port = s.Port()
 	status.URLs = s.URLs()
+	// An instance that reports no rate — a test, or an older shell — still has
+	// to leave the page with a number it can run at.
+	if status.ViewFPS <= 0 {
+		status.ViewFPS = DefaultViewFPS
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

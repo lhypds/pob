@@ -327,6 +327,33 @@ func TestStatusReportsTheInstanceAndTheServer(t *testing.T) {
 	if got.Port != port {
 		t.Errorf("status port = %d, want %d", got.Port, port)
 	}
+	// The view page has no rate control of its own, so a status that reports
+	// none would leave it with nothing to run at.
+	if got.ViewFPS != DefaultViewFPS {
+		t.Errorf("status view fps = %v, want the default %v", got.ViewFPS, DefaultViewFPS)
+	}
+}
+
+// The rate the view page runs at is the machine's setting, so whatever the
+// instance reports is what goes out — the default only fills in for an
+// instance that reports nothing.
+func TestStatusCarriesTheRateTheInstanceReports(t *testing.T) {
+	port := freePort(t)
+	server := New("pb-aaaa", &fakeTarget{}, nil)
+	server.SetStatus(func() Status { return Status{ViewFPS: 12.5} })
+	if err := server.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer server.Stop()
+
+	var got Status
+	body := get(t, fmt.Sprintf("http://127.0.0.1:%d/status", port))
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ViewFPS != 12.5 {
+		t.Errorf("status view fps = %v, want 12.5", got.ViewFPS)
+	}
 }
 
 // Watching is not driving: a tab left open on the view page would otherwise

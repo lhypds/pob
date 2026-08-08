@@ -45,6 +45,7 @@ var defaults = map[string]any{
 	"stop_hook":           "",
 	"server":              true,
 	"server_port":         server.DefaultPort,
+	"webui_view_fps":      server.DefaultViewFPS,
 	"mcp":                 true,
 	"mcp_port":            mcpserver.DefaultPort,
 	"mcp_host":            mcpserver.DefaultHost,
@@ -254,6 +255,28 @@ func (c *Config) portVal(key, env string, fallback int) int {
 	return c.intVal(key, fallback, 1)
 }
 
+// floatVal reads a setting that is not a whole number, clamped to the range
+// the thing reading it can actually use. Out of range is clamped rather than
+// refused: a settings file is hand-edited, and a 60 meant as "as fast as it
+// goes" should give the fastest rate there is, not silently fall back to the
+// default one.
+func (c *Config) floatVal(key string, fallback, minimum, maximum float64) float64 {
+	var n float64
+	switch v := c.readSettings()[key].(type) {
+	case float64:
+		n = v
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return fallback
+		}
+		n = parsed
+	default:
+		return fallback
+	}
+	return min(maximum, max(minimum, n))
+}
+
 func (c *Config) intVal(key string, fallback, minimum int) int {
 	switch v := c.readSettings()[key].(type) {
 	case float64:
@@ -287,6 +310,16 @@ func (c *Config) ServerEnabled() bool { return c.boolVal("server", true) }
 // .env that wants to pick it per launch.
 func (c *Config) ServerPort() int {
 	return c.portVal("server_port", "POB_SERVER_PORT", server.DefaultPort)
+}
+
+// ViewFPS is how often the /view page refetches the picture. It is a machine
+// setting rather than something the page offers, because the cost of a high
+// rate lands on this machine — every frame is a screen capture here — and the
+// machine is where it is known what that is worth: a laptop on battery and a
+// desktop on a wired network do not want the same number, and neither of them
+// wants it decided by whoever last opened the page on a phone.
+func (c *Config) ViewFPS() float64 {
+	return c.floatVal("webui_view_fps", server.DefaultViewFPS, server.MinViewFPS, server.MaxViewFPS)
 }
 
 // MCPEnabled reports whether the MCP server should run. Like the Pob server it

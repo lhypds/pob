@@ -143,6 +143,11 @@
     return to;
   }
 
+  function resetMove() {
+    pendingDX = 0;
+    pendingDY = 0;
+  }
+
   // --- text field and keyboard mirror ------------------------------------
   // iOS "smart punctuation" rewrites quotes and dashes into typographic
   // characters; fold them back to ASCII so what lands on the target is what
@@ -274,6 +279,207 @@
       tookFullscreen = false;
       document.exitFullscreen().catch(() => {});
     }
+  }
+
+  // --- the trackpad ---------------------------------------------------------
+  // Pointing without a picture: the surface is a pad, not the machine's screen,
+  // so what goes out is how far the finger travelled rather than where it
+  // landed. The control page is nothing but this pad; the view page offers it
+  // as one of its two ways of pointing, for when the picture is too small to
+  // hit a target on — which on a phone it usually is. Both get it from here,
+  // because a trackpad that behaves differently depending on which page it is
+  // on is two trackpads.
+  //
+  // attachTrackpad returns a handle: detach() takes the listeners off and lets
+  // go of anything still held, which is what a page switching pointing modes
+  // mid-gesture needs.
+  const CLICK_MOVE_THRESHOLD = 6; // px per finger below which a gesture is a tap
+  const DOUBLE_CLICK_WINDOW_MS = 300;
+  const SCROLL_PX_PER_NOTCH = 20; // finger travel that equals one wheel notch
+
+  function attachTrackpad(surface, { onActive = () => {} } = {}) {
+    const pointers = new Map(); // fingers on the pad: pointerId -> last position
+    let primaryId = null; // the finger whose motion drives moves and scrolls
+    let gestureFingers = 0; // most fingers seen during the current gesture
+    let totalDX = 0,
+      totalDY = 0;
+    let pendingClickTimer = null;
+    // Double-tap-and-hold drags: the second touch of a double-tap presses
+    // the button the moment it lands, so the grab happens at the
+    // double-click point. Motion then drags; lifting lets go. A quick lift
+    // in place completes a double-click instead (see endGesture).
+    let dragging = false; // Pob is holding the button; motion now drags
+    let pressedAt = 0; // when the drag press went down, to tell tap from hold
+
+    function onPointerDown(e) {
+      // Don't steal focus: mid-mirroring, a tap here would otherwise blur
+      // the text field and close the soft keyboard being mirrored.
+      e.preventDefault();
+      surface.setPointerCapture(e.pointerId);
+      onActive(true);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      gestureFingers = Math.max(gestureFingers, pointers.size);
+      if (pointers.size === 1) {
+        primaryId = e.pointerId;
+        totalDX = 0;
+        totalDY = 0;
+        resetMove();
+        // A touch inside the double-click window is the second half of a
+        // double-tap: claim the pending single click and press right away,
+        // so the grab happens at the double-click point — waiting for
+        // movement instead loses the start of a fast drag to the slop test.
+        if (pendingClickTimer && e.button === 0) {
+          clearTimeout(pendingClickTimer);
+          pendingClickTimer = null;
+          dragging = true;
+          pressedAt = performance.now();
+          enqueue("mouse=PRESS(0,0)");
+        }
+      } else {
+        // A second finger turns the gesture into a scroll (or two-finger
+        // tap): the first finger's accumulated movement is no longer a
+        // pointer move.
+        resetMove();
+        // Fingers landing one-by-one right after a tap are that scroll,
+        // not a drag: let the still-unmoved button go. The press+release
+        // pair amounts to the single click the claimed tap was owed.
+        if (dragging && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+          dragging = false;
+          enqueue("mouse=RELEASE(0,0)");
+        }
+      }
+    }
+
+    function onPointerMove(e) {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      totalDX += dx;
+      totalDY += dy;
+      if (e.pointerId !== primaryId) return; // fingers travel together; count one
+      if (pointers.size >= 2 && !dragging) {
+        // Two-finger drag scrolls, touch-style: content follows the fingers.
+        pendingScroll += dy / SCROLL_PX_PER_NOTCH;
+      } else if (dragging && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+        // Wobble under a still-unmoved press is held back: this may yet
+        // end as a double-click, which the host voids if the pointer
+        // strays between the clicks. Only sub-slop wobble is ever
+        // swallowed — the event that passes the slop flows through below
+        // whole, so a fast drag loses none of its motion.
+        return;
+      } else {
+        pendingDX += dx;
+        pendingDY += dy;
+      }
+      pump();
+    }
+
+    function dropPointer(e) {
+      if (!pointers.delete(e.pointerId)) return false;
+      if (pointers.size > 0) {
+        // Hand the lead to a remaining finger so motion keeps flowing.
+        if (e.pointerId === primaryId) primaryId = pointers.keys().next().value;
+        return false;
+      }
+      primaryId = null;
+      onActive(false);
+      pump();
+      return true; // gesture over
+    }
+
+    function endGesture(e) {
+      if (!dropPointer(e)) return;
+      const fingers = gestureFingers;
+      gestureFingers = 0;
+
+      if (dragging) {
+        dragging = false;
+        const quickTap = performance.now() - pressedAt < DOUBLE_CLICK_WINDOW_MS;
+        if (quickTap && Math.hypot(totalDX, totalDY) <= CLICK_MOVE_THRESHOLD) {
+          // A quick lift in place: it was a double-tap after all.
+          enqueue("mouse=DOUBLE_CLICK(0,0)");
+        } else {
+          // A drag (or a deliberate press-and-hold, released as just the
+          // one click). Flush motion still coalesced, so the drop lands
+          // where the finger stopped instead of the last few pixels
+          // applying after the button is already up.
+          const dx = Math.round(pendingDX);
+          const dy = Math.round(pendingDY);
+          resetMove();
+          if (dx !== 0 || dy !== 0) enqueue(`mouse=MOVE(${dx},${dy})`);
+          enqueue("mouse=RELEASE(0,0)");
+        }
+        return;
+      }
+
+      // Looser tap test for multi-finger taps: each finger wobbles a little.
+      if (Math.hypot(totalDX, totalDY) > CLICK_MOVE_THRESHOLD * fingers) return;
+
+      // Touch has no right button, so a two-finger tap fills in for it.
+      if (e.button === 2 || fingers === 2) {
+        enqueue("mouse=RIGHT_CLICK(0,0)");
+        return;
+      }
+      if (fingers > 2) return; // 3+ finger tap has no meaning here
+
+      pendingClickTimer = setTimeout(() => {
+        pendingClickTimer = null;
+        enqueue("mouse=CLICK(0,0)");
+      }, DOUBLE_CLICK_WINDOW_MS);
+    }
+
+    // A cancelled gesture (the system took over the touch, e.g. an edge
+    // swipe) must not turn into a click — but a held button must still be
+    // let go, or it stays stuck down on the target machine.
+    function cancelGesture(e) {
+      if (!dropPointer(e)) return;
+      gestureFingers = 0;
+      if (dragging) {
+        dragging = false;
+        enqueue("mouse=RELEASE(0,0)");
+      }
+    }
+
+    // Physical mouse wheel / desktop trackpad scrolling over the pad. It
+    // scrolls wherever the machine's own pointer already is: this surface says
+    // nothing about where on the screen the wheel was turned.
+    function onWheel(e) {
+      e.preventDefault(); // the page itself has nowhere to scroll
+      // deltaMode 1 is lines (~3 per wheel notch); pixels (~100) otherwise.
+      pendingScroll += -(e.deltaMode === 1 ? e.deltaY / 3 : e.deltaY / 100);
+      pump();
+    }
+
+    const listeners = [
+      ["pointerdown", onPointerDown, undefined],
+      ["pointermove", onPointerMove, undefined],
+      ["pointerup", endGesture, undefined],
+      ["pointercancel", cancelGesture, undefined],
+      ["wheel", onWheel, { passive: false }],
+    ];
+    for (const [type, fn, opts] of listeners) surface.addEventListener(type, fn, opts);
+
+    return {
+      detach() {
+        for (const [type, fn, opts] of listeners) surface.removeEventListener(type, fn, opts);
+        clearTimeout(pendingClickTimer);
+        pendingClickTimer = null;
+        pointers.clear();
+        primaryId = null;
+        gestureFingers = 0;
+        onActive(false);
+        // A mode switch mid-drag must not leave the button down on the
+        // machine: nothing else is going to release it.
+        if (dragging) {
+          dragging = false;
+          enqueue("mouse=RELEASE(0,0)");
+        }
+        resetMove();
+      },
+    };
   }
 
   // attachInput wires up a text field and its two buttons — send and keyboard
@@ -428,29 +634,11 @@
     enqueueTyping,
     pump,
     attachInput,
+    attachTrackpad,
 
     // Coalesced pointer state. The pages accumulate into it and call pump();
     // whatever has piled up by the time a request slot frees goes out as one
     // command, since a stale position is worth less than a fresh one.
-    moveBy(dx, dy) {
-      pendingDX += dx;
-      pendingDY += dy;
-    },
-    resetMove() {
-      pendingDX = 0;
-      pendingDY = 0;
-    },
-    // takeMove hands back the whole accumulated move so a caller can put it in
-    // the queue itself — which is what a drag does on release, so the drop
-    // lands where the finger stopped rather than a few pixels after the button
-    // is already up.
-    takeMove() {
-      const dx = Math.round(pendingDX);
-      const dy = Math.round(pendingDY);
-      pendingDX -= dx;
-      pendingDY -= dy;
-      return [dx, dy];
-    },
     moveTo(x, y) {
       pendingTo = [Math.round(x), Math.round(y)];
     },

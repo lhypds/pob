@@ -110,6 +110,38 @@ func TestServerPortEnvOverride(t *testing.T) {
 	}
 }
 
+// The view page's rate is the one setting that is not a whole number, and it
+// is hand-edited: out of range is clamped to what the page can actually run at
+// rather than thrown away, and a file that has never seen the key gets the
+// default.
+func TestViewFPSIsClampedToWhatThePageCanRun(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		set  any
+		want float64
+	}{
+		{"unset", nil, 5},
+		{"a fraction", 0.5, 0.5},
+		{"written as text", "2.5", 2.5},
+		{"past the ceiling", 60, 30},
+		{"below the floor", 0, 0.1},
+		{"not a number", "soon", 5},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			settings := map[string]any{}
+			if c.set != nil {
+				settings["webui_view_fps"] = c.set
+			}
+			write(t, filepath.Join(root, "settings.json"), settings)
+
+			if got := New(root, "pb-aaaa").ViewFPS(); got != c.want {
+				t.Errorf("ViewFPS() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // The MCP server starts with the instance on the port a client's config names,
 // so both settings have to be there for a file that has never seen them —
 // and, like the Pob server, on by default.

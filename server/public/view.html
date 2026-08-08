@@ -76,6 +76,13 @@
           crosshair;
       }
 
+      /* Aiming is what the crosshair is for, and in trackpad mode there is
+         nothing to aim at: the picture is a pad, and the pointer being moved
+         is the one visible in the frame. */
+      #stage.trackpad {
+        cursor: default;
+      }
+
       /* One canvas, drawn over and over. See the script for why it is a canvas
          and not a picture. */
       #frame {
@@ -105,50 +112,16 @@
         display: none;
       }
 
-      /* The bottom row: how often to refetch on the left, then the text field
-         and its two buttons — the same three controls as the control page. */
-      #rate {
-        width: 68px;
-        height: var(--control);
-        padding: 0 8px;
-        border: 1px solid var(--ink);
-        border-radius: 0; /* iOS rounds inputs by default */
-        -webkit-appearance: none;
-        appearance: none;
-        background: var(--bg);
-        color: var(--ink);
-        /* Set like the values on the index page — a reading off a running
-           machine. Under 16px, so iOS zooms in when it takes focus; the page
-           holds a whole screen and zooming back out is one pinch. */
-        font-family: var(--code);
-        font-size: 13px;
-        text-align: center;
-        font-variant-numeric: tabular-nums;
-        outline: none;
-      }
-
-      .unit {
-        display: flex;
-        align-items: center;
-        height: var(--control);
-        padding: 0 10px;
-        margin-left: -1px; /* collapse the doubled border */
-        border: 1px solid var(--ink);
-        color: var(--ink);
-        /* Set like the small labels on the index page: the word in front of a
-           reading, not the reading itself. */
-        font-family: var(--code);
-        font-size: 12px;
-        letter-spacing: 0.02em;
-        white-space: nowrap;
-        user-select: none;
-        -webkit-user-select: none;
-      }
-
+      /* The bottom row: the pointing switch on its own at the left, then the
+         text field and its two buttons — the same three controls as the
+         control page. How often the picture refreshes is not among them; that
+         is a machine setting, read off /status. */
       #text-input {
         flex: 1;
         min-width: 0;
         height: var(--control);
+        /* The gap that keeps the switch a control of its own: everything to
+           the right of it is one joined-up group about typing. */
         margin-left: 12px;
         padding: 0 12px;
         border: 1px solid var(--ink);
@@ -217,10 +190,63 @@
       </div>
 
       <div class="row">
-        <input id="rate" type="number" min="0.1" max="30" step="0.1" inputmode="decimal" aria-label="Frames per second" />
-        <span class="unit">fps</span>
+        <!-- Which way the picture points: both ways are on show, and the one
+             in black is the one that is on. The same arrow in both icons,
+             once on its own — it goes where you touch — and once inside a
+             pad, where the touch only pushes it. -->
+        <button id="direct-btn" type="button" aria-label="Point at the picture" aria-pressed="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <!-- Sits on 12,12: an arrow's ink is all below and right of its
+                 tip, so the shape has to be placed by its box, not its
+                 point. -->
+            <path d="M5.25 4.5l13.5 7.8-5.7 1.6-2.4 5.6z" />
+          </svg>
+        </button>
+        <button id="trackpad-btn" type="button" aria-label="Use the picture as a trackpad" aria-pressed="false">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="5" width="18" height="14" rx="2.5" />
+            <!-- Filled, not stroked: at 18px an outlined arrow this small
+                 closes up into a blob. -->
+            <path d="M10 8.6l6 3.5-2.6.7-1.1 2.6z" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
         <input id="text-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
-        <button id="send-btn" type="button" class="filled" aria-label="Send">↵</button>
+        <!-- Drawn rather than typed as ↵. A character is placed by its
+             line box and its ink sits well above the baseline, which put the
+             arrow a fifth of the square high; a path is placed by its own
+             box, the same as the icons beside it, on every machine's fonts. -->
+        <button id="send-btn" type="button" class="filled" aria-label="Send">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M20 5.5v8.5H4m4.5-4.5L4 14l4.5 4.5" />
+          </svg>
+        </button>
         <button id="kb-btn" type="button" aria-label="Keyboard mirror mode" aria-pressed="false">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <rect x="2" y="6" width="20" height="12" />
@@ -243,13 +269,30 @@
       // so every frame carries the size it would have been, and a click is
       // scaled back into that space before it is sent. See pointAt.
       //
+      // There are two ways to point at it, both on show at the left of the
+      // bottom row, the one that is on filled in. Direct: touch the picture
+      // and the machine's pointer goes exactly there. Trackpad: the picture is
+      // a pad, and a touch pushes the pointer from wherever it already is —
+      // the control page's gesture code, from pob.js. Direct is the point of
+      // showing a picture at all, so it is the default; on a phone the default
+      // is the trackpad, because a whole screen scaled onto a phone puts
+      // targets a couple of pixels wide under a fingertip that covers forty of
+      // them.
+      //
       // The text field and the keyboard mirror are the control page's, from
       // pob.js: with a view of the machine in front of you, being able to type
       // at it is the other half of the same thing.
+      //
+      // How often it refetches is "webui_view_fps" in settings.json, read off
+      // /status when the page loads. It is the machine's setting and not this
+      // page's, because the cost of a high rate is paid on the machine — every
+      // frame is a screen capture there — so the number belongs where that is
+      // known, not with whoever last opened the page. These three have to
+      // agree with the constants in server.go, which is where the setting is
+      // clamped before it ever reaches here.
       const MIN_FPS = 0.1;
       const MAX_FPS = 30;
       const DEFAULT_FPS = 5;
-      const FPS_KEY = "pob-view-fps"; // remembered per browser, per host
 
       const QUALITY = 70; // JPEG; past ~80 the bytes climb faster than the picture improves
       // Asking for exactly the box width would mean a new size on every pixel
@@ -263,11 +306,11 @@
 
       const CLICK_MOVE_THRESHOLD = 6; // px below which a gesture is a tap, not a drag
       const DOUBLE_CLICK_WINDOW_MS = 300;
-      const SCROLL_PX_PER_NOTCH = 20;
 
       const stage = document.getElementById("stage");
       const status = document.getElementById("status");
-      const rate = document.getElementById("rate");
+      const directBtn = document.getElementById("direct-btn");
+      const trackpadBtn = document.getElementById("trackpad-btn");
 
       Pob.attachInput({
         input: document.getElementById("text-input"),
@@ -399,27 +442,27 @@
         timer = setTimeout(tick, period);
       }
 
-      function setFPS(fps, remember) {
+      function setFPS(fps) {
         if (!isFinite(fps)) fps = DEFAULT_FPS;
-        fps = Math.min(MAX_FPS, Math.max(MIN_FPS, fps));
-        period = 1000 / fps;
-        if (remember) {
-          try {
-            localStorage.setItem(FPS_KEY, String(fps));
-          } catch {
-            // Private browsing refuses to store; the rate just won't be kept.
-          }
-        }
-        return fps;
+        period = 1000 / Math.min(MAX_FPS, Math.max(MIN_FPS, fps));
       }
 
-      // Typing in the field takes effect on the next frame, not on the next
-      // keystroke: rewriting "10" one character at a time would otherwise pass
-      // through 1 fps on the way, and wait a whole second there.
-      rate.addEventListener("change", () => {
-        rate.value = setFPS(parseFloat(rate.value), true);
-        schedule();
-      });
+      // The rate comes off the machine, so the picture starts at the default
+      // and moves to the machine's number when it answers — asking first would
+      // mean a page that shows nothing until an unrelated request lands.
+      // A machine that doesn't answer is one whose frames aren't coming either;
+      // the default rate is the right thing to keep trying at.
+      (async () => {
+        try {
+          const resp = await fetch(Pob.ENDPOINT + "status", { cache: "no-store" });
+          if (!resp.ok) return;
+          const { view_fps: fps } = await resp.json();
+          if (fps > 0) setFPS(fps);
+        } catch {
+          // Stay at the default; the frame loop reports the machine being out
+          // of reach on its own.
+        }
+      })();
 
       // A backgrounded tab is nobody watching, and every frame costs the
       // machine a screen capture. Stop asking until it comes back.
@@ -432,7 +475,7 @@
         }
       });
 
-      // --- clicking on it ----------------------------------------------------
+      // --- where a touch lands -----------------------------------------------
       // The frame is drawn to fit the box, so a point on screen is that same
       // point in the screenshot scaled by however much it was shrunk to get
       // there. Two shrinks, in fact: the machine shrank the picture before
@@ -451,128 +494,175 @@
         ];
       }
 
-      let start = null; // where the press went down, in screenshot pixels
-      let startClient = null; // and on screen, to measure the slop against
-      let dragging = false; // past the slop: Pob is holding the button
-      let pendingClickTimer = null; // a click held back in case a second tap follows
-      let claimed = false; // this gesture claimed a pending click, so it is the second tap
+      // --- pointing directly -------------------------------------------------
+      // Absolute pointing: the picture is the machine's screen, so a touch on
+      // it is a touch on that screen. Written as an attach/detach pair to
+      // match Pob.attachTrackpad, since the button swaps one for the other and
+      // whichever is going away has to let go of anything it is holding.
+      function attachDirect(surface) {
+        let start = null; // where the press went down, in screenshot pixels
+        let startClient = null; // and on screen, to measure the slop against
+        let dragging = false; // past the slop: Pob is holding the button
+        let pendingClickTimer = null; // a click held back in case a second tap follows
+        let claimed = false; // this gesture claimed a pending click, so it is the second tap
 
-      stage.addEventListener("contextmenu", (e) => e.preventDefault());
-
-      stage.addEventListener("pointerdown", (e) => {
-        // Don't steal focus: mid-mirroring, a tap here would otherwise blur
-        // the text field and close the soft keyboard being mirrored.
-        e.preventDefault();
-        const point = pointAt(e);
-        if (!point) return;
-        stage.setPointerCapture(e.pointerId);
-        start = point;
-        startClient = [e.clientX, e.clientY];
-        dragging = false;
-        // A touch inside the double-click window is the second half of a
-        // double-tap: claim the click that was held back, and let this
-        // gesture's lift decide whether it was a double-click or a drag.
-        claimed = false;
-        if (pendingClickTimer) {
-          clearTimeout(pendingClickTimer);
-          pendingClickTimer = null;
-          claimed = true;
-        }
-      });
-
-      stage.addEventListener("pointermove", (e) => {
-        if (!start) return;
-        const point = pointAt(e);
-        if (!point) return;
-        if (!dragging) {
-          if (Math.hypot(e.clientX - startClient[0], e.clientY - startClient[1]) <= CLICK_MOVE_THRESHOLD) {
-            return; // still a tap as far as anyone knows
+        function onPointerDown(e) {
+          // Don't steal focus: mid-mirroring, a tap here would otherwise blur
+          // the text field and close the soft keyboard being mirrored.
+          e.preventDefault();
+          const point = pointAt(e);
+          if (!point) return;
+          surface.setPointerCapture(e.pointerId);
+          start = point;
+          startClient = [e.clientX, e.clientY];
+          dragging = false;
+          // A touch inside the double-click window is the second half of a
+          // double-tap: claim the click that was held back, and let this
+          // gesture's lift decide whether it was a double-click or a drag.
+          claimed = false;
+          if (pendingClickTimer) {
+            clearTimeout(pendingClickTimer);
+            pendingClickTimer = null;
+            claimed = true;
           }
-          // Past the slop: grab where the finger went down, not where it is
-          // now, so the drag picks up what was under it to begin with.
-          dragging = true;
-          Pob.enqueue(`mouse=MOVE_TO(${start[0]},${start[1]})`);
-          Pob.enqueue("mouse=PRESS(0,0)");
         }
-        // Coalesced: the newest position is the only one worth sending.
-        Pob.moveTo(point[0], point[1]);
-        Pob.pump();
-      });
 
-      function endGesture(e) {
-        if (!start) return;
-        const point = pointAt(e) || start;
-        const wasDragging = dragging;
-        const secondTap = claimed;
-        start = null;
-        dragging = false;
-        claimed = false;
-        // Only if it is actually held: releasing a pointer that was never
-        // captured throws, and pointerup releases it implicitly anyway.
-        if (stage.hasPointerCapture?.(e.pointerId)) stage.releasePointerCapture(e.pointerId);
-
-        if (wasDragging) {
-          // Put the last position in the queue rather than leaving it
-          // coalesced, so the release cannot overtake the move that says
-          // where the drop happened.
+        function onPointerMove(e) {
+          if (!start) return;
+          const point = pointAt(e);
+          if (!point) return;
+          if (!dragging) {
+            if (Math.hypot(e.clientX - startClient[0], e.clientY - startClient[1]) <= CLICK_MOVE_THRESHOLD) {
+              return; // still a tap as far as anyone knows
+            }
+            // Past the slop: grab where the finger went down, not where it is
+            // now, so the drag picks up what was under it to begin with.
+            dragging = true;
+            Pob.enqueue(`mouse=MOVE_TO(${start[0]},${start[1]})`);
+            Pob.enqueue("mouse=PRESS(0,0)");
+          }
+          // Coalesced: the newest position is the only one worth sending.
           Pob.moveTo(point[0], point[1]);
-          Pob.flushMoveTo();
-          Pob.enqueue("mouse=RELEASE(0,0)");
-          return;
+          Pob.pump();
         }
 
-        Pob.enqueue(`mouse=MOVE_TO(${point[0]},${point[1]})`);
-        if (e.button === 2) {
-          Pob.enqueue("mouse=RIGHT_CLICK(0,0)");
-          return;
+        function endGesture(e) {
+          if (!start) return;
+          const point = pointAt(e) || start;
+          const wasDragging = dragging;
+          const secondTap = claimed;
+          start = null;
+          dragging = false;
+          claimed = false;
+          // Only if it is actually held: releasing a pointer that was never
+          // captured throws, and pointerup releases it implicitly anyway.
+          if (surface.hasPointerCapture?.(e.pointerId)) surface.releasePointerCapture(e.pointerId);
+
+          if (wasDragging) {
+            // Put the last position in the queue rather than leaving it
+            // coalesced, so the release cannot overtake the move that says
+            // where the drop happened.
+            Pob.moveTo(point[0], point[1]);
+            Pob.flushMoveTo();
+            Pob.enqueue("mouse=RELEASE(0,0)");
+            return;
+          }
+
+          Pob.enqueue(`mouse=MOVE_TO(${point[0]},${point[1]})`);
+          if (e.button === 2) {
+            Pob.enqueue("mouse=RIGHT_CLICK(0,0)");
+            return;
+          }
+          if (secondTap) {
+            Pob.enqueue("mouse=DOUBLE_CLICK(0,0)");
+            return;
+          }
+          // Hold the single click back for a moment: a second tap turns it into
+          // a double-click, and a click already sent cannot be taken back.
+          pendingClickTimer = setTimeout(() => {
+            pendingClickTimer = null;
+            Pob.enqueue("mouse=CLICK(0,0)");
+          }, DOUBLE_CLICK_WINDOW_MS);
         }
-        if (secondTap) {
-          Pob.enqueue("mouse=DOUBLE_CLICK(0,0)");
-          return;
+
+        // A cancelled gesture (the system took over the touch, e.g. an edge
+        // swipe) must not turn into a click — but a held button must still be
+        // let go, or it stays stuck down on the target machine.
+        function cancelGesture() {
+          const wasDragging = dragging;
+          start = null;
+          dragging = false;
+          claimed = false;
+          if (wasDragging) Pob.enqueue("mouse=RELEASE(0,0)");
         }
-        // Hold the single click back for a moment: a second tap turns it into
-        // a double-click, and a click already sent cannot be taken back.
-        pendingClickTimer = setTimeout(() => {
-          pendingClickTimer = null;
-          Pob.enqueue("mouse=CLICK(0,0)");
-        }, DOUBLE_CLICK_WINDOW_MS);
-      }
 
-      // A cancelled gesture (the system took over the touch, e.g. an edge
-      // swipe) must not turn into a click — but a held button must still be
-      // let go, or it stays stuck down on the target machine.
-      function cancelGesture() {
-        const wasDragging = dragging;
-        start = null;
-        dragging = false;
-        claimed = false;
-        if (wasDragging) Pob.enqueue("mouse=RELEASE(0,0)");
-      }
-
-      stage.addEventListener("pointerup", endGesture);
-      stage.addEventListener("pointercancel", cancelGesture);
-
-      // Scrolling acts where the pointer is, so go there first.
-      stage.addEventListener(
-        "wheel",
-        (e) => {
+        // Scrolling acts where the pointer is, so go there first.
+        function onWheel(e) {
           e.preventDefault();
           const point = pointAt(e);
           if (point) Pob.moveTo(point[0], point[1]);
           // deltaMode 1 is lines (~3 per wheel notch); pixels (~100) otherwise.
           Pob.scrollBy(-(e.deltaMode === 1 ? e.deltaY / 3 : e.deltaY / 100));
           Pob.pump();
-        },
-        { passive: false },
-      );
+        }
 
-      let saved = null;
-      try {
-        saved = localStorage.getItem(FPS_KEY);
-      } catch {
-        // Storage is unreadable here; the default rate stands.
+        const listeners = [
+          ["pointerdown", onPointerDown, undefined],
+          ["pointermove", onPointerMove, undefined],
+          ["pointerup", endGesture, undefined],
+          ["pointercancel", cancelGesture, undefined],
+          ["wheel", onWheel, { passive: false }],
+        ];
+        for (const [type, fn, opts] of listeners) surface.addEventListener(type, fn, opts);
+
+        return {
+          detach() {
+            for (const [type, fn, opts] of listeners) surface.removeEventListener(type, fn, opts);
+            clearTimeout(pendingClickTimer);
+            pendingClickTimer = null;
+            cancelGesture();
+          },
+        };
       }
-      rate.value = setFPS(saved === null ? DEFAULT_FPS : parseFloat(saved), false);
+
+      // --- which way it points -----------------------------------------------
+      // One of the two is attached at a time; switching detaches the other,
+      // which is also what lets go of a button held mid-gesture.
+      stage.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      let pointing = null;
+      let onTrackpad = false;
+
+      function setPointing(trackpad) {
+        if (pointing && trackpad === onTrackpad) return;
+        if (pointing) pointing.detach();
+        onTrackpad = trackpad;
+        pointing = trackpad ? Pob.attachTrackpad(stage) : attachDirect(stage);
+        stage.classList.toggle("trackpad", trackpad);
+        // Both ways stay on show; the one that is on is the one filled in.
+        for (const [btn, on] of [
+          [directBtn, !trackpad],
+          [trackpadBtn, trackpad],
+        ]) {
+          btn.classList.toggle("filled", on);
+          btn.setAttribute("aria-pressed", String(on));
+        }
+      }
+
+      // Don't steal focus from the text field, same as the mirror button.
+      for (const [btn, trackpad] of [
+        [directBtn, false],
+        [trackpadBtn, true],
+      ]) {
+        btn.addEventListener("pointerdown", (e) => e.preventDefault());
+        btn.addEventListener("click", () => setPointing(trackpad));
+      }
+
+      // A finger cannot hit what a mouse can: the machine's whole screen scaled
+      // into a phone leaves targets smaller than the fingertip covering them,
+      // so touch starts on the pad and a pointer starts on the picture.
+      setPointing(Pob.TOUCH_ONLY);
+
       tick();
     </script>
   </body>

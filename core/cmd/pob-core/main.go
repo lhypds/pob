@@ -123,6 +123,7 @@ func main() {
 			Executing: runner.Running(),
 			Session:   runner.CurrentSession(),
 			Recording: runner.Recording(),
+			ViewFPS:   cfg.ViewFPS(),
 			// Every address it answers on, not a fixed loopback one: this page
 			// is read from another machine as often as from this one, and the
 			// address that machine needs is the address it has to be told.

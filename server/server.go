@@ -38,6 +38,18 @@ import (
 // app has no business asking for.
 const DefaultPort = 8033
 
+// How often the /view page refetches the picture, in frames per second, and
+// the range a setting is allowed to name. The page reads the number off
+// /status rather than offering a control for it — see Config.ViewFPS. The
+// ceiling is where a screen capture stops keeping up on any machine worth
+// pointing this at; the floor is a frame every ten seconds, which is still a
+// live picture and not a stopped one.
+const (
+	DefaultViewFPS = 5.0
+	MinViewFPS     = 0.1
+	MaxViewFPS     = 30.0
+)
+
 // idleAfter is how long the API must be quiet before the virtual cursor is
 // allowed to go back into hiding. Long enough that putting the phone down
 // mid-task doesn't lose sight of the cursor, short enough that a forgotten

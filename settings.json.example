@@ -13,5 +13,6 @@
   "mcp_port": 8032,
   "mcp_host": "0.0.0.0",
   "server": true,
-  "server_port": 8033
+  "server_port": 8033,
+  "webui_view_fps": 5
 }

@@ -66,10 +66,28 @@ way over, and sent as `MOVE_TO`. Click, double-click, right-click, drag and
 scroll all work, the same gestures as the trackpad — minus the guessing, since
 here you can see what you are pointing at.
 
-Along the bottom: **fps**, how many frames a second to fetch, from 0.1 to 30,
-starting at 5 and remembered in the browser — then the same text field,
-send button and keyboard mirror as the control page. With the machine in front
-of you, being able to type at it is the other half of the same thing.
+**Or push the pointer instead.** The pair of buttons at the far left of the
+bottom row turns the picture into a trackpad: the same gesture code the
+control page runs, so a touch no longer says where to go, it says how far to
+move from wherever the pointer already is, and a tap clicks where the pointer
+is rather than where the finger came down. Both ways stay on show and the one
+that is on is filled in black. The icons are the same arrow — on its own for
+pointing straight at the picture, inside a pad for pushing it.
+
+Pointing straight at it is the reason to show a picture at all, so that is the
+default. On a phone the default is the trackpad: a whole screen scaled onto a
+handset leaves targets a couple of pixels wide under a fingertip that covers
+forty of them, and a pad has no such problem.
+
+The rest of the bottom row is the same text field, send button and keyboard
+mirror as the control page. With the machine in front of you, being able to
+type at it is the other half of the same thing.
+
+How often the picture refreshes is not on the page. It is `webui_view_fps` in
+[settings.json](06_Settings.md) — 5 a second by default, 0.1 to 30 — read off
+`/status` when the page loads. Every frame is a screen capture on the machine
+being watched, so the rate belongs to that machine rather than to whoever last
+opened the page on a phone.
 
 The clock starts when a frame *lands* rather than when it was asked for, so a
 slow capture never queues up requests, and a backgrounded tab stops asking
@@ -112,10 +130,12 @@ All three are served by the [Pob Server](09_Server.md), so `"server": false`
 takes them down with the rest of it. They live in `server/public/` —
 `index.html`, `control.html`, `view.html` — compiled into `pob-core`.
 
-The control and view pages share `pob.js`: the send queue, the text field and
-the keyboard mirror. Both drive the machine the same way, and being the same
-code is the only thing that keeps it that way. What is left in each page is
-its own — the trackpad in one, the frame and the clicking on it in the other.
+The control and view pages share `pob.js`: the send queue, the text field, the
+keyboard mirror and the trackpad. Both drive the machine the same way, and
+being the same code is the only thing that keeps it that way — a trackpad that
+behaved differently depending on which page it was on would be two trackpads.
+What is left in each page is its own: fitting the pad around the soft keyboard
+in one, the frame and the pointing straight at it in the other.
 
 Neither page is rendered by the server; both read from it. `GET /status` for
 the facts, `GET /<instance-id>/` for the frame — plain enough to build another
