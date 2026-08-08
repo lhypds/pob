@@ -78,12 +78,15 @@ func (s *Server) originForMove() (bridge.Point, bool) {
 }
 
 // Start binds the listener synchronously (so callers see port conflicts) and
-// serves in a background goroutine. Starting an already-running server is a
-// no-op.
+// serves in a background goroutine. Starting a server that is already up on
+// the same port is a no-op; asked for another one it moves, since the port that
+// was asked for is the port a client is about to be handed — and with the
+// server starting with the instance, `pob mcp start <port>` always arrives at
+// one that is already running.
 func (s *Server) Start(port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.server != nil {
+	if s.server != nil && s.port == port {
 		return nil
 	}
 
@@ -96,20 +99,23 @@ func (s *Server) Start(port int) error {
 		applog.Logf("MCPServer: listen failed: %v", err)
 		return err
 	}
+	// The old listener goes only once the new port is held, so a move to a port
+	// something else already has leaves the server where it was, still
+	// answering the client that has its address.
+	s.stopLocked()
 
 	server := &http.Server{Handler: withCORS(mux)}
 	s.server = server
-	s.port = port
+	// The bound port, not the requested one: port 0 means "any free port", and
+	// the address handed to a client has to be the one it can reach.
+	s.port = listener.Addr().(*net.TCPAddr).Port
+	bound := s.port
 	go func() {
-		applog.Logf("MCPServer: listening on port %d", port)
+		applog.Logf("MCPServer: listening on port %d", bound)
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			applog.Logf("MCPServer: listener failed: %v", err)
 		}
 	}()
-	// Show the virtual cursor for as long as the server is up — an MCP client
-	// can move it at any time, and an invisible cursor makes those moves look
-	// like nothing happened.
-	s.br.NotifyRemoteControl("mcp", true)
 	return nil
 }
 
@@ -117,16 +123,22 @@ func (s *Server) Start(port int) error {
 // a stopped server is a no-op.
 func (s *Server) Stop() {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopLocked()
+}
+
+// stopLocked closes the listener with s.mu held. Closing does not wait for the
+// SSE handlers, so each drops its own session as it wakes — which is also what
+// releases the virtual cursor.
+func (s *Server) stopLocked() {
 	server := s.server
 	s.server = nil
-	s.mu.Unlock()
 	if server == nil {
 		return
 	}
 	// Close (not Shutdown): SSE streams are long-lived, so a graceful drain
 	// would block until every client disconnects.
 	_ = server.Close()
-	s.br.NotifyRemoteControl("mcp", false)
 	applog.Log("MCPServer: stopped")
 }
 
@@ -137,7 +149,7 @@ func (s *Server) Running() bool {
 	return s.server != nil
 }
 
-// Port returns the port the server was last started on.
+// Port returns the port the listener is bound to, or 0 before the first start.
 func (s *Server) Port() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,11 +199,26 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	events := make(chan []byte, 16)
 	s.mu.Lock()
 	s.sessions[sessionID] = events
+	first := len(s.sessions) == 1
 	s.mu.Unlock()
+	// Show the virtual cursor for as long as a client is connected — it can
+	// move the cursor at any time, and an invisible cursor makes those moves
+	// look like nothing happened. Connected, not merely listening: the server
+	// is up from the moment the instance starts, and a cursor that is always
+	// on says nothing about anything.
+	if first {
+		s.br.NotifyRemoteControl("mcp", true)
+	}
 	defer func() {
 		s.mu.Lock()
 		delete(s.sessions, sessionID)
+		last := len(s.sessions) == 0
 		s.mu.Unlock()
+		// Only once the last client has gone: a second one still holding the
+		// cursor must not have it taken away.
+		if last {
+			s.br.NotifyRemoteControl("mcp", false)
+		}
 	}()
 
 	w.Header().Set("Content-Type", "text/event-stream")

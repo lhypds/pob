@@ -49,15 +49,16 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | `GET /status` | `status` | Instance ID, pid, root, executing and recording state, current session, model, and the `mcp` and `server` blocks below |
 | `GET /mcp` | `mcp status` | `running`, `port`, `url`, `tools` |
 | `GET /server` | — | The [Pob server](09_Server.md): `running`, `port`, `url`, `urls` — one per network the machine is on. `pob status` reads the same block out of `/status` |
-| `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional. 409 when the port will not bind |
+| `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional, defaulting to the `mcp_port` setting — which is the port it is already on, so this is a no-op unless another one is asked for, and then the server moves there. 409 when the port will not bind |
 | `POST /mcp/stop` | `mcp stop` | Always succeeds |
 | `POST /run/instruction` | `start`, `run` | Body `{"instruction": "..."}` optional; given, it replaces `instruction.txt` before running. 409 when a session is already running |
 | `POST /run/macro` | `macro` | Same 409 |
 | `POST /run/stop` | `stop` | Idempotent |
 | `POST /screenshot` | `screenshot` | Returns `{"path": "..."}`. 409 while a session is running — it owns the capture pipeline |
 
-A stopped MCP or Pob server still reports the port it *would* take rather than
-`0`, so `pob mcp status` can print the address before anything is started.
+A stopped MCP or Pob server — one turned off in `settings.json`, or one whose
+port would not bind — still reports the port it *would* take rather than `0`, so
+`pob mcp status` prints the address either way.
 
 ```
 $ curl -s http://127.0.0.1:57259/status
@@ -91,6 +92,6 @@ See also
 
 - [CLI](07_CLI.md) — the one client of this API
 - [Operation API](10_Operation%20API.md) — the other API: operating the machine
-- [MCP Server](08_MCP.md) — what `POST /mcp/start` brings up
+- [MCP Server](08_MCP.md) — the server `POST /mcp/start` registers and moves
 - [Pob Server](09_Server.md) — what `GET /server` describes
 - [Logs](05_Logs.md) — where `instance.json` lives

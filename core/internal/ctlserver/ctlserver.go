@@ -1,13 +1,15 @@
 // Package ctlserver exposes a small localhost HTTP control API so the `pob`
-// CLI can drive a running instance. Unlike the MCP server it always starts,
-// on an ephemeral 127.0.0.1 port, and advertises itself by writing its pid and
-// port into <instance>/instance.json, which the CLI reads to discover live
-// instances. Endpoints:
+// CLI can drive a running instance. Unlike the MCP and Pob servers, which sit
+// on a port that is written down and typed again, this one takes an ephemeral
+// 127.0.0.1 port and advertises itself by writing its pid and port into
+// <instance>/instance.json, which the CLI reads to discover live instances.
+// Endpoints:
 //
 //	GET  /status           — instance id, executing/recording state, MCP and Pob server state
 //	GET  /mcp              — MCP server info (running, port, url, tools)
 //	GET  /server           — Pob server info (running, port, url)
-//	POST /mcp/start        — start the MCP server; body: none
+//	POST /mcp/start        — start the MCP server; optional body {"port": 8032}
+//	                         moves a running one to that port
 //	POST /mcp/stop         — stop the MCP server
 //	POST /run/instruction  — run instruction.txt; optional body {"instruction": "..."} replaces it first
 //	POST /run/macro        — run macro.txt
@@ -107,10 +109,13 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// mcpInfo describes the MCP server. A stopped one — "mcp": false, or a port
+// that would not bind — still reports the port it would take, which is the one
+// in settings.json and the one a client's config already names.
 func (s *Server) mcpInfo() map[string]any {
 	port := s.mcp.Port()
 	if port == 0 {
-		port = mcpserver.DefaultPort
+		port = s.cfg.MCPPort()
 	}
 	return map[string]any{
 		"running": s.mcp.Running(),
@@ -167,9 +172,12 @@ func (s *Server) handleMCPStart(w http.ResponseWriter, r *http.Request) {
 		Port int `json:"port"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
+	// No port asked for means the settings one — the port the server is
+	// already on, so `pob mcp start` on a running instance registers the
+	// address with the agent CLIs and leaves the server where it is.
 	port := body.Port
 	if port <= 0 {
-		port = mcpserver.DefaultPort
+		port = s.cfg.MCPPort()
 	}
 	if err := s.mcp.Start(port); err != nil {
 		writeError(w, http.StatusConflict, fmt.Sprintf("MCP server failed to start: %v", err))

@@ -52,7 +52,7 @@ Flags:
 | `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
-| `mcp start [port]` | Start the MCP server and print its info (port defaults to `8032`). Registers the server in the user settings of installed agent CLIs (`claude`, `gemini`) |
+| `mcp start [port]` | Register the MCP server in the user settings of installed agent CLIs (`claude`, `gemini`) and print its info. The server starts with the instance, so there is usually nothing to start; `[port]` moves it to that port first |
 | `mcp stop` | Stop the MCP server and remove those registrations |
 | `version` | Print the Pob version |
 
@@ -66,7 +66,7 @@ pob launch "Work laptop"                 # start that one
 pob run "click Save and close the dialog"
 pob start                                # run instruction.txt
 pob --session 1752712400                 # session detail: plans, steps, usage
-pob mcp start                            # start MCP and print the connection info
+pob mcp start                            # register MCP with the agent CLIs here
 ```
 
 
@@ -111,5 +111,5 @@ See also
 
 - [Control API](11_Control%20API.md) — the endpoints behind these commands
 - [Logs](05_Logs.md) — the tree `pob` reads for session detail
-- [MCP Server](08_MCP.md) — what `pob mcp start` brings up
+- [MCP Server](08_MCP.md) — the server `pob mcp start` registers
 - [Pob Server](09_Server.md) — the address `pob status` prints

@@ -5,25 +5,34 @@ MCP Server
 Pob speaks MCP, so an MCP-compatible client — Claude Code, Claude Desktop,
 Gemini CLI — can see the Pob window and drive the machine through it.
 
-The server is built into `pob-core` (SSE transport). It does not start with the
-app; start it from the CLI.
+The server is built into `pob-core` (SSE transport) and starts with the
+instance, on port `8032`:
+
+```
+http://127.0.0.1:8032/sse
+```
+
+A client is told that address once, in its own config, and reads it again on
+every launch after that — so the server is up whenever the app is, rather than
+waiting for someone to remember a command. `mcp_port` in
+[`settings.json`](06_Settings.md) moves it, and `"mcp": false` keeps the port
+closed on a machine that does not want it open.
 
 
-Starting it
------------
+Registering it with a client
+----------------------------
 
 ```
 pob mcp start [port]
 ```
 
-The port defaults to `8032`; pass a different one after `start` if something
-else has it. `pob mcp status` prints the URL, the tool list and a client config
-snippet at any time, and `pob mcp stop` shuts the server down.
-
-`mcp start` also registers the server (as `pob`) in the user settings of any
-installed agent CLIs — Claude Code (`claude`) and Gemini CLI (`gemini`) — and
-`mcp stop` removes those registrations again, so no manual setup is needed
-there.
+registers the server (as `pob`) in the user settings of any installed agent CLI
+— Claude Code (`claude`) and Gemini CLI (`gemini`) — so no manual setup is
+needed there. It is the running server that is registered; passing a `[port]`
+moves it there first, for a machine where something else has `8032`. `pob mcp
+stop` shuts the server down and removes those registrations again, and
+`pob mcp status` prints the URL, the tool list and a client config snippet at
+any time.
 
 For other clients, register the printed URL manually. Claude Desktop
 (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -37,6 +46,11 @@ For other clients, register the printed URL manually. Claude Desktop
   }
 }
 ```
+
+The virtual cursor is on screen while a client is connected, and gone again
+once the last one disconnects: a connected client can move it at any moment,
+and a move nobody can see looks like nothing happened. A server merely
+listening — which it does from the moment the app starts — shows nothing.
 
 
 Coordinates

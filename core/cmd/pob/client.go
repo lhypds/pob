@@ -300,7 +300,10 @@ func printMCPInfo(info map[string]any) {
 		fmt.Printf("Tools:      %s\n", strings.Join(names, ", "))
 	}
 	if !running {
-		fmt.Println("\nStart it with: pob mcp start")
+		// It starts with the instance, so a stopped one was turned off or could
+		// not take its port — either way starting it by hand is the way back.
+		fmt.Println("\nIt starts with the instance unless \"mcp\" is false in settings.json.")
+		fmt.Println("Start it now with: pob mcp start")
 		return
 	}
 	fmt.Println("\nMCP client config (e.g. Claude Desktop's claude_desktop_config.json):")

@@ -95,10 +95,18 @@ func main() {
 		runner.TakeScreenshot()
 	})
 
-	// The MCP server never starts with the app — it is started on demand via
-	// `pob mcp start` (see internal/ctlserver).
+	// The MCP server starts with the instance, on the port a client's config
+	// names: registering it is a thing done once, and a client that then finds
+	// nothing listening reports a broken server rather than a stopped one. So
+	// it is up whenever the app is, and "mcp": false in settings.json is what
+	// keeps the port closed. `pob mcp start` still moves it to another port.
 	mcp := mcpserver.New(br)
 	mcp.SetRecorder(macroRecorder{runner: runner, cfg: cfg})
+	if cfg.MCPEnabled() {
+		if err := mcp.Start(cfg.MCPPort()); err != nil {
+			applog.Logf("MCPServer: not started: %v", err)
+		}
+	}
 
 	// The Pob server does start with the instance, so that reaching for a
 	// phone is all it takes: it serves the API and the web UI at

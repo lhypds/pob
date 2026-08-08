@@ -123,8 +123,8 @@ public static class AppState
     // server — has started driving this instance.
     public static void SetMcpDriving(bool driving)
     {
-        // Park the cursor at its home position so it is visible the moment the
-        // server comes up, rather than sitting on the top-left corner where it
+        // Park the cursor at its home position so it is visible the moment a
+        // client takes hold, rather than sitting on the top-left corner where it
         // reads as "no cursor at all" — and start the overlay there too, so it
         // does not sit at a stale spot until the client's first move.
         if (!driving) return;

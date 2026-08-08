@@ -10,9 +10,10 @@ final class CoreBridge: ObservableObject {
     /// True while the Go core is executing a session; drives the cursor
     /// overlay, window lock and click-through logic in the UI.
     @Published var isExecuting = false
-    /// True while the MCP server is running, i.e. an external client may move
-    /// the cursor at any moment. Drives the cursor overlay only — unlike
-    /// isExecuting it does not lock the window or pause the macro recorder.
+    /// True while something outside the agent loop is driving this instance —
+    /// an MCP client connected to the MCP server, a browser on the Pob server —
+    /// i.e. the cursor may move at any moment. Drives the cursor overlay only:
+    /// unlike isExecuting it does not lock the window or pause the recorder.
     @Published var isMCPDriving = false
     /// Set when the Go core asks the user whether to continue past max_steps.
     @Published var showMaxStepWarning = false
@@ -212,7 +213,7 @@ final class CoreBridge: ObservableObject {
             let active = params["active"] as? Bool ?? false
             DispatchQueue.main.async {
                 // Park the cursor at its home position so it is visible the
-                // moment the server comes up, rather than sitting on the
+                // moment a client takes hold, rather than sitting on the
                 // top-left corner where it reads as "no cursor at all".
                 if active { self.mouse.resetCursor() }
                 self.isMCPDriving = active

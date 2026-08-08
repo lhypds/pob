@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -188,26 +190,39 @@ func TestEveryAdvertisedToolIsDispatched(t *testing.T) {
 	}
 }
 
-// The UI shows the virtual cursor for as long as the MCP server is up, so the
-// shell has to be told when it starts and stops.
-func TestServerAnnouncesMCPStateOnStartAndStop(t *testing.T) {
+// The UI shows the virtual cursor while a client is connected, so the shell is
+// told when one arrives and when the last one leaves — and not merely when the
+// listener comes up, which it does with the instance and says nothing about
+// whether anything is driving.
+func TestServerAnnouncesMCPStateOnClientConnectAndDisconnect(t *testing.T) {
 	srv, shell := newTestServer(t)
 
 	if err := srv.Start(0); err != nil { // port 0: let the OS pick a free one
 		t.Fatalf("start: %v", err)
 	}
-	srv.Stop()
+	defer srv.Stop()
 
-	// The notifications are written asynchronously; give the pipe a moment.
-	var got []string
-	for i := 0; i < 50; i++ {
-		got = shell.notifications()
-		if len(got) >= 2 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	settle()
+	if got := shell.notifications(); len(got) != 0 {
+		t.Fatalf("listening alone announced %v, want nothing until a client connects", got)
 	}
 
+	closeFirst := connectSSE(t, srv.Port())
+	if got := waitForNotifications(t, shell, 1); len(got) != 1 || got[0] != "mcp.state active=true" {
+		t.Fatalf("first client: got %v, want [mcp.state active=true]", got)
+	}
+
+	// A second client arriving and leaving is neither announced again nor
+	// allowed to take the cursor from the one still connected.
+	closeSecond := connectSSE(t, srv.Port())
+	closeSecond()
+	settle()
+	if got := shell.notifications(); len(got) != 1 {
+		t.Errorf("second client came and went: got %v, want the cursor left with the first", got)
+	}
+
+	closeFirst()
+	got := waitForNotifications(t, shell, 2)
 	want := []string{"mcp.state active=true", "mcp.state active=false"}
 	if len(got) != len(want) {
 		t.Fatalf("got notifications %v, want %v", got, want)
@@ -218,6 +233,118 @@ func TestServerAnnouncesMCPStateOnStartAndStop(t *testing.T) {
 		}
 	}
 }
+
+// Stopping the server drops the clients with it, so the cursor is released
+// without anyone disconnecting first.
+func TestStoppingTheServerReleasesTheCursor(t *testing.T) {
+	srv, shell := newTestServer(t)
+
+	if err := srv.Start(0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer connectSSE(t, srv.Port())()
+	waitForNotifications(t, shell, 1)
+
+	srv.Stop()
+
+	got := waitForNotifications(t, shell, 2)
+	if len(got) != 2 || got[1] != "mcp.state active=false" {
+		t.Errorf("got notifications %v, want the cursor released on stop", got)
+	}
+}
+
+// The port a client is handed has to be the port it can reach, so a server
+// asked for another one moves rather than quietly staying where it was —
+// `pob mcp start <port>` always arrives at a server that is already running.
+func TestStartMovesARunningServerToANewPort(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	if err := srv.Start(0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	firstPort := srv.Port()
+	if firstPort == 0 {
+		t.Fatal("Port() = 0 after start, want the port the OS picked")
+	}
+
+	// Starting on the port it is already on changes nothing.
+	if err := srv.Start(firstPort); err != nil {
+		t.Fatalf("restart on the same port: %v", err)
+	}
+	if srv.Port() != firstPort {
+		t.Errorf("Port() = %d after a same-port start, want %d", srv.Port(), firstPort)
+	}
+
+	if err := srv.Start(0); err != nil { // another OS-picked port
+		t.Fatalf("start on a new port: %v", err)
+	}
+	defer srv.Stop()
+	if srv.Port() == firstPort {
+		t.Errorf("Port() = %d, want a port other than the first", srv.Port())
+	}
+	if _, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/sse", firstPort)); err == nil {
+		t.Error("the old port still answers; the listener was not closed")
+	}
+
+	// A move to a port that will not bind keeps the server where it is, rather
+	// than leaving a registered client with nothing to talk to.
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer taken.Close()
+	movedTo := srv.Port()
+	if err := srv.Start(taken.Addr().(*net.TCPAddr).Port); err == nil {
+		t.Error("Start() on a taken port returned nil, want the bind error")
+	}
+	if srv.Port() != movedTo || !srv.Running() {
+		t.Errorf("after a failed move: running=%v port=%d, want the server still on %d",
+			srv.Running(), srv.Port(), movedTo)
+	}
+}
+
+// connectSSE opens a real /sse stream and waits for the endpoint event, so the
+// session is registered by the time it returns. The returned func closes the
+// stream; closing twice is safe, since a test may close one early and still
+// have it cleaned up at the end.
+func connectSSE(t *testing.T, port int) func() {
+	t.Helper()
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/sse", port))
+	if err != nil {
+		t.Fatalf("sse connect: %v", err)
+	}
+
+	var once sync.Once
+	closeFn := func() { once.Do(func() { _ = resp.Body.Close() }) }
+	t.Cleanup(closeFn)
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "data: /messages?sessionId=") {
+			return closeFn
+		}
+	}
+	t.Fatal("no endpoint event on the SSE stream")
+	return closeFn
+}
+
+// waitForNotifications waits for at least n notifications to arrive down the
+// pipe, which they do asynchronously, and returns whatever did.
+func waitForNotifications(t *testing.T, shell *fakeShell, n int) []string {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if len(shell.notifications()) >= n {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return shell.notifications()
+}
+
+// settle gives a notification that should not be sent time to turn up anyway,
+// so the tests that assert on silence are testing something.
+func settle() { time.Sleep(50 * time.Millisecond) }
 
 // tools/list is what every client reads before it can call anything, so the
 // advertised schemas must be complete and serialisable.

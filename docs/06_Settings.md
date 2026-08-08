@@ -31,6 +31,8 @@ the rest are left where they are to be copied across by hand.
 | `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
 | `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web UI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
+| `mcp` | `true` | Run the [MCP server](08_MCP.md), which starts with the instance so a client that has Pob registered finds it there. `false` keeps the port closed |
+| `mcp_port` | `8032` | The port [MCP](08_MCP.md) clients reach this machine through — the one written into their config, so changing it means changing theirs. `POB_MCP_PORT` overrides it |
 
 `editor` names a preference, not a requirement: an editor that is not installed
 on this machine falls back to the system one, since the setting travels between
@@ -102,3 +104,4 @@ See also
 - [Logs](05_Logs.md) — where the per-instance copy lives
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control
+- [MCP Server](08_MCP.md) — what `mcp` and `mcp_port` control

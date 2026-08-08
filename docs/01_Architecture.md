@@ -7,8 +7,9 @@ Pob is split into a platform-independent brain and a native shell:
 ```
 core/    The brain (Go, zero dependencies). Agent loop (plan → execute →
          verify), OpenAI-compatible LLM client, session logs, macro engine,
-         the MCP SSE server, and the localhost Control API the pob CLI drives
-         the app with. Compiled to a single binary: pob-core.
+         the MCP SSE server — started with the instance, like the Pob server
+         below — and the localhost Control API the pob CLI drives the app
+         with. Compiled to a single binary: pob-core.
 
 macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
          virtual cursor, mouse/keyboard event injection, and the permission
@@ -63,6 +64,7 @@ See also
 --------
 
 - [Pob Server](09_Server.md) — the HTTP server started with every instance
+- [MCP Server](08_MCP.md) — the other one started with it, for MCP clients
 - [Control API](11_Control%20API.md) — the other server, loopback only, for the CLI
 - [Pob Keyboard](13_Keyboard.md) — the separate desktop client in `keyboard/`
 - [Development](14_Development.md) — building the core and the shells

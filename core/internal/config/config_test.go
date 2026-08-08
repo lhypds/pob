@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
 )
 
@@ -106,6 +107,53 @@ func TestServerPortEnvOverride(t *testing.T) {
 
 	if port := New(root, "pb-aaaa").ServerPort(); port != 9200 {
 		t.Errorf("ServerPort() = %d, want 9200", port)
+	}
+}
+
+// The MCP server starts with the instance on the port a client's config names,
+// so both settings have to be there for a file that has never seen them —
+// and, like the Pob server, on by default.
+func TestMCPDefaultsToOnAtItsOwnPort(t *testing.T) {
+	root := t.TempDir()
+	cfg := New(root, "pb-aaaa")
+
+	if !cfg.MCPEnabled() {
+		t.Error("MCPEnabled() = false, want true — it starts with the instance")
+	}
+	if port := cfg.MCPPort(); port != mcpserver.DefaultPort {
+		t.Errorf("MCPPort() = %d, want %d", port, mcpserver.DefaultPort)
+	}
+
+	// Backfilled into the file too, so the Settings menu shows what is running.
+	settings := readSettingsFile(cfg.settingsFile())
+	if settings["mcp"] != true {
+		t.Errorf("mcp = %v in settings.json, want true", settings["mcp"])
+	}
+	if settings["mcp_port"] != float64(mcpserver.DefaultPort) {
+		t.Errorf("mcp_port = %v in settings.json, want %d", settings["mcp_port"], mcpserver.DefaultPort)
+	}
+}
+
+// Turning it off is how a machine keeps the port closed, and a hand-edited
+// file holds "false" as often as false.
+func TestMCPCanBeTurnedOffAndMoved(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "settings.json"), map[string]any{
+		"mcp":      "false",
+		"mcp_port": 9032,
+	})
+	cfg := New(root, "pb-aaaa")
+
+	if cfg.MCPEnabled() {
+		t.Error(`MCPEnabled() = true with "mcp": "false", want false`)
+	}
+	if port := cfg.MCPPort(); port != 9032 {
+		t.Errorf("MCPPort() = %d, want 9032", port)
+	}
+
+	t.Setenv("POB_MCP_PORT", "9033")
+	if port := cfg.MCPPort(); port != 9033 {
+		t.Errorf("MCPPort() = %d with POB_MCP_PORT set, want 9033", port)
 	}
 }
 

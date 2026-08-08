@@ -15,7 +15,7 @@
 //	pob --session Y                  show one session's details
 //	pob start                        run instruction.txt
 //	pob run "open the settings"      replace instruction.txt, then run it
-//	pob mcp start                    start the MCP server and print its info
+//	pob mcp start                    register the MCP server with the agent CLIs
 package main
 
 import (
@@ -58,9 +58,9 @@ Commands:
   kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
   mcp status         Show MCP server info (URL, tools, client config)
-  mcp start [port]   Start the MCP server and print its info (port defaults
-                     to 8032). Also registers the server in the user settings
-                     of installed agent CLIs (claude, gemini).
+  mcp start [port]   Register the MCP server in the user settings of installed
+                     agent CLIs (claude, gemini) and print its info. The server
+                     itself starts with the instance; [port] moves it there
   mcp stop           Stop the MCP server and remove those registrations
   version            Print the Pob version
   help               Show this help

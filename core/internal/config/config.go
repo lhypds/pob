@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"pob/core/internal/mcpserver"
 	"pob/core/internal/storage"
 	"pob/server"
 )
@@ -44,6 +45,8 @@ var defaults = map[string]any{
 	"stop_hook":           "",
 	"server":              true,
 	"server_port":         server.DefaultPort,
+	"mcp":                 true,
+	"mcp_port":            mcpserver.DefaultPort,
 }
 
 // legacyKeys are settings renamed since they were written, mapped old to new.
@@ -221,6 +224,35 @@ func (c *Config) str(key, fallback string) string {
 	return fallback
 }
 
+// boolVal reads an on/off setting. Hand-edited files hold "true"/"false" as
+// often as booleans, so both are read; anything unreadable falls back, which
+// for the two servers means on.
+func (c *Config) boolVal(key string, fallback bool) bool {
+	switch v := c.readSettings()[key].(type) {
+	case bool:
+		return v
+	case string:
+		enabled, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err != nil {
+			return fallback
+		}
+		return enabled
+	}
+	return fallback
+}
+
+// portVal reads a port setting, with the named environment variable taking
+// precedence — that is how a shell or a .env picks a port per launch, without
+// editing the settings the machine keeps.
+func (c *Config) portVal(key, env string, fallback int) int {
+	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+		if port, err := strconv.Atoi(v); err == nil && port > 0 && port < 65536 {
+			return port
+		}
+	}
+	return c.intVal(key, fallback, 1)
+}
+
 func (c *Config) intVal(key string, fallback, minimum int) int {
 	switch v := c.readSettings()[key].(type) {
 	case float64:
@@ -246,30 +278,28 @@ func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(stri
 // default; turning it off is how a machine stops accepting pointer and
 // keyboard commands from the local network — which also takes the web UI down
 // with it, since that page is served by the same server.
-func (c *Config) ServerEnabled() bool {
-	switch v := c.readSettings()["server"].(type) {
-	case bool:
-		return v
-	case string:
-		// Hand-edited files hold "true"/"false" as often as booleans. Anything
-		// unreadable falls back to on, which is the default either way.
-		enabled, err := strconv.ParseBool(strings.TrimSpace(v))
-		return err != nil || enabled
-	}
-	return true
-}
+func (c *Config) ServerEnabled() bool { return c.boolVal("server", true) }
 
 // ServerPort is the port this machine's Pob is reached through. It is the
 // same on every machine unless someone changes it, so the address can be
 // typed from memory. POB_SERVER_PORT overrides the setting, for a shell or a
 // .env that wants to pick it per launch.
 func (c *Config) ServerPort() int {
-	if env := strings.TrimSpace(os.Getenv("POB_SERVER_PORT")); env != "" {
-		if port, err := strconv.Atoi(env); err == nil && port > 0 && port < 65536 {
-			return port
-		}
-	}
-	return c.intVal("server_port", server.DefaultPort, 1)
+	return c.portVal("server_port", "POB_SERVER_PORT", server.DefaultPort)
+}
+
+// MCPEnabled reports whether the MCP server should run. Like the Pob server it
+// is on by default and comes up with the instance, so a client that has pob
+// registered finds it there without anything being started by hand; `false` is
+// how a machine keeps the port closed.
+func (c *Config) MCPEnabled() bool { return c.boolVal("mcp", true) }
+
+// MCPPort is the port MCP clients reach this machine through. It is written
+// into their config once and read from settings.json on every launch after
+// that, so it has to be the same port every time — POB_MCP_PORT overrides it
+// for a shell that wants to pick one per launch.
+func (c *Config) MCPPort() int {
+	return c.portVal("mcp_port", "POB_MCP_PORT", mcpserver.DefaultPort)
 }
 
 func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }
