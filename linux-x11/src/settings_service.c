@@ -28,10 +28,9 @@ static gchar *root_path(const char *name) {
 
 // ── instance directory ──────────────────────────────────────────────────────
 
-// Exclusive flock on logs/<instance>/.lock, held for the process lifetime. It
-// marks the directory as belonging to a running Pob, which is what
-// settings_clear_logs checks — and taking it is also how a second Pob is
-// detected, see settings_claim_instance.
+// Exclusive flock on <instance>/.lock, held for the process lifetime. It marks
+// the directory as belonging to a running Pob, which is how a second Pob is
+// detected — see settings_claim_instance.
 //
 // Opened exactly once. flock is per open file description, not per process, so
 // a second open() of this same file would be refused by the lock this process
@@ -59,22 +58,6 @@ static gboolean acquire_instance_lock(const char *instance_dir) {
     return TRUE;
 }
 
-// TRUE when a live instance still holds the directory's .lock. Entries
-// without a lock file (stale instances, stray files) count as not running.
-static gboolean instance_is_running(const char *dir_path) {
-    gchar *lock_path = g_build_filename(dir_path, ".lock", NULL);
-    int fd = open(lock_path, O_RDWR);
-    g_free(lock_path);
-    if (fd < 0) return FALSE;
-    if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
-        flock(fd, LOCK_UN);
-        close(fd);
-        return FALSE;
-    }
-    close(fd);
-    return TRUE;
-}
-
 #define INSTANCE_PREFIX "pb-"
 
 // The file under ~/.pob holding the machine's one instance id. Named in
@@ -82,13 +65,13 @@ static gboolean instance_is_running(const char *dir_path) {
 // a file to edit.
 #define INSTANCE_POINTER "INSTANCE"
 
-// Reserves a fresh logs/pb-<uid>/, drawing another ID if that one is taken.
+// Reserves a fresh <root>/pb-<uid>/, drawing another ID if that one is taken.
 // The ID is "pb-<4 hex>", the same scheme the pico-hid firmware uses for its
 // "ph-" board id. The headerbar shows it beside the window buttons.
-static gchar *reserve_instance_id(const char *logs) {
+static gchar *reserve_instance_id(const char *root) {
     for (;;) {
         gchar *id = g_strdup_printf(INSTANCE_PREFIX "%04x", g_random_int() & 0xffff);
-        gchar *dir = g_build_filename(logs, id, NULL);
+        gchar *dir = g_build_filename(root, id, NULL);
         int rc = g_mkdir(dir, 0755);
         g_free(dir);
         if (rc == 0 || errno != EEXIST) return id;
@@ -99,8 +82,8 @@ static gchar *reserve_instance_id(const char *logs) {
 // The pb-* directory modified last, or NULL when there are none. By
 // modification time rather than by name: the directory is touched every time
 // a session is written into it, so the newest is the one that was in use.
-static gchar *most_recent_instance(const char *logs) {
-    GDir *dir = g_dir_open(logs, 0, NULL);
+static gchar *most_recent_instance(const char *root) {
+    GDir *dir = g_dir_open(root, 0, NULL);
     if (!dir) return NULL;
 
     gchar *newest = NULL;
@@ -108,7 +91,7 @@ static gchar *most_recent_instance(const char *logs) {
     const gchar *name;
     while ((name = g_dir_read_name(dir))) {
         if (!g_str_has_prefix(name, INSTANCE_PREFIX)) continue;
-        gchar *path = g_build_filename(logs, name, NULL);
+        gchar *path = g_build_filename(root, name, NULL);
         GStatBuf st;
         if (g_stat(path, &st) == 0 && S_ISDIR(st.st_mode) &&
             (!newest || (gint64)st.st_mtime > newest_at)) {
@@ -128,10 +111,10 @@ static gchar *most_recent_instance(const char *logs) {
 // resolves it to show in the headerbar and passes it to pob-core with
 // --instance, but the CLI can reach ~/.pob without a shell at all.
 //
-// A machine upgrading from the versions that took a fresh id per launch has a
-// logs/ full of pb-* directories. Rather than add one more, the one used last
-// is adopted; the rest stay where they are as history.
-static gchar *resolve_instance_id(const char *logs) {
+// Without a pointer to read, the pb-* directory under ~/.pob that was used
+// last is adopted rather than a new one started; the rest stay where they are
+// as history.
+static gchar *resolve_instance_id(const char *root) {
     gchar *pointer = root_path(INSTANCE_POINTER);
     gchar *contents = NULL;
     if (g_file_get_contents(pointer, &contents, NULL, NULL)) {
@@ -148,8 +131,8 @@ static gchar *resolve_instance_id(const char *logs) {
         g_free(contents);
     }
 
-    gchar *id = most_recent_instance(logs);
-    if (!id) id = reserve_instance_id(logs);
+    gchar *id = most_recent_instance(root);
+    if (!id) id = reserve_instance_id(root);
     gchar *line = g_strconcat(id, "\n", NULL);
     g_file_set_contents(pointer, line, -1, NULL);
     g_free(line);
@@ -167,56 +150,45 @@ static gchar *resolve_instance_id(const char *logs) {
 // the asking itself would collide with the lock this process had already
 // taken.
 gboolean settings_claim_instance(void) {
-    gchar *logs = root_path("logs");
-    g_mkdir_with_parents(logs, 0755);
-    gchar *id = resolve_instance_id(logs);
-    gchar *dir = g_build_filename(logs, id, NULL);
+    const char *root = settings_project_root();
+    gchar *id = resolve_instance_id(root);
+    gchar *dir = g_build_filename(root, id, NULL);
     g_mkdir_with_parents(dir, 0755);
     gboolean claimed = acquire_instance_lock(dir);
     g_free(dir);
     g_free(id);
-    g_free(logs);
     return claimed;
 }
 
-// This instance's logs/<instance>/ directory, seeded with a copy of the root
-// settings.json so it reads and edits its own settings. instruction.txt and
-// macro.txt stay shared.
+// This instance's ~/.pob/<instance>/ directory, holding its settings.json,
+// instruction.txt, macro.txt and logs/. Nothing is shared between ids.
 const char *settings_instance_id(void) {
     static gchar *instance_id = NULL;
     if (instance_id) return instance_id;
 
-    gchar *logs = root_path("logs");
-    g_mkdir_with_parents(logs, 0755);
+    const char *root = settings_project_root();
+    instance_id = resolve_instance_id(root);
 
-    instance_id = resolve_instance_id(logs);
-    gchar *instance_dir = g_build_filename(logs, instance_id, NULL);
-    g_mkdir_with_parents(instance_dir, 0755);
+    gchar *logs = g_build_filename(root, instance_id, "logs", NULL);
+    g_mkdir_with_parents(logs, 0755);
+    g_free(logs);
+
     // Normally already held — settings_claim_instance ran at startup. This is
     // the path for anything that reaches the settings without it.
+    gchar *instance_dir = g_build_filename(root, instance_id, NULL);
     acquire_instance_lock(instance_dir);
     g_free(instance_dir);
 
-    // Seed this instance's settings.json from the root template.
-    gchar *root_settings = root_path("settings.json");
-    gchar *instance_settings = g_build_filename(logs, instance_id, "settings.json", NULL);
-    gchar *contents = NULL;
-    gsize len = 0;
-    if (!g_file_test(instance_settings, G_FILE_TEST_EXISTS) &&
-        g_file_get_contents(root_settings, &contents, &len, NULL)) {
-        g_file_set_contents(instance_settings, contents, len, NULL);
-        g_free(contents);
-    }
-    g_free(instance_settings);
-    g_free(root_settings);
-    g_free(logs);
     return instance_id;
 }
 
-// Path of this instance's settings.json (logs/<instance>/settings.json).
+// Path of a file in this instance's directory (~/.pob/<instance>/<name>).
+static gchar *instance_path(const char *name) {
+    return g_build_filename(settings_project_root(), settings_instance_id(), name, NULL);
+}
+
 static gchar *settings_file_path(void) {
-    return g_build_filename(settings_project_root(), "logs", settings_instance_id(),
-                            "settings.json", NULL);
+    return instance_path("settings.json");
 }
 
 // ── settings.json helpers ───────────────────────────────────────────────────
@@ -368,14 +340,14 @@ void settings_open_settings_file(void) {
 }
 
 void settings_open_instruction_file(void) {
-    gchar *path = root_path("instruction.txt");
+    gchar *path = instance_path("instruction.txt");
     ensure_file(path);
     open_with_editor(path);
     g_free(path);
 }
 
 void settings_open_macro_file(void) {
-    gchar *path = root_path("macro.txt");
+    gchar *path = instance_path("macro.txt");
     ensure_file(path);
     open_with_editor(path);
     g_free(path);
@@ -389,7 +361,7 @@ void settings_open_app_log(void) {
 }
 
 void settings_open_logs_folder(void) {
-    gchar *path = root_path("logs");
+    gchar *path = instance_path("logs");
     g_mkdir_with_parents(path, 0755);
     gchar *argv[] = {"xdg-open", path, NULL};
     spawn_detached(argv);
@@ -399,7 +371,7 @@ void settings_open_logs_folder(void) {
 // ── file contents / clearing ────────────────────────────────────────────────
 
 gchar *settings_get_macro(void) {
-    gchar *path = root_path("macro.txt");
+    gchar *path = instance_path("macro.txt");
     gchar *contents = NULL;
     if (!g_file_get_contents(path, &contents, NULL, NULL)) contents = g_strdup("");
     g_free(path);
@@ -413,7 +385,7 @@ void settings_append_macro(const char *line) {
     gchar *contents = settings_get_macro();
     gboolean needs_newline = *contents != '\0' && !g_str_has_suffix(contents, "\n");
     gchar *next = g_strconcat(contents, needs_newline ? "\n" : "", line, "\n", NULL);
-    gchar *path = root_path("macro.txt");
+    gchar *path = instance_path("macro.txt");
     g_file_set_contents(path, next, -1, NULL);
     g_free(path);
     g_free(next);
@@ -421,86 +393,14 @@ void settings_append_macro(const char *line) {
 }
 
 void settings_clear_macro(void) {
-    gchar *path = root_path("macro.txt");
+    gchar *path = instance_path("macro.txt");
     g_file_set_contents(path, "", 0, NULL);
     g_free(path);
 }
 
 void settings_clear_instruction(void) {
-    gchar *path = root_path("instruction.txt");
+    gchar *path = instance_path("instruction.txt");
     g_file_set_contents(path, "", 0, NULL);
     g_free(path);
 }
 
-static void remove_tree(GFile *file) {
-    GFileEnumerator *e = g_file_enumerate_children(
-        file, G_FILE_ATTRIBUTE_STANDARD_NAME "," G_FILE_ATTRIBUTE_STANDARD_TYPE,
-        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, NULL, NULL);
-    if (e) {
-        GFileInfo *info;
-        while ((info = g_file_enumerator_next_file(e, NULL, NULL))) {
-            GFile *child = g_file_get_child(file, g_file_info_get_name(info));
-            if (g_file_info_get_file_type(info) == G_FILE_TYPE_DIRECTORY)
-                remove_tree(child);
-            else
-                g_file_delete(child, NULL, NULL);
-            g_object_unref(child);
-            g_object_unref(info);
-        }
-        g_object_unref(e);
-    }
-    g_file_delete(file, NULL, NULL);
-}
-
-void settings_clear_logs(void) {
-    gchar *path = root_path("logs");
-
-    // Delete only directories of instances that are no longer running —
-    // every live instance holds a flock on its logs/<instance>/.lock, so a
-    // held lock means "in use, skip".
-    GDir *dir = g_dir_open(path, 0, NULL);
-    if (dir) {
-        const gchar *name;
-        while ((name = g_dir_read_name(dir))) {
-            if (g_strcmp0(name, settings_instance_id()) == 0) continue;
-            gchar *child_path = g_build_filename(path, name, NULL);
-            if (!instance_is_running(child_path)) {
-                GFile *child = g_file_new_for_path(child_path);
-                remove_tree(child);
-                g_object_unref(child);
-            }
-            g_free(child_path);
-        }
-        g_dir_close(dir);
-    }
-
-    // Wipe this instance's own logs, carrying over its live settings.json.
-    // The .lock goes down with the directory, so re-acquire it after.
-    gchar *settings_path = settings_file_path();
-    gchar *settings_data = NULL;
-    gsize settings_len = 0;
-    g_file_get_contents(settings_path, &settings_data, &settings_len, NULL);
-
-    if (instance_lock_fd >= 0) {
-        close(instance_lock_fd);
-        instance_lock_fd = -1;
-    }
-    gchar *instance_dir = g_build_filename(path, settings_instance_id(), NULL);
-    GFile *own = g_file_new_for_path(instance_dir);
-    remove_tree(own);
-    g_object_unref(own);
-    g_mkdir_with_parents(instance_dir, 0755);
-    acquire_instance_lock(instance_dir);
-    g_free(instance_dir);
-    g_free(path);
-
-    if (settings_data) {
-        g_file_set_contents(settings_path, settings_data, settings_len, NULL);
-        g_free(settings_data);
-    }
-    g_free(settings_path);
-
-    gchar *applog = root_path("app.log");
-    g_file_set_contents(applog, "", 0, NULL);
-    g_free(applog);
-}

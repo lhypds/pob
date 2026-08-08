@@ -1,7 +1,7 @@
 // pob is the command-line interface to Pob. A machine runs one instance and
 // it keeps one id, so there is nothing to pick between: the commands drive it
 // over the localhost control API served by pob-core (see internal/ctlserver),
-// found through logs/<instance>/control.json. Log and session inspection reads
+// found through <instance>/logs/control.json. Log and session inspection reads
 // the logs/ tree directly, so it also works when the app is not running.
 //
 // Usage examples:
@@ -30,8 +30,9 @@ var version = "dev"
 
 const usage = `pob — control and inspect Pob from the command line
 
-All project files (settings.json, instruction.txt, macro.txt, logs/) live in
-~/.pob, created on first use and shared with the Pob app.
+Everything lives in ~/.pob, created on first use and shared with the Pob app:
+INSTANCE names the instance directory, and that directory holds its
+settings.json, instruction.txt, macro.txt and logs/.
 
 Usage: pob [flags] [command] [args]
 
@@ -149,8 +150,9 @@ func main() {
 }
 
 // projectRoot returns ~/.pob — the single project root shared by every Pob
-// component — created and seeded with the standard first-run files
-// (settings.json, instruction.txt, macro.txt, logs/) on first use.
+// component. The instance directory it points at is created and seeded with
+// the standard first-run files (settings.json, instruction.txt, macro.txt,
+// logs/) on first use.
 func projectRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

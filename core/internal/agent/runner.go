@@ -87,7 +87,7 @@ func (r *Runner) setCurrentSession(id string) {
 }
 
 // TakeScreenshot handles the toolbar screenshot button: flash, capture and
-// save under logs/<instance>/screenshots/. While recording it also appends
+// save under <instance>/logs/screenshots/. While recording it also appends
 // take_screenshot() to the macro so replay repeats the capture. Ignored
 // during a session — the session owns the capture pipeline then.
 func (r *Runner) TakeScreenshot() {

@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-/// The running Pob instance: its logs/<instance>/ directory, settings.json,
+/// The running Pob instance: its ~/.pob/<instance>/ directory, settings.json,
 /// Go core child process and virtual cursor. Created by ContentView as a
 /// @StateObject, so its lifetime is the window's lifetime — closing the
 /// window releases the instance, which stops its pob-core.

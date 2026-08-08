@@ -1,6 +1,6 @@
 // The machine's instance and the HTTP client for the pob-core control API.
 //
-// A running core writes logs/<instance>/control.json with its pid and control
+// A running core writes <instance>/logs/control.json with its pid and control
 // port. It counts as running only when GET /status on that port answers with
 // the matching instance ID — a stale control.json (a crashed instance, a
 // recycled port) is thereby ignored.
@@ -21,8 +21,12 @@ import (
 )
 
 type Instance struct {
-	ID        string
+	ID string
+	// Dir is <root>/<id>, holding settings.json, instruction.txt and macro.txt;
+	// LogsDir is its logs/ subdirectory, holding the sessions and the two JSON
+	// files a running instance advertises itself with.
 	Dir       string
+	LogsDir   string
 	StartTime int64
 	EndTime   int64
 	Port      int
@@ -38,25 +42,26 @@ func theInstance(root string) *Instance {
 	if inst := loadInstance(root, id); inst != nil {
 		return inst
 	}
-	return &Instance{ID: id, Dir: filepath.Join(root, "logs", id)}
+	return newInstance(root, id)
 }
 
-// loadInstance reads one logs/<id> directory and probes its control port.
+func newInstance(root, id string) *Instance {
+	dir := filepath.Join(root, id)
+	return &Instance{ID: id, Dir: dir, LogsDir: filepath.Join(dir, "logs")}
+}
+
+// loadInstance reads one <id>/logs directory and probes its control port.
 // Returns nil when the directory doesn't look like an instance.
 func loadInstance(root, id string) *Instance {
-	dir := filepath.Join(root, "logs", id)
-	instanceJSON := readJSONFile(filepath.Join(dir, "instance.json"))
-	controlJSON := readJSONFile(filepath.Join(dir, "control.json"))
+	inst := newInstance(root, id)
+	instanceJSON := readJSONFile(filepath.Join(inst.LogsDir, "instance.json"))
+	controlJSON := readJSONFile(filepath.Join(inst.LogsDir, "control.json"))
 	if instanceJSON == nil && controlJSON == nil {
 		return nil
 	}
-	inst := &Instance{
-		ID:        id,
-		Dir:       dir,
-		StartTime: intField(instanceJSON, "start_time"),
-		EndTime:   intField(instanceJSON, "end_time"),
-		Port:      int(intField(controlJSON, "port")),
-	}
+	inst.StartTime = intField(instanceJSON, "start_time")
+	inst.EndTime = intField(instanceJSON, "end_time")
+	inst.Port = int(intField(controlJSON, "port"))
 	inst.probe()
 	return inst
 }
@@ -189,7 +194,7 @@ func cmdStart(inst *Instance, text string) {
 	fmt.Printf("Instruction session started on instance %s.\n", inst.ID)
 	if session := waitForSession(inst); session != "" {
 		fmt.Printf("Session:  %s\n", session)
-		fmt.Printf("Logs:     %s\n", filepath.Join(inst.Dir, session))
+		fmt.Printf("Logs:     %s\n", filepath.Join(inst.LogsDir, session))
 	}
 }
 
@@ -200,7 +205,7 @@ func cmdMacro(inst *Instance) {
 	fmt.Printf("Macro session started on instance %s.\n", inst.ID)
 	if session := waitForSession(inst); session != "" {
 		fmt.Printf("Session:  %s\n", session)
-		fmt.Printf("Logs:     %s\n", filepath.Join(inst.Dir, session))
+		fmt.Printf("Logs:     %s\n", filepath.Join(inst.LogsDir, session))
 	}
 }
 

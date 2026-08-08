@@ -316,13 +316,13 @@ struct InstanceContentView: View {
     /// network, which is what a phone's browser or Pob Keyboard has to be
     /// pointed at and the only part of it worth typing by hand. With the
     /// server off there is no address, and the id it shows is copied instead —
-    /// the name of its logs/<instance>/ directory, and what `pob show <id>`
+    /// the name of its ~/.pob/<instance>/ directory, and what `pob show <id>`
     /// takes.
     private var badgeCopyText: String {
         bridge.serverURL ?? instance.settings.instanceID
     }
 
-    /// Names this window's logs/<instance>/ directory, so the id on screen is
+    /// Names this window's ~/.pob/<instance>/ directory, so the id on screen is
     /// the directory to look in. Click to copy the address it answers on, like
     /// the targeting and crop labels copy what they point at.
     private var instanceBadge: some View {

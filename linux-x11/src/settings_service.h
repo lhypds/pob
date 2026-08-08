@@ -11,9 +11,10 @@
 // Absolute project root path (cached after first call, never freed).
 const char *settings_project_root(void);
 
-// The machine's logs/<instance> directory id — the same one on every run
-// (cached after first call, never freed). Holds this instance's settings.json,
-// seeded from the root settings.json; passed to pob-core via --instance.
+// The machine's ~/.pob/<instance> directory id — the same one on every run
+// (cached after first call, never freed). That directory holds this instance's
+// settings.json, instruction.txt, macro.txt and logs/; the id is passed to
+// pob-core via --instance.
 const char *settings_instance_id(void);
 
 // Claims this machine's instance for this process; FALSE means another Pob
@@ -40,6 +41,5 @@ void settings_append_macro(const char *line);
 
 void settings_clear_macro(void);
 void settings_clear_instruction(void);
-void settings_clear_logs(void);
 
 #endif

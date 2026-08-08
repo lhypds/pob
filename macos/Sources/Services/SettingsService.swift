@@ -1,27 +1,26 @@
 import AppKit
 import Foundation
 
-/// UI-side view of the shared project files. The Go core (pob-core) owns
+/// UI-side view of an instance's files. The Go core (pob-core) owns
 /// settings.json defaults, instruction.txt, macro.txt and the logs tree;
 /// this service only resolves the project root, opens files in the user's
 /// editor, persists the window frame and clears user files on request.
 ///
 /// A machine has one instance and it keeps its id for good: the same
-/// logs/<instance>/ directory every run, seeded with a copy of the root
-/// settings.json the first time. instruction.txt and macro.txt stay shared at
-/// the root.
+/// ~/.pob/<instance>/ directory every run, holding that instance's
+/// settings.json, instruction.txt, macro.txt and logs/. Nothing is shared
+/// between ids — pointing ~/.pob/INSTANCE at another one starts Pob from a
+/// clean set of files.
 class SettingsService {
     private let fileManager = FileManager.default
 
-    /// logs/<instanceID> reserved for this instance; holds its settings.json
-    /// and the session logs the Go core writes. Passed to pob-core via
-    /// --instance so both sides use the same directory.
+    /// ~/.pob/<instanceID>, everything this instance owns. Passed to pob-core
+    /// via --instance so both sides work in the same directory.
     let instanceID: String
 
-    /// Exclusive flock on logs/<instanceID>/.lock, held for the process
-    /// lifetime. It marks the directory as belonging to a running Pob, which
-    /// is what clearLogs checks — and taking it is also how a second Pob is
-    /// detected, see claimInstance.
+    /// Exclusive flock on <instanceID>/.lock, held for the process lifetime.
+    /// It marks the directory as belonging to a running Pob, which is how a
+    /// second Pob is detected — see claimInstance.
     ///
     /// Static, and taken exactly once. flock is per open file description,
     /// not per process, so a second open() of this same file would be refused
@@ -46,7 +45,7 @@ class SettingsService {
     }
 
     var instanceDir: URL {
-        logsFolder.appendingPathComponent(instanceID)
+        projectRoot.appendingPathComponent(instanceID)
     }
 
     private var settingsFile: URL {
@@ -54,38 +53,27 @@ class SettingsService {
     }
 
     private var instructionFile: URL {
-        projectRoot.appendingPathComponent("instruction.txt")
+        instanceDir.appendingPathComponent("instruction.txt")
     }
 
     private var macroFile: URL {
-        projectRoot.appendingPathComponent("macro.txt")
+        instanceDir.appendingPathComponent("macro.txt")
     }
 
     private var logsFolder: URL {
-        projectRoot.appendingPathComponent("logs")
+        instanceDir.appendingPathComponent("logs")
     }
 
     init() {
         let fileManager = FileManager.default
         let root = Self.resolveProjectRoot(fileManager)
-        let logs = root.appendingPathComponent("logs")
-        try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
 
-        instanceID = Self.resolveInstanceID(fileManager, root: root, logs: logs)
-        let dir = logs.appendingPathComponent(instanceID)
-        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        instanceID = Self.resolveInstanceID(fileManager, root: root)
+        let dir = root.appendingPathComponent(instanceID)
+        try? fileManager.createDirectory(at: dir.appendingPathComponent("logs"), withIntermediateDirectories: true)
         // Normally already held — claimInstance ran at launch. This is the
         // path for anything that builds a SettingsService without it.
         Self.acquireInstanceLock(at: dir)
-
-        // Seed this instance's settings.json from the root template.
-        let rootSettings = root.appendingPathComponent("settings.json")
-        let instanceSettings = logs.appendingPathComponent(instanceID).appendingPathComponent("settings.json")
-        if fileManager.fileExists(atPath: rootSettings.path),
-           !fileManager.fileExists(atPath: instanceSettings.path)
-        {
-            try? fileManager.copyItem(at: rootSettings, to: instanceSettings)
-        }
     }
 
     /// Every instance id starts with this.
@@ -102,10 +90,10 @@ class SettingsService {
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
     ///
-    /// A machine upgrading from the versions that took a fresh id per launch
-    /// has a logs/ full of pb-* directories. Rather than add one more, the one
-    /// used last is adopted; the rest stay where they are as history.
-    private static func resolveInstanceID(_ fileManager: FileManager, root: URL, logs: URL) -> String {
+    /// Without a pointer to read, the pb-* directory under ~/.pob that was
+    /// used last is adopted rather than a new one started; the rest stay where
+    /// they are as history.
+    private static func resolveInstanceID(_ fileManager: FileManager, root: URL) -> String {
         let pointer = root.appendingPathComponent(instancePointer)
 
         if let contents = try? String(contentsOf: pointer, encoding: .utf8) {
@@ -118,7 +106,7 @@ class SettingsService {
             }
         }
 
-        let id = mostRecentInstance(fileManager, logs: logs) ?? reserveInstanceID(fileManager, logs: logs)
+        let id = mostRecentInstance(fileManager, root: root) ?? reserveInstanceID(fileManager, root: root)
         try? (id + "\n").write(to: pointer, atomically: true, encoding: .utf8)
         return id
     }
@@ -127,10 +115,10 @@ class SettingsService {
     /// modification time rather than by name: the directory is touched every
     /// time a session is written into it, so the newest is the one that was
     /// actually in use.
-    private static func mostRecentInstance(_ fileManager: FileManager, logs: URL) -> String? {
+    private static func mostRecentInstance(_ fileManager: FileManager, root: URL) -> String? {
         let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
         guard let children = try? fileManager.contentsOfDirectory(
-            at: logs, includingPropertiesForKeys: keys) else { return nil }
+            at: root, includingPropertiesForKeys: keys) else { return nil }
 
         var newest: (id: String, at: Date)?
         for child in children where child.lastPathComponent.hasPrefix(instancePrefix) {
@@ -147,13 +135,13 @@ class SettingsService {
     /// Reserves a fresh `pb-<4 hex>` directory — the last two bytes of a new
     /// UID as lowercase hex, the same scheme the pico-hid firmware uses for
     /// its `ph-` board id. Shown in the toolbar beside the window buttons and
-    /// used as the logs directory name, so the id on screen names the
+    /// used as the instance directory name, so the id on screen names the
     /// directory to look in.
-    private static func reserveInstanceID(_ fileManager: FileManager, logs: URL) -> String {
+    private static func reserveInstanceID(_ fileManager: FileManager, root: URL) -> String {
         while true {
             let id = instancePrefix + UUID().uuidString.suffix(4).lowercased()
             do {
-                try fileManager.createDirectory(at: logs.appendingPathComponent(id), withIntermediateDirectories: false)
+                try fileManager.createDirectory(at: root.appendingPathComponent(id), withIntermediateDirectories: false)
                 return id
             } catch CocoaError.fileWriteFileExists {
                 continue // drawn one that already exists; draw another
@@ -183,9 +171,7 @@ class SettingsService {
     static func claimInstance() -> Bool {
         let fileManager = FileManager.default
         let root = resolveProjectRoot(fileManager)
-        let logs = root.appendingPathComponent("logs")
-        try? fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
-        let dir = logs.appendingPathComponent(resolveInstanceID(fileManager, root: root, logs: logs))
+        let dir = root.appendingPathComponent(resolveInstanceID(fileManager, root: root))
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return acquireInstanceLock(at: dir)
     }
@@ -285,34 +271,6 @@ class SettingsService {
         try? "".write(to: instructionFile, atomically: true, encoding: .utf8)
     }
 
-    func clearLogs() {
-        // Delete only directories of instances that are no longer running —
-        // every live instance (this or another process) holds a flock on its
-        // logs/<instance>/.lock, so a held lock means "in use, skip".
-        if let children = try? fileManager.contentsOfDirectory(at: logsFolder, includingPropertiesForKeys: nil) {
-            for child in children where child.lastPathComponent != instanceID {
-                if Self.isInstanceRunning(child) { continue }
-                try? fileManager.removeItem(at: child)
-            }
-        }
-
-        // Wipe this instance's own logs, carrying over its live settings.json.
-        // The .lock goes down with the directory, so re-acquire it after.
-        let settingsData = try? Data(contentsOf: settingsFile)
-        if Self.lockFD >= 0 {
-            close(Self.lockFD)
-            Self.lockFD = -1
-        }
-        try? fileManager.removeItem(at: instanceDir)
-        try? fileManager.createDirectory(at: instanceDir, withIntermediateDirectories: true)
-        Self.acquireInstanceLock(at: instanceDir)
-        if let settingsData {
-            try? settingsData.write(to: settingsFile)
-        }
-        let appLog = projectRoot.appendingPathComponent("app.log")
-        try? "".write(to: appLog, atomically: true, encoding: .utf8)
-    }
-
     /// Takes the flock, or reports that someone else has it. Already holding
     /// it counts as success — this process is the someone else.
     @discardableResult
@@ -328,19 +286,6 @@ class SettingsService {
             return false
         }
         lockFD = fd
-        return true
-    }
-
-    /// True when a live instance still holds the directory's .lock. Entries
-    /// without a lock file (stale instances, stray files) count as not running.
-    private static func isInstanceRunning(_ dir: URL) -> Bool {
-        let fd = open(dir.appendingPathComponent(".lock").path, O_RDWR)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-            flock(fd, LOCK_UN)
-            return false
-        }
         return true
     }
 

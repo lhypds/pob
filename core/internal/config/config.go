@@ -1,13 +1,13 @@
-// Package config reads and maintains <root>/settings.json, instruction.txt
-// and macro.txt. It mirrors the behavior of the old Swift SettingsService:
-// defaults are created on first run and missing keys are backfilled into an
-// existing settings file. Values are re-read from disk on every access so
-// edits take effect without restarting.
+// Package config reads and maintains an instance's settings.json,
+// instruction.txt and macro.txt. It mirrors the behavior of the old Swift
+// SettingsService: defaults are created on first run and missing keys are
+// backfilled into an existing settings file. Values are re-read from disk on
+// every access so edits take effect without restarting.
 //
-// When an instance ID is given, the active settings file is
-// <root>/logs/<instance>/settings.json, seeded from the root settings.json
-// so every instance starts from the shared template but edits only its own
-// copy. instruction.txt and macro.txt stay shared at the root.
+// Everything an instance owns lives under <root>/<instance>/ — its three
+// files and its logs/ tree. Nothing is shared between instance ids and there
+// is no template above them: pointing <root>/INSTANCE at a new id gives a
+// machine a clean set of files, which is what changing it is for.
 package config
 
 import (
@@ -17,13 +17,15 @@ import (
 	"strconv"
 	"strings"
 
+	"pob/core/internal/storage"
 	"pob/server"
 )
 
 type Config struct {
 	Root string
-	// InstanceID is the logs/<instance> directory this process belongs to;
-	// empty means settings live at the root (legacy single-instance layout).
+	// InstanceID names the <root>/<instance> directory this process works in.
+	// An empty one is resolved the way the app resolves it, so the CLI reaches
+	// the same files without a shell to tell it which they are.
 	InstanceID string
 }
 
@@ -53,36 +55,25 @@ var legacyKeys = map[string]string{
 }
 
 func New(root, instanceID string) *Config {
+	if instanceID == "" {
+		instanceID = storage.ResolveInstanceID(root)
+	}
 	c := &Config{Root: root, InstanceID: instanceID}
 	c.ensureFiles()
 	return c
 }
 
-func (c *Config) rootSettingsFile() string { return filepath.Join(c.Root, "settings.json") }
+// InstanceDir is <root>/<instance>, everything this instance owns.
+func (c *Config) InstanceDir() string { return filepath.Join(c.Root, c.InstanceID) }
 
-func (c *Config) settingsFile() string {
-	if c.InstanceID != "" {
-		return filepath.Join(c.LogsDir(), c.InstanceID, "settings.json")
-	}
-	return c.rootSettingsFile()
-}
-
-func (c *Config) instructionFile() string { return filepath.Join(c.Root, "instruction.txt") }
-func (c *Config) macroFile() string       { return filepath.Join(c.Root, "macro.txt") }
-func (c *Config) LogsDir() string         { return filepath.Join(c.Root, "logs") }
+func (c *Config) settingsFile() string    { return filepath.Join(c.InstanceDir(), "settings.json") }
+func (c *Config) instructionFile() string { return filepath.Join(c.InstanceDir(), "instruction.txt") }
+func (c *Config) macroFile() string       { return filepath.Join(c.InstanceDir(), "macro.txt") }
 
 func (c *Config) ensureFiles() {
-	// Root (and logs/) must exist before any file below is written — the CLI
-	// resolves to a not-yet-created ~/.pob.
-	_ = os.MkdirAll(c.LogsDir(), 0o755)
-	if c.InstanceID != "" {
-		_ = os.MkdirAll(filepath.Join(c.LogsDir(), c.InstanceID), 0o755)
-		c.seedInstanceSettings()
-	}
-	// The root template is migrated too, not just this instance's copy: it is
-	// the file the Settings menu opens, so a key left under its old name there
-	// would be edited to no effect.
-	migrateLegacyKeys(c.rootSettingsFile())
+	// The instance directory must exist before any file below is written —
+	// the CLI resolves to a not-yet-created ~/.pob.
+	_ = os.MkdirAll(c.InstanceDir(), 0o755)
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
 	} else {
@@ -105,25 +96,6 @@ func (c *Config) ensureFiles() {
 	if _, err := os.Stat(c.macroFile()); os.IsNotExist(err) {
 		_ = os.WriteFile(c.macroFile(), []byte(""), 0o644)
 	}
-}
-
-// seedInstanceSettings copies the root settings.json into the instance
-// directory the first time this instance starts, so it inherits the shared
-// template but subsequent edits stay local to the instance. A missing root
-// template is created from the defaults first so later instances seed from
-// the same file.
-func (c *Config) seedInstanceSettings() {
-	if _, err := os.Stat(c.rootSettingsFile()); os.IsNotExist(err) {
-		writeSettingsFile(c.rootSettingsFile(), defaults)
-	}
-	if _, err := os.Stat(c.settingsFile()); err == nil {
-		return
-	}
-	data, err := os.ReadFile(c.rootSettingsFile())
-	if err != nil {
-		return // no readable root template; defaults are written by ensureFiles
-	}
-	_ = os.WriteFile(c.settingsFile(), data, 0o644)
 }
 
 // migrateLegacyKeys rewrites settings that have been renamed, keeping the
@@ -256,8 +228,8 @@ func (c *Config) Macro() string {
 	return string(data)
 }
 
-// WriteInstruction replaces instruction.txt (shared at the root) — used by
-// the CLI's `pob run "<text>"`.
+// WriteInstruction replaces this instance's instruction.txt — used by the
+// CLI's `pob run "<text>"`.
 func (c *Config) WriteInstruction(text string) error {
 	return os.WriteFile(c.instructionFile(), []byte(text), 0o644)
 }

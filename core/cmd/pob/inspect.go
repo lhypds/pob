@@ -1,4 +1,4 @@
-// Offline views over the logs/ tree (see README "Logs"): instance and
+// Offline views over the <instance>/logs/ tree (see README "Logs"): instance and
 // session listings and the per-session detail view. These read the disk
 // directly so they work whether or not the instance is running.
 package main
@@ -142,9 +142,9 @@ func showInstance(root string) {
 	if model, ok := settings["model"].(string); ok && !inst.Running {
 		fmt.Printf("Model:      %s\n", model)
 	}
-	fmt.Printf("Logs:       %s\n", inst.Dir)
+	fmt.Printf("Logs:       %s\n", inst.LogsDir)
 
-	sessions := listSessions(inst.Dir)
+	sessions := listSessions(inst.LogsDir)
 	if len(sessions) == 0 {
 		fmt.Println("\nNo sessions.")
 		return
@@ -154,7 +154,7 @@ func showInstance(root string) {
 }
 
 func listSessionsCmd(root, instanceID string) {
-	sessions := listSessions(filepath.Join(root, "logs", instanceID))
+	sessions := listSessions(filepath.Join(root, instanceID, "logs"))
 	if len(sessions) == 0 {
 		fmt.Printf("No sessions for instance %s.\n", instanceID)
 		return
@@ -175,7 +175,7 @@ func printSessionTable(sessions []sessionInfo, prefix string) {
 }
 
 func showSession(root, instanceID, sessionID string) {
-	dir := filepath.Join(root, "logs", instanceID, sessionID)
+	dir := filepath.Join(root, instanceID, "logs", sessionID)
 	sessionJSON := readJSONFile(filepath.Join(dir, "session.json"))
 	if sessionJSON == nil {
 		fail("session %s not found under instance %s", sessionID, instanceID)

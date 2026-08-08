@@ -15,8 +15,7 @@ import AppKit
 /// the net displacement of the virtual cursor is emitted right before each
 /// click/drag/scroll, matching how replay chains relative moves.
 final class UserMacroRecorder {
-    /// This instance's settings — macro.txt itself is shared at the root, but
-    /// access goes through the owning instance.
+    /// This instance's settings, which is where its macro.txt lives.
     private let settings: SettingsService
     /// The overlay window whose content area defines the pixel coordinate
     /// space; set by PobInstance.attach.

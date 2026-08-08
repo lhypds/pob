@@ -37,8 +37,8 @@ Getting started
 ./start.sh      # run it
 ```
 
-Put your API key and model in `~/.pob/settings.json`, write what you want done
-in `~/.pob/instruction.txt`, and press Execute in the toolbar — or drive the
+Put your API key and model in `~/.pob/<instance>/settings.json`, write what you
+want done in the `instruction.txt` beside it, and press Execute in the toolbar — or drive the
 machine yourself from a phone, a terminal, or another computer.
 
 
@@ -51,7 +51,7 @@ Documentation
 | [UI](docs/02_UI.md) | The window and every toolbar button |
 | [Macro](docs/03_Macro.md) | `macro.txt`, and the functions the AI and macros both call |
 | [Key names](docs/04_Keys.md) | What `keyPress` / `key_press` accepts |
-| [Logs](docs/05_Logs.md) | The `~/.pob/logs/` tree: instances, sessions, plans, steps |
+| [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory, its sessions, plans and steps |
 | [Settings](docs/06_Settings.md) | Every key in `settings.json` |
 | [CLI](docs/07_CLI.md) | The `pob` command |
 | [MCP Server](docs/08_MCP.md) | Driving Pob from Claude Code, Claude Desktop, Gemini CLI |

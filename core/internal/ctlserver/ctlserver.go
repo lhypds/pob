@@ -1,7 +1,7 @@
 // Package ctlserver exposes a small localhost HTTP control API so the `pob`
 // CLI can drive a running instance. Unlike the MCP server it always starts,
 // on an ephemeral 127.0.0.1 port, and advertises itself by writing
-// logs/<instance>/control.json ({pid, port}) which the CLI scans to discover
+// <instance>/logs/control.json ({pid, port}) which the CLI scans to discover
 // live instances. Endpoints:
 //
 //	GET  /status           — instance id, executing/recording state, MCP and Pob server state
@@ -50,7 +50,7 @@ func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *
 }
 
 func (s *Server) controlFile() string {
-	return filepath.Join(s.store.InstanceDir(), "control.json")
+	return filepath.Join(s.store.LogsDir(), "control.json")
 }
 
 // Start binds an ephemeral localhost port, writes control.json and serves in

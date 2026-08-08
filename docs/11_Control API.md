@@ -18,7 +18,7 @@ HTTP API on an ephemeral `127.0.0.1` port, alongside the bridge.
 Finding it
 ----------
 
-The port is advertised in `~/.pob/logs/<instance>/control.json`, written when
+The port is advertised in `~/.pob/<instance>/logs/control.json`, written when
 the instance starts and removed when it stops:
 
 ```json

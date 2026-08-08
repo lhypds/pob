@@ -1,7 +1,7 @@
 // Package storage writes the instance/session/plan/step/verification log
-// tree under <root>/logs/ (see README "Logs" section). One instance runs on a
-// machine and it keeps one id for good, so every session it ever writes lands
-// in the same logs/<instance>/ directory — see ResolveInstanceID.
+// tree under <root>/<instance>/logs/ (see README "Logs" section). One instance
+// runs on a machine and it keeps one id for good, so every session it ever
+// writes lands in the same directory — see ResolveInstanceID.
 package storage
 
 import (
@@ -17,7 +17,7 @@ import (
 )
 
 type Storage struct {
-	logsDir      string
+	root         string
 	instanceID   string
 	settingsDict func() map[string]any
 	instruction  func() string
@@ -25,57 +25,56 @@ type Storage struct {
 }
 
 // InstancePrefix is what every instance id starts with. The shells match on
-// it to tell an instance directory from anything else under logs/.
+// it to tell an instance directory from anything else under the root.
 const InstancePrefix = "pb-"
 
-// instancePointer holds the machine's one instance id. It sits beside logs/
-// rather than inside it, so clearing the logs doesn't change which instance
-// this machine is — the id is in the toolbar and in the web UI address, and
-// both should survive a tidy-up. Named in capitals like VERSION and SYSTEM:
-// a marker the programs write and read, not a file to edit.
+// instancePointer names the instance directory the machine is working in. It
+// sits at the root rather than inside that directory, since it is what points
+// at it: aim it somewhere else and Pob starts from clean files, which is what
+// changing it is for. Named in capitals like VERSION and SYSTEM: a marker the
+// programs write and read, not a file to edit.
 const instancePointer = "INSTANCE"
 
-// New creates logs/<instance>/ for this process; every session it writes
-// lives under that directory. instanceID is the one the shell resolved and
-// passed in; an empty one is resolved here, which is what the CLI does when
-// it runs without a shell.
-func New(logsDir, instanceID string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
-	_ = os.MkdirAll(logsDir, 0o755)
+// New creates <root>/<instance>/logs/ for this process; every session it
+// writes lives under that directory. instanceID is the one the shell resolved
+// and passed in; an empty one is resolved here, which is what the CLI does
+// when it runs without a shell.
+func New(root, instanceID string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
 	if instanceID == "" {
-		instanceID = ResolveInstanceID(filepath.Dir(logsDir))
+		instanceID = ResolveInstanceID(root)
 	}
-	_ = os.MkdirAll(filepath.Join(logsDir, instanceID), 0o755)
-	return &Storage{
-		logsDir:      logsDir,
+	s := &Storage{
+		root:         root,
 		instanceID:   instanceID,
 		settingsDict: settingsDict,
 		instruction:  instruction,
 		macro:        macro,
 	}
+	_ = os.MkdirAll(s.LogsDir(), 0o755)
+	return s
 }
 
 // ResolveInstanceID returns the machine's instance id, the same one on every
 // run. It is recorded in <root>/INSTANCE the first time it is worked out.
 //
-// A machine upgrading from the versions that started a fresh instance per
-// launch has a logs/ full of pb-* directories. Rather than add one more, the
-// most recently used is adopted as the one instance from here on; the others
-// stay where they are as history.
+// Without a pointer to read, the pb-* directory under the root that was used
+// last is adopted rather than a new one started, so a machine that loses the
+// file goes back to the instance it was working in; the others stay where
+// they are as history.
 //
 // The shells resolve the id the same way before spawning pob-core, since they
 // need it for the toolbar and their own settings file. Whoever gets there
 // first writes the pointer and the other reads it.
 func ResolveInstanceID(root string) string {
-	logsDir := filepath.Join(root, "logs")
 	pointer := filepath.Join(root, instancePointer)
 
 	if id := readInstancePointer(pointer); id != "" {
 		return id
 	}
 
-	id := mostRecentInstance(logsDir)
+	id := mostRecentInstance(root)
 	if id == "" {
-		id = newInstanceID(logsDir)
+		id = newInstanceID(root)
 	}
 	_ = os.MkdirAll(root, 0o755)
 	_ = os.WriteFile(pointer, []byte(id+"\n"), 0o644)
@@ -97,12 +96,12 @@ func readInstancePointer(path string) string {
 	return id
 }
 
-// mostRecentInstance is the pb-* directory under logsDir modified last, or ""
+// mostRecentInstance is the pb-* directory under root modified last, or ""
 // when there are none. Modification time rather than the id or instance.json:
 // the directory is touched every time a session is written into it, so the
 // newest is the one that was actually being used.
-func mostRecentInstance(logsDir string) string {
-	entries, err := os.ReadDir(logsDir)
+func mostRecentInstance(root string) string {
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		return ""
 	}
@@ -123,12 +122,13 @@ func mostRecentInstance(logsDir string) string {
 	return newest
 }
 
-// newInstanceID reserves a pb-<uid> directory under logsDir. If the ID is
+// newInstanceID reserves a pb-<uid> directory under root. If the ID is
 // already taken, another one is drawn until a free one is found.
-func newInstanceID(logsDir string) string {
+func newInstanceID(root string) string {
+	_ = os.MkdirAll(root, 0o755)
 	for {
 		id := instanceID()
-		err := os.Mkdir(filepath.Join(logsDir, id), 0o755)
+		err := os.Mkdir(filepath.Join(root, id), 0o755)
 		if err == nil || !os.IsExist(err) {
 			return id
 		}
@@ -152,15 +152,18 @@ func instanceID() string {
 
 func (s *Storage) InstanceID() string { return s.instanceID }
 
-// InstanceDir returns logs/<instance>, this process's log directory.
-func (s *Storage) InstanceDir() string { return filepath.Join(s.logsDir, s.instanceID) }
+// InstanceDir returns <root>/<instance>, everything this instance owns.
+func (s *Storage) InstanceDir() string { return filepath.Join(s.root, s.instanceID) }
+
+// LogsDir returns <root>/<instance>/logs, this process's log directory.
+func (s *Storage) LogsDir() string { return filepath.Join(s.InstanceDir(), "logs") }
 
 func (s *Storage) instanceFile() string {
-	return filepath.Join(s.logsDir, s.instanceID, "instance.json")
+	return filepath.Join(s.LogsDir(), "instance.json")
 }
 
-// WriteInstanceStart creates logs/<instance>/instance.json recording when
-// this instance started.
+// WriteInstanceStart creates logs/instance.json recording when this instance
+// started.
 func (s *Storage) WriteInstanceStart() {
 	writeJSON(s.instanceFile(), map[string]any{
 		"start_time": time.Now().Unix(),
@@ -176,7 +179,7 @@ func (s *Storage) WriteInstanceEnd() {
 }
 
 func (s *Storage) sessionDir(sessionID string) string {
-	return filepath.Join(s.logsDir, s.instanceID, sessionID)
+	return filepath.Join(s.LogsDir(), sessionID)
 }
 
 // PrettyJSON marshals without HTML escaping, indented — the format used for
@@ -202,7 +205,7 @@ func writeJSON(path string, v any) {
 
 func unixNow() string { return fmt.Sprintf("%d", time.Now().Unix()) }
 
-// CreateSession creates logs/<instance>/<unixtime>/ with an initial session.json.
+// CreateSession creates logs/<unixtime>/ with an initial session.json.
 func (s *Storage) CreateSession() string {
 	sessionID := unixNow()
 	dir := s.sessionDir(sessionID)
@@ -214,7 +217,7 @@ func (s *Storage) CreateSession() string {
 	return sessionID
 }
 
-// CreatePlan creates logs/<instance>/<session>/<unixtime>/ and returns the plan ID.
+// CreatePlan creates logs/<session>/<unixtime>/ and returns the plan ID.
 func (s *Storage) CreatePlan(sessionID string) string {
 	planID := unixNow()
 	_ = os.MkdirAll(filepath.Join(s.sessionDir(sessionID), planID), 0o755)
@@ -280,7 +283,7 @@ func (s *Storage) WriteStepStatus(status, sessionID, planID string, stepSeq int)
 	_ = os.WriteFile(filepath.Join(stepDir, "status.txt"), []byte(status), 0o644)
 }
 
-// SaveStepLog writes one conversation round under logs/<instance>/<session>/<plan>/<step>/<unixtime>/.
+// SaveStepLog writes one conversation round under logs/<session>/<plan>/<step>/<unixtime>/.
 func (s *Storage) SaveStepLog(sessionID, planID string, stepSeq int, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
 	dir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq), unixNow())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -300,9 +303,9 @@ func (s *Storage) SaveScreenshot(png []byte, sessionID string) {
 }
 
 // SaveUserScreenshot writes a toolbar-button capture (outside any session) to
-// logs/<instance>/screenshots/<unixtime>.png and returns the file path.
+// logs/screenshots/<unixtime>.png and returns the file path.
 func (s *Storage) SaveUserScreenshot(png []byte) string {
-	dir := filepath.Join(s.logsDir, s.instanceID, "screenshots")
+	dir := filepath.Join(s.LogsDir(), "screenshots")
 	_ = os.MkdirAll(dir, 0o755)
 	path := filepath.Join(dir, unixNow()+".png")
 	_ = os.WriteFile(path, png, 0o644)

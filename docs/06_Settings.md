@@ -2,11 +2,14 @@
 Settings
 ========
 
-`~/.pob/settings.json` is the template. The first time the instance starts it
-copies the template to `~/.pob/logs/<instance>/settings.json`, and both the
-shell and the Go core read and edit that copy from then on — it is what the
-Settings menu opens. Edit the root file to change what a fresh instance
-starts from. `instruction.txt` and `macro.txt` stay shared at `~/.pob`.
+`~/.pob/<instance>/settings.json` is this instance's settings file — the one
+the Settings menu opens, and the one both the shell and the Go core read and
+edit. It is created from the defaults below the first time that instance
+starts, alongside its `instruction.txt`, `macro.txt` and `logs/`.
+
+Nothing is shared between instance IDs: pointing [`~/.pob/INSTANCE`](05_Logs.md)
+at another one starts Pob from the defaults again, so the API key has to be set
+for it — copy the file across if you want the same configuration.
 
 | Key | Default | Description |
 |-----|---------|-------------|

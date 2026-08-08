@@ -39,8 +39,8 @@ func (m macroRecorder) Recording() bool           { return m.runner.Recording() 
 func (m macroRecorder) AppendToMacro(line string) { m.cfg.AppendToMacro(line) }
 
 func main() {
-	root := flag.String("root", "", "project root holding settings.json, instruction.txt, macro.txt and logs/")
-	instance := flag.String("instance", "", "logs/<instance> directory resolved by the shell; holds this instance's settings.json and session logs")
+	root := flag.String("root", "", "project root holding INSTANCE and the <instance>/ directories")
+	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's settings.json, instruction.txt, macro.txt and logs/")
 	flag.Parse()
 	if *root == "" {
 		home, err := os.UserHomeDir()
@@ -61,7 +61,7 @@ func main() {
 
 	applog.Init(*root)
 	cfg := config.New(*root, instanceID)
-	store := storage.New(cfg.LogsDir(), instanceID, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
+	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
 
 	client := ipc.NewStdio()
 	br := bridge.New(client)
@@ -107,7 +107,7 @@ func main() {
 	br.NotifyServerState(srv.Running(), srv.URL())
 
 	// The control server lets the `pob` CLI drive this instance; it always
-	// runs, on an ephemeral port advertised in logs/<instance>/control.json.
+	// runs, on an ephemeral port advertised in <instance>/logs/control.json.
 	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br)
 	_ = ctl.Start()
 

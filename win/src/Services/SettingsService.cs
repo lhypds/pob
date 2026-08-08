@@ -1,8 +1,12 @@
-// UI-side view of the shared project files, mirroring the macOS/Linux
+// UI-side view of an instance's files, mirroring the macOS/Linux
 // SettingsService. The Go core owns settings.json defaults, instruction.txt,
 // macro.txt and the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
+//
+// Everything an instance owns lives under ~/.pob/<instance>/. Nothing is
+// shared between ids — pointing ~/.pob/INSTANCE at another one starts Pob
+// from a clean set of files.
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -34,17 +38,16 @@ public static class SettingsService
     private static string? _instanceId;
 
     /// <summary>
-    /// logs/&lt;InstanceId&gt; directory reserved for this process; holds its
-    /// settings.json (seeded from the root settings.json) and the session logs
-    /// the Go core writes. Passed to pob-core via --instance.
+    /// ~/.pob/&lt;InstanceId&gt;, everything this instance owns: its
+    /// settings.json, instruction.txt, macro.txt and logs/. Passed to pob-core
+    /// via --instance.
     /// </summary>
     public static string InstanceId => _instanceId ??= AllocateInstance();
 
     /// <summary>
-    /// Exclusive handle on logs/&lt;InstanceId&gt;/.lock, held for the process
+    /// Exclusive handle on &lt;InstanceId&gt;/.lock, held for the process
     /// lifetime. It marks the directory as belonging to a running Pob, which
-    /// is what ClearLogs checks — and taking it is also how a second Pob is
-    /// detected, see ClaimInstance.
+    /// is how a second Pob is detected — see ClaimInstance.
     ///
     /// Opened exactly once. The share mode is enforced per handle, not per
     /// process, so opening this same file a second time would be refused by
@@ -64,27 +67,17 @@ public static class SettingsService
 
     private static string AllocateInstance()
     {
-        string logs = RootPath("logs");
-        Directory.CreateDirectory(logs);
-
-        string id = ResolveInstanceId(logs);
-        string dir = Path.Combine(logs, id);
-        Directory.CreateDirectory(dir);
+        string id = ResolveInstanceId(ProjectRoot);
+        string dir = Path.Combine(ProjectRoot, id);
+        Directory.CreateDirectory(Path.Combine(dir, "logs"));
         AcquireInstanceLock(dir);
-
-        // Seed this instance's settings.json from the root template.
-        string rootSettings = RootPath("settings.json");
-        string instanceSettings = Path.Combine(dir, "settings.json");
-        try
-        {
-            if (File.Exists(rootSettings) && !File.Exists(instanceSettings))
-                File.Copy(rootSettings, instanceSettings);
-        }
-        catch (IOException)
-        {
-        }
         return id;
     }
+
+    /// <summary>~/.pob/&lt;instance&gt;, everything this instance owns.</summary>
+    public static string InstanceDir => Path.Combine(ProjectRoot, InstanceId);
+
+    private static string InstancePath(string name) => Path.Combine(InstanceDir, name);
 
     /// <summary>
     /// The machine's instance id — the same one on every run, recorded in
@@ -93,11 +86,11 @@ public static class SettingsService
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
     ///
-    /// A machine upgrading from the versions that took a fresh id per launch
-    /// has a logs/ full of pb-* directories. Rather than add one more, the one
-    /// used last is adopted; the rest stay where they are as history.
+    /// Without a pointer to read, the pb-* directory under ~/.pob that was
+    /// used last is adopted rather than a new one started; the rest stay where
+    /// they are as history.
     /// </summary>
-    private static string ResolveInstanceId(string logs)
+    private static string ResolveInstanceId(string root)
     {
         string pointer = RootPath(InstancePointer);
         try
@@ -119,7 +112,7 @@ public static class SettingsService
         {
         }
 
-        string resolved = MostRecentInstance(logs) ?? ReserveInstanceId(logs);
+        string resolved = MostRecentInstance(root) ?? ReserveInstanceId(root);
         try
         {
             File.WriteAllText(pointer, resolved + Environment.NewLine);
@@ -136,12 +129,12 @@ public static class SettingsService
     /// time a session is written into it, so the newest is the one that was
     /// actually in use.
     /// </summary>
-    private static string? MostRecentInstance(string logs)
+    private static string? MostRecentInstance(string root)
     {
         string[] dirs;
         try
         {
-            dirs = Directory.GetDirectories(logs, InstancePrefix + "*");
+            dirs = Directory.GetDirectories(root, InstancePrefix + "*");
         }
         catch (IOException)
         {
@@ -174,12 +167,12 @@ public static class SettingsService
     /// Reserves a fresh pb-&lt;4 hex&gt; directory — the last two bytes of a new
     /// UID as lowercase hex, the same scheme the pico-hid firmware uses for
     /// its ph- board id. The toolbar shows it beside the window buttons, so
-    /// the id on screen names the logs directory to look in.
+    /// the id on screen names the directory to look in.
     /// </summary>
-    private static string ReserveInstanceId(string logs)
+    private static string ReserveInstanceId(string root)
     {
         string id = NewInstanceId();
-        while (Directory.Exists(Path.Combine(logs, id))) id = NewInstanceId();
+        while (Directory.Exists(Path.Combine(root, id))) id = NewInstanceId();
         return id;
     }
 
@@ -198,14 +191,12 @@ public static class SettingsService
     /// </summary>
     public static bool ClaimInstance()
     {
-        string logs = RootPath("logs");
-        Directory.CreateDirectory(logs);
-        string dir = Path.Combine(logs, ResolveInstanceId(logs));
+        string dir = Path.Combine(ProjectRoot, ResolveInstanceId(ProjectRoot));
         Directory.CreateDirectory(dir);
         return AcquireInstanceLock(dir);
     }
 
-    private static string SettingsFilePath() => Path.Combine(RootPath("logs"), InstanceId, "settings.json");
+    private static string SettingsFilePath() => InstancePath("settings.json");
 
     // ── settings.json helpers ───────────────────────────────────────────────
 
@@ -343,14 +334,14 @@ public static class SettingsService
 
     public static void OpenInstructionFile()
     {
-        string path = RootPath("instruction.txt");
+        string path = InstancePath("instruction.txt");
         EnsureFile(path);
         OpenWithEditor(path);
     }
 
     public static void OpenMacroFile()
     {
-        string path = RootPath("macro.txt");
+        string path = InstancePath("macro.txt");
         EnsureFile(path);
         OpenWithEditor(path);
     }
@@ -364,7 +355,7 @@ public static class SettingsService
 
     public static void OpenLogsFolder()
     {
-        string path = RootPath("logs");
+        string path = InstancePath("logs");
         Directory.CreateDirectory(path);
         SpawnDetached("explorer.exe", path);
     }
@@ -375,7 +366,7 @@ public static class SettingsService
     {
         try
         {
-            return File.ReadAllText(RootPath("macro.txt"));
+            return File.ReadAllText(InstancePath("macro.txt"));
         }
         catch
         {
@@ -392,83 +383,16 @@ public static class SettingsService
         if (content.Length > 0 && !content.EndsWith("\n")) content += "\n";
         try
         {
-            File.WriteAllText(RootPath("macro.txt"), content + line + "\n");
+            File.WriteAllText(InstancePath("macro.txt"), content + line + "\n");
         }
         catch (IOException)
         {
         }
     }
 
-    public static void ClearMacro() => TryTruncate(RootPath("macro.txt"));
+    public static void ClearMacro() => TryTruncate(InstancePath("macro.txt"));
 
-    public static void ClearInstruction() => TryTruncate(RootPath("instruction.txt"));
-
-    public static void ClearLogs()
-    {
-        string path = RootPath("logs");
-
-        // Delete only directories of instances that are no longer running —
-        // every live instance holds an exclusive handle on its
-        // logs/<instance>/.lock, so a held lock means "in use, skip".
-        string[] entries;
-        try
-        {
-            entries = Directory.GetFileSystemEntries(path);
-        }
-        catch (IOException)
-        {
-            entries = [];
-        }
-        foreach (string entry in entries)
-        {
-            if (Path.GetFileName(entry) == InstanceId) continue;
-            if (IsInstanceRunning(entry)) continue;
-            try
-            {
-                if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
-                else File.Delete(entry);
-            }
-            catch (IOException)
-            {
-            }
-        }
-
-        // Wipe this instance's own logs, carrying over its live settings.json.
-        // The .lock goes down with the directory, so re-acquire it after.
-        string settingsPath = SettingsFilePath();
-        string? settingsData = null;
-        try
-        {
-            settingsData = File.ReadAllText(settingsPath);
-        }
-        catch (IOException)
-        {
-        }
-
-        string instanceDir = Path.Combine(path, InstanceId);
-        _instanceLock?.Dispose();
-        _instanceLock = null;
-        try
-        {
-            if (Directory.Exists(instanceDir)) Directory.Delete(instanceDir, recursive: true);
-        }
-        catch (IOException)
-        {
-        }
-        Directory.CreateDirectory(instanceDir);
-        AcquireInstanceLock(instanceDir);
-        if (settingsData != null)
-        {
-            try
-            {
-                File.WriteAllText(settingsPath, settingsData);
-            }
-            catch (IOException)
-            {
-            }
-        }
-        TryTruncate(RootPath("app.log"));
-    }
+    public static void ClearInstruction() => TryTruncate(InstancePath("instruction.txt"));
 
     /// <summary>
     /// Takes the lock handle, or reports that someone else has it. Already
@@ -494,26 +418,6 @@ public static class SettingsService
         {
             // Permissions, not a second Pob. Start anyway rather than refuse
             // over something unrelated.
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// True when a live instance still holds the directory's .lock. Entries
-    /// without a lock file (stale instances, stray files) count as not running.
-    /// </summary>
-    private static bool IsInstanceRunning(string dir)
-    {
-        string lockPath = Path.Combine(dir, ".lock");
-        if (!File.Exists(lockPath)) return false;
-        try
-        {
-            using var probe = new FileStream(lockPath,
-                FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            return false;
-        }
-        catch (IOException)
-        {
             return true;
         }
     }

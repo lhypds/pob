@@ -645,7 +645,7 @@ static GtkWidget *build_applog_button(void) {
 
 // This instance's id (pb-xxxx) as a small monospaced pill — the same badge the
 // macOS toolbar shows beside the window buttons. It names the instance's
-// logs/<instance>/ directory; clicking copies it, like the coordinate labels.
+// ~/.pob/<instance>/ directory; clicking copies it, like the coordinate labels.
 static void on_instance_id_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
     const char *id = settings_instance_id();

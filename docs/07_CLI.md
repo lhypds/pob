@@ -15,7 +15,7 @@ All project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
 live in `~/.pob`, created on first use and shared by the app and the CLI.
 
 A running Pob serves a small control API on an ephemeral localhost port,
-advertised in `~/.pob/logs/<instance>/control.json`; the CLI reads that file
+advertised in `~/.pob/<instance>/logs/control.json`; the CLI reads that file
 and talks to that API — see **Control API** below. Log and session inspection
 reads the log tree directly, so it also works when the app is not running.
 
@@ -61,7 +61,7 @@ The app owns `pob-core` as a child process and drives it over that process's
 stdin and stdout, a pipe a `pob` typed into a terminal has no way to join. So
 `pob-core` also serves the [Control API](11_Control%20API.md) on an ephemeral
 `127.0.0.1` port, and advertises it by writing
-`~/.pob/logs/<instance>/control.json`:
+`~/.pob/<instance>/logs/control.json`:
 
 ```json
 {
