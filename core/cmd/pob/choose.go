@@ -46,6 +46,15 @@ func chooseFromList(instances []storage.InstanceInfo, selected int) (int, bool) 
 	drawList(out, instances, selected, false)
 	out.Flush()
 
+	// Every draw after the first goes back to the top of the list and over the
+	// rows already on screen; drawing without the cursor move would leave a
+	// second copy of the list below the first.
+	redraw := func(final bool) {
+		fmt.Fprintf(out, "\033[%dA", len(instances))
+		drawList(out, instances, selected, final)
+		out.Flush()
+	}
+
 	for {
 		switch key, digit := readKey(in); key {
 		case keyUp:
@@ -53,26 +62,20 @@ func chooseFromList(instances []storage.InstanceInfo, selected int) (int, bool) 
 		case keyDown:
 			selected = (selected + 1) % len(instances)
 		case keyEnter:
-			drawList(out, instances, selected, true)
-			out.Flush()
+			redraw(true)
 			return selected, true
 		case keyCancel:
-			drawList(out, instances, selected, true)
-			out.Flush()
+			redraw(true)
 			return -1, true
 		default:
 			if digit >= 1 && digit <= len(instances) {
 				selected = digit - 1
-				drawList(out, instances, selected, true)
-				out.Flush()
+				redraw(true)
 				return selected, true
 			}
 			continue // a key the chooser has no use for; nothing to redraw
 		}
-		// Back to the top of the list, then over the old rows.
-		fmt.Fprintf(out, "\033[%dA", len(instances))
-		drawList(out, instances, selected, false)
-		out.Flush()
+		redraw(false)
 	}
 }
 
