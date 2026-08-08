@@ -1,6 +1,7 @@
 #include "screenshot_service.h"
 #include "app.h"
 #include "app_logger.h"
+#include "content_view.h"
 #include "core_bridge.h"
 #include "frame_channel.h"
 #include "mouse_service.h"
@@ -47,6 +48,58 @@ typedef struct {
 } PendingShot;
 
 static PendingShot *pending = NULL;
+
+// ── keeping the window out of the picture ───────────────────────────────────
+//
+// The content area draws nothing while a capture is in flight (see
+// content_view_set_capture_hidden), which is the X11 answer to what macOS
+// gets from .optionOnScreenBelowWindow. Doing that per frame is what made the
+// view page's stream strobe, so it is done per *burst* instead: the area goes
+// blank for the first frame and stays blank while frames keep arriving,
+// coming back once they stop. A stream costs one fade, not one per frame —
+// and the frames after the first are grabbed with no wait at all, which is
+// most of what the old 80 ms per capture was spending.
+static gboolean content_hidden = FALSE;
+static guint restore_timeout = 0;
+static gint64 last_capture_us = 0; // when the previous capture was asked for
+static gint64 last_gap_us = 0;     // and how long before it the one before was
+
+// One compositor frame, generously: how long to let the blank content area
+// reach the screen before grabbing it. Paid once per burst.
+#define COMPOSITOR_SETTLE_MS 80
+
+// How long the content area stays blank after a capture: two frame intervals,
+// so the next frame of a stream always arrives before the area comes back and
+// nothing blinks mid-stream. Frames further apart than STREAM_GAP are not a
+// stream — the agent's own screenshots, seconds apart — and get the floor
+// instead, so the window looks like itself between them.
+#define RESTORE_MIN_MS 300
+#define RESTORE_MAX_MS 1500
+#define STREAM_GAP_MAX_US (1500 * 1000)
+
+static guint restore_delay_ms(void) {
+    if (last_gap_us <= 0 || last_gap_us > STREAM_GAP_MAX_US) return RESTORE_MIN_MS;
+    gint64 ms = last_gap_us * 2 / 1000;
+    return (guint)CLAMP(ms, RESTORE_MIN_MS, RESTORE_MAX_MS);
+}
+
+static void set_content_hidden(gboolean hidden) {
+    content_hidden = hidden;
+    content_view_set_capture_hidden(hidden);
+}
+
+static gboolean on_restore_content(gpointer data) {
+    (void)data;
+    restore_timeout = 0;
+    set_content_hidden(FALSE);
+    return G_SOURCE_REMOVE;
+}
+
+// Called when a capture is done with the screen, one way or the other.
+static void schedule_content_restore(void) {
+    if (restore_timeout) g_source_remove(restore_timeout);
+    restore_timeout = g_timeout_add(restore_delay_ms(), on_restore_content, NULL);
+}
 
 // ── XImage → cairo surface ──────────────────────────────────────────────────
 
@@ -143,14 +196,16 @@ static cairo_surface_t *cursor_surface(double *hot_x, double *hot_y,
 }
 
 // Draws the arrow cursor into the screenshot with its hotspot at (px, py)
-// screenshot pixels. macOS renders the cursor 88 px tall on 2× displays;
-// 44 × scale keeps the same apparent size on every density.
+// screenshot pixels. 22 × scale is about the size a desktop draws its own
+// pointer, and the same apparent size on every density — the macOS and Windows
+// shells composite theirs to match, so a frame looks the same wherever the
+// view page is watching from.
 static void draw_cursor_into(cairo_t *cr, double px, double py, double scale) {
     double hx, hy, cw, ch;
     cairo_surface_t *surf = cursor_surface(&hx, &hy, &cw, &ch);
     if (!surf || ch <= 0) return;
 
-    double target_h = 44.0 * scale;
+    double target_h = 22.0 * scale;
     double s = target_h / ch;
 
     cairo_save(cr);
@@ -201,6 +256,10 @@ static gboolean surface_to_bytes(cairo_surface_t *surface, const char *format,
 // ── capture flow ────────────────────────────────────────────────────────────
 
 static void finish_pending(void) {
+    // The screen is free again: start the clock on bringing the content area
+    // back, which the next frame of a stream will push out ahead of itself.
+    schedule_content_restore();
+
     if (!pending) return;
     g_free(pending->id);
     g_free(pending->format);
@@ -226,7 +285,10 @@ static void deliver(const char *id, const guchar *bytes, gsize len, int width,
 
 static gboolean do_capture(gpointer data) {
     (void)data;
-    if (!pending) return G_SOURCE_REMOVE;
+    if (!pending) { // nothing to grab — don't leave the area blank over it
+        schedule_content_restore();
+        return G_SOURCE_REMOVE;
+    }
 
     GtkWidget *win = GTK_WIDGET(g_state.window);
     GtkWidget *content = g_state.content;
@@ -257,8 +319,6 @@ static gboolean do_capture(gpointer data) {
     if (dev_y < 0) { dev_h += dev_y; dev_y = 0; }
     if (dev_x + dev_w > screen_w) dev_w = screen_w - dev_x;
     if (dev_y + dev_h > screen_h) dev_h = screen_h - dev_y;
-
-    gtk_widget_set_opacity(win, 1.0);
 
     if (dev_w <= 0 || dev_h <= 0) {
         core_bridge_respond_error(pending->id, "Screenshot capture failed");
@@ -383,9 +443,25 @@ void screenshot_handle_capture(const char *id, gboolean with_cursor,
     pending->max_width = max_width;
     pending->quality = quality;
 
-    // Hide the overlay for one compositor frame so the capture shows the
-    // desktop beneath it (macOS: .optionOnScreenBelowWindow), then grab.
-    gtk_widget_set_opacity(GTK_WIDGET(g_state.window), 0.0);
-    gdk_display_sync(gdk_display_get_default());
-    g_timeout_add(80, do_capture, NULL);
+    gint64 now = g_get_monotonic_time();
+    if (last_capture_us) last_gap_us = now - last_capture_us;
+    last_capture_us = now;
+
+    if (restore_timeout) { // whatever this capture does, it is not done yet
+        g_source_remove(restore_timeout);
+        restore_timeout = 0;
+    }
+
+    if (content_hidden) {
+        // Mid-burst: the area is already blank on screen, so there is nothing
+        // to wait for. This is the path every frame of a stream takes.
+        do_capture(NULL);
+        return;
+    }
+
+    // First of a burst: blank the content area so the capture shows the
+    // desktop beneath it (macOS: .optionOnScreenBelowWindow), give the frame
+    // clock and the compositor time to put that on the screen, then grab.
+    set_content_hidden(TRUE);
+    g_timeout_add(COMPOSITOR_SETTLE_MS, do_capture, NULL);
 }

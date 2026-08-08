@@ -99,11 +99,46 @@ void content_view_reset_anim(void) {
     if (view) gtk_widget_queue_draw(view);
 }
 
+// ── capture mode ────────────────────────────────────────────────────────────
+//
+// X11 has no "capture everything below this window" the way macOS does, so
+// the only way to keep Pob out of Pob's own screenshots is for it not to be
+// on the screen when the grab happens. Hiding the whole window per frame is
+// what made the view page's stream strobe; drawing nothing in the content
+// area comes to the same thing for the grab — the pixels there are the
+// desktop, which is exactly what it wants — and leaves the toolbar alone.
+static gboolean capture_hidden = FALSE;
+
+// A flash asked for while hidden, waiting for something to show it on.
+static gboolean flash_pending = FALSE;
+static gint64 flash_pending_us = 0;
+
+// Past this, the shutter has nothing left to confirm — a stream can hold the
+// view hidden far longer than anyone would connect a flash to a screenshot.
+#define FLASH_DEFER_MAX_US (2 * G_USEC_PER_SEC)
+
 void content_view_flash(void) {
+    if (capture_hidden) {
+        flash_pending = TRUE;
+        flash_pending_us = g_get_monotonic_time();
+        return;
+    }
     flash_opacity = 0.5;
     flash_start_us = g_get_monotonic_time();
     flashing = TRUE;
     ensure_tick();
+}
+
+void content_view_set_capture_hidden(gboolean hidden) {
+    if (capture_hidden == hidden) return;
+    capture_hidden = hidden;
+
+    if (!hidden && flash_pending) {
+        flash_pending = FALSE;
+        if (g_get_monotonic_time() - flash_pending_us < FLASH_DEFER_MAX_US)
+            content_view_flash();
+    }
+    if (view) gtk_widget_queue_draw(view);
 }
 
 // ── transient toast message ─────────────────────────────────────────────────
@@ -228,6 +263,18 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     gtk_widget_get_allocation(widget, &alloc);
     double W = alloc.width, H = alloc.height;
     int scale = widget_scale();
+
+    // A capture is reading these pixels: everything below this point would
+    // land in it, starting with the gray. Clear to nothing instead, with
+    // OPERATOR_SOURCE so the theme's own background goes too.
+    if (capture_hidden) {
+        cairo_save(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+        cairo_set_source_rgba(cr, 0, 0, 0, 0);
+        cairo_paint(cr);
+        cairo_restore(cr);
+        return FALSE;
+    }
 
     // Translucent gray background (Color.gray.opacity(0.2)). Painted with
     // OPERATOR_SOURCE so the pixels become exactly 20%-alpha gray no matter

@@ -27,6 +27,25 @@ internal static class NativeMethods
         if (updated != ex) SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(updated));
     }
 
+    // ── display affinity (capture exclusion) ────────────────────────────────
+
+    // WDA_EXCLUDEFROMCAPTURE (Windows 10 2004 / build 19041 and later) keeps a
+    // window on the monitor but out of every screen capture — the nearest
+    // thing Windows has to CGWindowListCreateImage(.optionOnScreenBelowWindow),
+    // and what lets Pob photograph the desktop under its own window without
+    // hiding it first. Older builds reject the value.
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+    public const int MinBuildForCaptureExclusion = 19041;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint pdwAffinity);
+
     // ── cursor ──────────────────────────────────────────────────────────────
 
     [StructLayout(LayoutKind.Sequential)]
@@ -160,8 +179,10 @@ internal static class NativeMethods
 
     // ── screen capture (GDI) ────────────────────────────────────────────────
 
+    // SRCCOPY only: CAPTUREBLT would pull in layered windows that the
+    // composited screen DC already has, and it makes the desktop flicker on
+    // every blit — which at a stream's frame rate is a strobe.
     public const uint SRCCOPY = 0x00CC0020;
-    public const uint CAPTUREBLT = 0x40000000;
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetDC(IntPtr hWnd);

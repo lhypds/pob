@@ -77,6 +77,13 @@ public partial class App : Application
         // click-through state (ON by default) only once both windows exist.
         AppState.UpdateClickThrough();
 
+        // Keep the overlay out of its own screenshots for the rest of the
+        // session. The alternative — hiding it around every capture — is a
+        // blink the view page's frame rate turns into a strobe.
+        AppLogger.Log(ScreenshotService.EnableCaptureExclusion(overlay)
+            ? "Screenshot: overlay excluded from capture (WDA_EXCLUDEFROMCAPTURE)"
+            : "Screenshot: WDA_EXCLUDEFROMCAPTURE unavailable — hiding the overlay around each capture instead");
+
         // Glue: the toolbar is the titlebar, the overlay hangs directly below;
         // moving or resizing either keeps the pair together.
         toolbar.LocationChanged += (_, _) =>

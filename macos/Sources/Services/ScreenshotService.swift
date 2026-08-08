@@ -148,9 +148,11 @@ class ScreenshotService {
               let rep = NSBitmapImageRep(data: tiff),
               let cursorCG = rep.cgImage else { return }
 
-        // 88 px is what macOS draws on a 2× display; scaling it with the
-        // picture keeps it looking the same size whatever was asked for.
-        let cursorH = 88 * factor
+        // 44 px on a 2× capture, which is about what the machine draws its own
+        // pointer at — half of what this was, which towered over everything
+        // else in the frame. Scaling it with the picture keeps it that size
+        // whatever width was asked for.
+        let cursorH = 44 * factor
         let cursorW = cursorH * (cursorImage.size.width / cursorImage.size.height)
         let hotPxX = hotSpot.x * (cursorW / cursorImage.size.width)
         let hotPxY = hotSpot.y * (cursorH / cursorImage.size.height)

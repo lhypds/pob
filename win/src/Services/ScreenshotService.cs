@@ -1,8 +1,14 @@
 // Captures the desktop area behind the Pob window's content view, mirroring
 // the macOS/Linux ScreenshotService. macOS excludes the overlay window via
-// CGWindowListCreateImage(.optionOnScreenBelowWindow); Windows has no direct
-// equivalent, so the overlay window is made fully transparent for a moment
-// while BitBlt grabs the screen.
+// CGWindowListCreateImage(.optionOnScreenBelowWindow); Windows says the same
+// thing once, at startup, with WDA_EXCLUDEFROMCAPTURE — the overlay stays on
+// the monitor and drops out of every capture, so a grab shows the desktop
+// beneath it with nothing to hide and nothing to wait for.
+//
+// Only builds older than Windows 10 2004 fall back to what this did before:
+// make the overlay transparent, wait for the compositor, grab, put it back.
+// That is a blink per capture, which one screenshot can afford and the view
+// page's stream cannot — several a second is the window strobing.
 //
 // All published coordinates are screenshot pixels = physical device pixels
 // (top-left origin), so ShotContext also records where the content area sat
@@ -50,6 +56,48 @@ public static class ScreenshotService
         }
     }
 
+    // ── capture exclusion ──────────────────────────────────────────────────
+
+    // Whether the overlay is out of the picture for good (WDA_EXCLUDEFROMCAPTURE)
+    // or has to be hidden around each grab.
+    private static bool _excluded;
+
+    // True while the fallback path has the overlay hidden, so it is put back
+    // exactly once and only by the code that took it away.
+    private static bool _hidden;
+
+    // Takes the overlay out of every screen capture on this machine, and says
+    // whether it worked. Called once, as soon as the window has a handle: the
+    // flag lives on the HWND, so it is set long before the first capture and
+    // never touched again — a per-capture toggle would be the old blink in a
+    // different costume, DWM needing a compose cycle either way.
+    //
+    // Side effect worth knowing: the overlay drops out of *everyone's*
+    // captures, so a screen share or a Snipping Tool grab will not show it.
+    // For a window whose whole content is the desktop behind it, that is a
+    // fair price for a stream that does not strobe.
+    public static bool EnableCaptureExclusion(Window window)
+    {
+        _excluded = false;
+        // Older builds take the value without complaint on some drivers and
+        // ignore it, which would put the overlay in every screenshot instead.
+        if (Environment.OSVersion.Version.Build < NativeMethods.MinBuildForCaptureExclusion)
+            return false;
+
+        IntPtr hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return false;
+        if (!NativeMethods.SetWindowDisplayAffinity(hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE))
+            return false;
+        // Setting it is not proof it took — read it back before trusting every
+        // capture from here on to it.
+        if (!NativeMethods.GetWindowDisplayAffinity(hwnd, out uint affinity) ||
+            affinity != NativeMethods.WDA_EXCLUDEFROMCAPTURE)
+            return false;
+
+        _excluded = true;
+        return true;
+    }
+
     // ── pending request (core sends one capture at a time) ─────────────────
 
     private sealed record PendingShot(string Id, bool WithCursor, bool HasCrop,
@@ -77,9 +125,17 @@ public static class ScreenshotService
         _pending = new PendingShot(id, withCursor, hasCrop, cropX, cropY, cropW, cropH,
                                    format, maxWidth, quality);
 
-        // Hide the overlay so the capture shows the desktop beneath it
-        // (macOS: .optionOnScreenBelowWindow), give the compositor a moment,
-        // then grab.
+        if (_excluded)
+        {
+            // The overlay is already invisible to the grab: nothing to hide,
+            // no compositor round trip to wait out, straight to the pixels.
+            DoCapture();
+            return;
+        }
+
+        // Fallback: hide the overlay so the capture shows the desktop beneath
+        // it, give the compositor a moment, then grab.
+        _hidden = true;
         overlay.Opacity = 0.0;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         timer.Tick += (_, _) =>
@@ -88,6 +144,15 @@ public static class ScreenshotService
             DoCapture();
         };
         timer.Start();
+    }
+
+    // Undoes the fallback hide. A no-op when the overlay never went anywhere,
+    // which is every capture on a machine that took the exclusion flag.
+    private static void Reveal(OverlayWindow overlay)
+    {
+        if (!_hidden) return;
+        _hidden = false;
+        overlay.Opacity = 1.0;
     }
 
     private static void FinishPending() => _pending = null;
@@ -119,7 +184,7 @@ public static class ScreenshotService
         }
         catch (InvalidOperationException)
         {
-            overlay.Opacity = 1.0;
+            Reveal(overlay);
             Fail("Screenshot capture failed");
             return;
         }
@@ -142,13 +207,13 @@ public static class ScreenshotService
 
         if (devW <= 0 || devH <= 0)
         {
-            overlay.Opacity = 1.0;
+            Reveal(overlay);
             Fail("Screenshot capture failed");
             return;
         }
 
         BitmapSource? shot = CaptureScreen(devX, devY, devW, devH);
-        overlay.Opacity = 1.0;
+        Reveal(overlay);
 
         if (shot == null)
         {
@@ -253,9 +318,11 @@ public static class ScreenshotService
             if (memDc == IntPtr.Zero || bitmap == IntPtr.Zero) return null;
             old = NativeMethods.SelectObject(memDc, bitmap);
 
-            // CAPTUREBLT includes other layered (translucent) windows.
+            // Plain SRCCOPY: the screen DC is the composited desktop, layered
+            // windows and all, and CAPTUREBLT — which used to be how you asked
+            // for them — flickers the desktop once per blit.
             if (!NativeMethods.BitBlt(memDc, 0, 0, w, h, screenDc, x, y,
-                                      NativeMethods.SRCCOPY | NativeMethods.CAPTUREBLT))
+                                      NativeMethods.SRCCOPY))
                 return null;
 
             BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(
@@ -294,7 +361,10 @@ public static class ScreenshotService
             dc.DrawImage(shot, new Rect(0, 0, pxW, pxH));
             if (withCursor)
             {
-                double s = 44.0 * scale / CursorArrow.Height;
+                // 22 px tall at 1×, about the size Windows draws its own
+                // pointer — the other two shells composite theirs to match, so
+                // a frame looks the same wherever the view page watches from.
+                double s = 22.0 * scale / CursorArrow.Height;
                 dc.PushTransform(new TranslateTransform(px, py)); // hotspot = (0, 0), the arrow tip
                 dc.PushTransform(new ScaleTransform(s, s));
                 CursorArrow.Draw(dc);

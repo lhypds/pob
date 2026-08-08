@@ -17,7 +17,14 @@ void content_view_cursor_target_changed(double x, double y);
 void content_view_reset_anim(void);
 
 // Triggers the white screenshot flash (opacity 0.5 fading out over 0.4 s).
+// While the view is hidden for capture the flash is held back and played when
+// it comes into view again — a shutter nobody can see is no feedback at all.
 void content_view_flash(void);
+
+// Draws nothing at all — no tint, no cursor, no labels — so a screen capture
+// of this area gets the desktop behind the window and none of Pob. Held on
+// for as long as captures keep coming; see screenshot_service.c.
+void content_view_set_capture_hidden(gboolean hidden);
 
 // Shows a transient message (bottom center, black pill, white text) that
 // disappears after ~2 s — action feedback like "macro.txt reset".
