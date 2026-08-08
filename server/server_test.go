@@ -89,6 +89,11 @@ func (f *fakeTarget) TypeText(text string) error  { f.record("type %s", text); r
 func (f *fakeTarget) KeyPress(key string) error   { f.record("key %s", key); return nil }
 func (f *fakeTarget) SetRemoteActive(active bool) { f.record("active %v", active) }
 
+func (f *fakeTarget) CaptureView() ([]byte, error) {
+	f.record("capture")
+	return []byte("\x89PNG\r\n\x1a\n"), nil
+}
+
 func (f *fakeTarget) record(format string, a ...any) {
 	f.calls = append(f.calls, fmt.Sprintf(format, a...))
 }
@@ -173,17 +178,18 @@ func TestDoubleClickAfterPress(t *testing.T) {
 	}
 }
 
-func TestSplitInstance(t *testing.T) {
-	cases := []struct{ path, id, rest string }{
+func TestSplitHead(t *testing.T) {
+	cases := []struct{ path, head, rest string }{
 		{"/", "", ""},
 		{"/pb-a703", "pb-a703", ""},
 		{"/pb-a703/", "pb-a703", "/"},
-		{"/pb-a703/anything", "pb-a703", "/anything"},
+		{"/pb-a703/view", "pb-a703", "/view"},
+		{"/pb-a703/control/x", "pb-a703", "/control/x"},
 	}
 	for _, c := range cases {
-		id, rest := splitInstance(c.path)
-		if id != c.id || rest != c.rest {
-			t.Errorf("splitInstance(%q) = %q, %q; want %q, %q", c.path, id, rest, c.id, c.rest)
+		head, rest := splitHead(c.path)
+		if head != c.head || rest != c.rest {
+			t.Errorf("splitHead(%q) = %q, %q; want %q, %q", c.path, head, rest, c.head, c.rest)
 		}
 	}
 }
@@ -201,41 +207,103 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// The bare root and the path naming the instance are the same page, so an
-// address written down before and one typed from memory both arrive.
-func TestRootAndInstancePathBothServeThePage(t *testing.T) {
+// serve starts a server on a free port and returns the base address.
+func serve(t *testing.T, target Target) string {
+	t.Helper()
 	port := freePort(t)
-	server := New("pb-aaaa", &fakeTarget{}, nil)
+	server := New("pb-aaaa", target, nil)
 	if err := server.Start(port); err != nil {
 		t.Fatal(err)
 	}
-	defer server.Stop()
+	t.Cleanup(server.Stop)
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
+}
 
-	base := fmt.Sprintf("http://127.0.0.1:%d", port)
-	for _, path := range []string{"/", "/pb-aaaa", "/pb-aaaa/"} {
-		if body := get(t, base+path); !bytes.Contains(body, []byte(`id="trackpad"`)) {
-			t.Errorf("GET %s did not serve the web UI page: %.80s", path, body)
+// The bare root and the path naming the instance are the same server, so an
+// address written down before and one typed from memory both arrive — and
+// every page can be reached either way.
+func TestRootAndInstancePathAreTheSameServer(t *testing.T) {
+	base := serve(t, &fakeTarget{})
+	cases := []struct{ path, want string }{
+		// The root is the machine itself, so what it answers with is a
+		// picture of it, not a page.
+		{"/", "\x89PNG"},
+		{"/pb-aaaa", "\x89PNG"},
+		{"/pb-aaaa/", "\x89PNG"},
+		{"/control", `id="trackpad"`},
+		{"/pb-aaaa/control", `id="trackpad"`},
+		{"/pb-aaaa/control/", `id="trackpad"`},
+		{"/view", `id="frame-a"`},
+		{"/pb-aaaa/view", `id="frame-a"`},
+	}
+	for _, c := range cases {
+		if body := get(t, base+c.path); !bytes.Contains(body, []byte(c.want)) {
+			t.Errorf("GET %s did not serve %s: %.80s", c.path, c.want, body)
 		}
 	}
 }
 
-// Nothing else is here, so a path naming another instance is a mistake worth
-// saying out loud rather than quietly serving this one.
-func TestOtherInstanceIDIsNotFound(t *testing.T) {
-	port := freePort(t)
-	server := New("pb-aaaa", &fakeTarget{}, nil)
-	if err := server.Start(port); err != nil {
+// A GET at the root is a frame, and it must be typed as one — an <img> is all
+// that ever asks for it.
+func TestViewFrameIsAnImage(t *testing.T) {
+	base := serve(t, &fakeTarget{})
+	resp, err := http.Get(base + "/pb-aaaa")
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Stop()
+	defer resp.Body.Close()
+	if got := resp.Header.Get("Content-Type"); got != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+	// A cached frame is a moment that has already passed.
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}
 
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/pb-bbbb/", port))
+// Watching is not driving: a tab left open on the view page would otherwise
+// keep the virtual cursor pinned on screen for as long as it stayed open.
+func TestWatchingDoesNotMarkTheServerActive(t *testing.T) {
+	target := &fakeTarget{}
+	base := serve(t, target)
+	get(t, base+"/pb-aaaa")
+	if want := []string{"capture"}; !reflect.DeepEqual(target.calls, want) {
+		t.Errorf("got %q, want %q", target.calls, want)
+	}
+}
+
+// Nothing else is here, so a path naming another instance is a mistake worth
+// saying out loud rather than quietly serving this one — and so is a path
+// under this instance that names nothing.
+func TestUnknownPathsAreNotFound(t *testing.T) {
+	base := serve(t, &fakeTarget{})
+	for _, path := range []string{"/pb-bbbb/", "/favicon.ico", "/pb-aaaa/nope", "/pb-aaaa/view/x"} {
+		resp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, resp.StatusCode)
+		}
+	}
+}
+
+// Only the root takes commands. The pages are pages, and a command posted to
+// one is a client that has the address wrong — worth saying so.
+func TestCommandOnAPageIsNotAllowed(t *testing.T) {
+	target := &fakeTarget{}
+	base := serve(t, target)
+	resp, err := http.Post(base+"/pb-aaaa/control", "text/plain", strings.NewReader("typing=hello"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("GET /pb-bbbb/ = %d, want 404", resp.StatusCode)
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /pb-aaaa/control = %d, want 405", resp.StatusCode)
+	}
+	if len(target.calls) != 0 {
+		t.Errorf("the machine was driven anyway: %q", target.calls)
 	}
 }
 
@@ -243,16 +311,10 @@ func TestOtherInstanceIDIsNotFound(t *testing.T) {
 // lands, never redirected, since most clients would turn a redirected POST
 // into a GET and the keystroke would be lost on the way.
 func TestCommandAtRootReachesTheMachine(t *testing.T) {
-	port := freePort(t)
 	target := &fakeTarget{}
-	server := New("pb-aaaa", target, nil)
-	if err := server.Start(port); err != nil {
-		t.Fatal(err)
-	}
-	defer server.Stop()
+	base := serve(t, target)
 
-	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", port),
-		"text/plain", strings.NewReader("typing=hello"))
+	resp, err := http.Post(base+"/", "text/plain", strings.NewReader("typing=hello"))
 	if err != nil {
 		t.Fatal(err)
 	}

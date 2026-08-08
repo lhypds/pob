@@ -20,6 +20,11 @@ type Target interface {
 	Scroll(dx, dy int) error
 	TypeText(text string) error
 	KeyPress(key string) error
+	// CaptureView is what the machine looks like right now, as PNG bytes —
+	// the same capture the agent and the MCP server work from, with the
+	// virtual cursor drawn in, since a browser watching from across the room
+	// has no other way to see where the pointer is.
+	CaptureView() ([]byte, error)
 	// SetRemoteActive tells the shell a browser is driving this instance, so
 	// the virtual cursor stays on screen while it is — otherwise the moves
 	// would be invisible and look like nothing happened.

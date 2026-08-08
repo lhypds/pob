@@ -34,7 +34,28 @@ POST to `http://192.168.1.40:8033/` lands the same way. It is served where it
 lands, never redirected, since most HTTP clients would turn a redirected POST
 into a GET and lose the keystroke.
 
-A GET on either address serves the [Web UI](12_WebUI.md) page instead.
+That address is the machine itself, so the method says what you want of it:
+
+| Method | Path | What it answers |
+|--------|------|-----------------|
+| `POST` | `/<instance-id>/` | Runs a command — the rest of this page |
+| `GET` | `/<instance-id>/` | A PNG of what the machine looks like right now, virtual cursor included |
+| `GET` | `/<instance-id>/control` | The [Web UI](12_WebUI.md) control page — text field, keyboard mirror, trackpad |
+| `GET` | `/<instance-id>/view` | The [Web UI](12_WebUI.md) view page, which refetches that PNG once a second |
+
+Both pages work off the bare root as well — `http://192.168.1.40:8033/control`
+is the same page. Anything else under the address is a 404; nothing else is
+there.
+
+The frame is a plain image, so watching the machine needs no more than an
+`<img>` — or a shell:
+
+```
+curl -o now.png http://192.168.1.40:8033/pb-a703/
+```
+
+It is sent `Cache-Control: no-store`: a cached frame is a moment that has
+already passed.
 
 The port is yours to set: `server_port` in `settings.json`, or `POB_SERVER_PORT`
 in the environment. It is the same on every machine unless someone changes it,

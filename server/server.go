@@ -3,12 +3,16 @@
 //
 //	http://192.168.1.40:8033/pb-a703
 //
-// It serves two things. The API is the pico-hid board's, so its clients work
-// against Pob unchanged: the commands POSTed here are translated in command.go
-// into the same cursor and keyboard calls the MCP server makes. The web UI in
-// webui/index.html is one such client — a text field, a keyboard-mirror button
-// and a trackpad — served from the same address so a phone on the network can
-// drive the machine with nothing installed.
+// The API is the pico-hid board's, so its clients work against Pob unchanged:
+// the commands POSTed here are translated in command.go into the same cursor
+// and keyboard calls the MCP server makes. A GET at the same address answers
+// with what the machine looks like right now, as a PNG.
+//
+// Two pages in webui/ ride along, served from the same address so a phone on
+// the network needs nothing installed: webcontrol.html at /control — a text
+// field, a keyboard-mirror button and a trackpad, the API's own client — and
+// webview.html at /view, which just watches, refetching the frame once a
+// second.
 //
 // The server starts with the instance, on the port in settings.json — the same
 // on every machine unless someone changes it, so the address can be typed from
@@ -43,12 +47,15 @@ const idleAfter = 90 * time.Second
 // text field; a megabyte of it is already far past what anyone types.
 const maxBody = 1 << 20
 
-// The web UI is the server's own client, kept in its own directory because it
-// is the one part of this package that isn't Go — and built into the binary,
-// so serving it needs nothing on disk.
+// The two pages are the server's own clients, kept in their own directory
+// because they are the one part of this package that isn't Go — and built into
+// the binary, so serving them needs nothing on disk.
 //
-//go:embed webui/index.html
-var page []byte
+//go:embed webui/webcontrol.html
+var controlPage []byte
+
+//go:embed webui/webview.html
+var viewPage []byte
 
 type Server struct {
 	instance string

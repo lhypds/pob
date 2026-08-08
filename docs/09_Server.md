@@ -28,8 +28,8 @@ That is the point of it — but it is also why `"server": false` in
 What it serves
 --------------
 
-- **GET** — the [Web UI](12_WebUI.md), a remote control page for a phone or any
-  other browser on the network.
+The address itself is the machine, and the method says what you want of it:
+
 - **POST** — a command, as `text/plain`, which makes driving the machine
   scriptable:
 
@@ -37,6 +37,22 @@ What it serves
 curl -X POST --data 'typing=hello'      http://192.168.1.40:8033/pb-a703/
 curl -X POST --data 'mouse=CLICK(0,0)'  http://192.168.1.40:8033/pb-a703/
 ```
+
+- **GET** — a PNG of what the machine looks like right now, cursor included:
+
+```
+curl -o now.png                         http://192.168.1.40:8033/pb-a703/
+```
+
+Two pages sit under that address, both part of the [Web UI](12_WebUI.md):
+
+- **`/control`** — the remote control page for a phone or any other browser on
+  the network: text field, keyboard mirror, trackpad.
+- **`/view`** — the same frame as the GET above, refetched once a second, so a
+  second screen can watch the machine work.
+
+Since the bare root is the same server, `http://192.168.1.40:8033/control`
+reaches the control page too.
 
 The protocol is the pico-hid board's, so its clients work against Pob
 unchanged. The full command grammar is in

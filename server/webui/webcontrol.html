@@ -159,12 +159,12 @@
       // keepalive fetches.
       const TOUCH_ONLY = matchMedia("(hover: none) and (pointer: coarse)").matches;
 
-      // Commands go back to the path this page was served from, which is what
-      // names the instance: every instance on the machine shares one port and
-      // is told apart by /<instance>. Reading it off the location rather than
-      // baking it in means the same page works however it was reached — by
-      // name, by address, or through the instance holding the port.
-      const ENDPOINT = location.pathname;
+      // Commands go to the instance root, which is this page's own path with
+      // /control taken off: the root is where the machine takes commands, and
+      // the path leading to it is what names the instance. Reading it off the
+      // location rather than baking it in means the same page works however it
+      // was reached — by name, by address, or through the bare root.
+      const ENDPOINT = location.pathname.replace(/\/control\/?$/, "/");
 
       let inFlight = false;
       const queue = []; // discrete commands, delivered in order and never dropped

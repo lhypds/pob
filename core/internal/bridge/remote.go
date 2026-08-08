@@ -36,4 +36,9 @@ func (r *Remote) Scroll(dx, dy int) error   { _, err := r.br.Scroll(dx, dy); ret
 func (r *Remote) TypeText(text string) error { return r.br.TypeText(text) }
 func (r *Remote) KeyPress(key string) error  { return r.br.KeyPress(key) }
 
+// CaptureView takes the whole frame with the cursor in it: it is watched, not
+// measured, so there is nothing to crop to and the pointer is the one thing a
+// watcher most needs to see.
+func (r *Remote) CaptureView() ([]byte, error) { return r.br.CaptureScreenshot(true, nil) }
+
 func (r *Remote) SetRemoteActive(active bool) { r.br.NotifyRemoteControl("server", active) }
