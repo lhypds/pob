@@ -79,41 +79,16 @@ static gchar *reserve_instance_id(const char *root) {
     }
 }
 
-// The pb-* directory modified last, or NULL when there are none. By
-// modification time rather than by name: the directory is touched every time
-// a session is written into it, so the newest is the one that was in use.
-static gchar *most_recent_instance(const char *root) {
-    GDir *dir = g_dir_open(root, 0, NULL);
-    if (!dir) return NULL;
-
-    gchar *newest = NULL;
-    gint64 newest_at = 0;
-    const gchar *name;
-    while ((name = g_dir_read_name(dir))) {
-        if (!g_str_has_prefix(name, INSTANCE_PREFIX)) continue;
-        gchar *path = g_build_filename(root, name, NULL);
-        GStatBuf st;
-        if (g_stat(path, &st) == 0 && S_ISDIR(st.st_mode) &&
-            (!newest || (gint64)st.st_mtime > newest_at)) {
-            g_free(newest);
-            newest = g_strdup(name);
-            newest_at = (gint64)st.st_mtime;
-        }
-        g_free(path);
-    }
-    g_dir_close(dir);
-    return newest;
-}
-
 // The machine's instance id — the same one on every run, recorded in
 // ~/.pob/INSTANCE the first time it is worked out. This mirrors the Go core's
 // ResolveInstanceID because either side can get there first: the shell
 // resolves it to show in the headerbar and passes it to pob-core with
 // --instance, but the CLI can reach ~/.pob without a shell at all.
 //
-// Without a pointer to read, the pb-* directory under ~/.pob that was used
-// last is adopted rather than a new one started; the rest stay where they are
-// as history.
+// The pointer is the only thing that says which instance this machine is:
+// with no readable one a fresh id is drawn and a new directory reserved,
+// rather than an existing pb-* directory adopted. Deleting the file is
+// therefore a way to start clean, and what is already there stays as history.
 static gchar *resolve_instance_id(const char *root) {
     gchar *pointer = root_path(INSTANCE_POINTER);
     gchar *contents = NULL;
@@ -131,8 +106,7 @@ static gchar *resolve_instance_id(const char *root) {
         g_free(contents);
     }
 
-    gchar *id = most_recent_instance(root);
-    if (!id) id = reserve_instance_id(root);
+    gchar *id = reserve_instance_id(root);
     gchar *line = g_strconcat(id, "\n", NULL);
     g_file_set_contents(pointer, line, -1, NULL);
     g_free(line);

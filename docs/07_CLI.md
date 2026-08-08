@@ -11,8 +11,9 @@ when needed; the same menu item uninstalls it again). The dev scripts also
 build it to `core/bin/pob` next to `pob-core` (add that folder to your `PATH`,
 or call it by path).
 
-All project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
-live in `~/.pob`, created on first use and shared by the app and the CLI.
+Everything lives in `~/.pob`, created on first use and shared by the app and
+the CLI: `INSTANCE` names the instance directory, and that directory holds its
+`settings.json`, `instruction.txt`, `macro.txt`, `instance.json` and `logs/`.
 
 A running Pob serves a small control API on an ephemeral localhost port,
 advertised in `~/.pob/<instance>/logs/control.json`; the CLI reads that file
@@ -29,7 +30,8 @@ Flags:
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
-| `launch` | Start the app (alias: `new`); fails if it is already running. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
+| `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the shell build outputs for `core/bin/pob` |
+| `new [name]` | Create an instance — its own `settings.json`, `instruction.txt`, `macro.txt` and `logs/` — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, model, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
 | `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
@@ -46,7 +48,9 @@ Examples:
 
 ```
 pob                                      # what's running?
-pob launch                               # start the app
+pob new "Work laptop"                    # create an instance and switch to it
+pob launch                               # start the app (asks which, if there are several)
+pob launch "Work laptop"                 # start that one
 pob run "click Save and close the dialog"
 pob start                                # run instruction.txt
 pob --session 1752712400                 # session detail: plans, steps, usage

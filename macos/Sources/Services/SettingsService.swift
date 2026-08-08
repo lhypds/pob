@@ -90,9 +90,11 @@ class SettingsService {
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
     ///
-    /// Without a pointer to read, the pb-* directory under ~/.pob that was
-    /// used last is adopted rather than a new one started; the rest stay where
-    /// they are as history.
+    /// The pointer is the only thing that says which instance this machine
+    /// is: with no readable one a fresh id is drawn and a new directory
+    /// reserved, rather than an existing pb-* directory adopted. Deleting the
+    /// file is therefore a way to start clean, and what is already there stays
+    /// as history.
     private static func resolveInstanceID(_ fileManager: FileManager, root: URL) -> String {
         let pointer = root.appendingPathComponent(instancePointer)
 
@@ -106,30 +108,9 @@ class SettingsService {
             }
         }
 
-        let id = mostRecentInstance(fileManager, root: root) ?? reserveInstanceID(fileManager, root: root)
+        let id = reserveInstanceID(fileManager, root: root)
         try? (id + "\n").write(to: pointer, atomically: true, encoding: .utf8)
         return id
-    }
-
-    /// The pb-* directory modified last, or nil when there are none. By
-    /// modification time rather than by name: the directory is touched every
-    /// time a session is written into it, so the newest is the one that was
-    /// actually in use.
-    private static func mostRecentInstance(_ fileManager: FileManager, root: URL) -> String? {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
-        guard let children = try? fileManager.contentsOfDirectory(
-            at: root, includingPropertiesForKeys: keys) else { return nil }
-
-        var newest: (id: String, at: Date)?
-        for child in children where child.lastPathComponent.hasPrefix(instancePrefix) {
-            guard let values = try? child.resourceValues(forKeys: Set(keys)),
-                  values.isDirectory == true,
-                  let at = values.contentModificationDate else { continue }
-            if newest == nil || at > newest!.at {
-                newest = (child.lastPathComponent, at)
-            }
-        }
-        return newest?.id
     }
 
     /// Reserves a fresh `pb-<4 hex>` directory — the last two bytes of a new

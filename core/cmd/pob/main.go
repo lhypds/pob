@@ -1,13 +1,17 @@
-// pob is the command-line interface to Pob. A machine runs one instance and
-// it keeps one id, so there is nothing to pick between: the commands drive it
-// over the localhost control API served by pob-core (see internal/ctlserver),
-// found through <instance>/logs/control.json. Log and session inspection reads
-// the logs/ tree directly, so it also works when the app is not running.
+// pob is the command-line interface to Pob. A machine runs one instance at a
+// time — the one ~/.pob/INSTANCE names — and the commands drive it over the
+// localhost control API served by pob-core (see internal/ctlserver), found
+// through <instance>/logs/control.json. Log and session inspection reads the
+// logs/ tree directly, so it also works when the app is not running.
+//
+// `pob new` makes another instance and `pob launch` picks which one to start;
+// everything else works on whichever is current.
 //
 // Usage examples:
 //
 //	pob                              show the instance
-//	pob launch                       start the app
+//	pob new "Work laptop"            create an instance and switch to it
+//	pob launch                       start the app (asks which, with several)
 //	pob --session Y                  show one session's details
 //	pob start                        run instruction.txt
 //	pob run "open the settings"      replace instruction.txt, then run it
@@ -21,8 +25,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"pob/core/internal/config"
 )
 
 // version is stamped by the build scripts via -ldflags "-X main.version=…".
@@ -42,7 +44,11 @@ Flags:
 Commands:
   (none)             Show the instance and its sessions; with --session show
                      that session
-  launch             Start the app (alias: new)
+  launch [instance]  Start the app. With more than one instance and nothing
+                     named, lists them and asks which to start — arrow keys to
+                     move, enter to start. <instance> is a name or an id
+  new [name]         Create an instance — its own settings, instruction, macro
+                     and logs — and make it the one Pob starts next
   status             Live status of the instance
   sessions           List the instance's sessions
   start              Execute instruction.txt (the toolbar Execute button)
@@ -60,7 +66,8 @@ Commands:
 
 Examples:
   pob                          # what's running?
-  pob launch                   # start the app
+  pob new "Work laptop"        # create an instance and switch to it
+  pob launch                   # start the app (asks which, with several)
   pob run "click the Save button and close the dialog"
   pob --session 1752712400
   pob mcp start
@@ -101,8 +108,11 @@ func main() {
 		}
 		showInstance(root)
 
-	case "launch", "new":
-		launchInstance(root)
+	case "launch":
+		cmdLaunch(root, strings.TrimSpace(strings.Join(args[1:], " ")))
+
+	case "new":
+		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))
 
 	case "sessions":
 		listSessionsCmd(root, theInstance(root).ID)
@@ -150,16 +160,18 @@ func main() {
 }
 
 // projectRoot returns ~/.pob — the single project root shared by every Pob
-// component. The instance directory it points at is created and seeded with
-// the standard first-run files (settings.json, instruction.txt, macro.txt,
-// logs/) on first use.
+// component. Only the directory itself is made here: which instance inside it
+// is in use is a question for the command that needs one, and `pob new` needs
+// it not to have been answered already.
 func projectRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fail("cannot determine home directory: %v", err)
 	}
 	root := filepath.Join(home, ".pob")
-	config.New(root, "")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		fail("cannot create %s: %v", root, err)
+	}
 	return root
 }
 

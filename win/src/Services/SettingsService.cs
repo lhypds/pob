@@ -86,9 +86,11 @@ public static class SettingsService
     /// shell resolves it to show in the toolbar and passes it to pob-core
     /// with --instance, but the CLI can reach ~/.pob without a shell at all.
     ///
-    /// Without a pointer to read, the pb-* directory under ~/.pob that was
-    /// used last is adopted rather than a new one started; the rest stay where
-    /// they are as history.
+    /// The pointer is the only thing that says which instance this machine
+    /// is: with no readable one a fresh id is drawn and a new directory
+    /// reserved, rather than an existing pb-* directory adopted. Deleting the
+    /// file is therefore a way to start clean, and what is already there stays
+    /// as history.
     /// </summary>
     private static string ResolveInstanceId(string root)
     {
@@ -112,7 +114,7 @@ public static class SettingsService
         {
         }
 
-        string resolved = MostRecentInstance(root) ?? ReserveInstanceId(root);
+        string resolved = ReserveInstanceId(root);
         try
         {
             File.WriteAllText(pointer, resolved + Environment.NewLine);
@@ -121,46 +123,6 @@ public static class SettingsService
         {
         }
         return resolved;
-    }
-
-    /// <summary>
-    /// The pb-* directory written to last, or null when there are none. By
-    /// last-write time rather than by name: the directory is touched every
-    /// time a session is written into it, so the newest is the one that was
-    /// actually in use.
-    /// </summary>
-    private static string? MostRecentInstance(string root)
-    {
-        string[] dirs;
-        try
-        {
-            dirs = Directory.GetDirectories(root, InstancePrefix + "*");
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-
-        string? newest = null;
-        DateTime newestAt = DateTime.MinValue;
-        foreach (string dir in dirs)
-        {
-            DateTime at;
-            try
-            {
-                at = Directory.GetLastWriteTimeUtc(dir);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            if (newest == null || at > newestAt)
-            {
-                newest = Path.GetFileName(dir);
-                newestAt = at;
-            }
-        }
-        return newest;
     }
 
     /// <summary>

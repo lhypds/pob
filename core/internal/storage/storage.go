@@ -57,10 +57,10 @@ func New(root, instanceID string, settingsDict func() map[string]any, instructio
 // ResolveInstanceID returns the machine's instance id, the same one on every
 // run. It is recorded in <root>/INSTANCE the first time it is worked out.
 //
-// Without a pointer to read, the pb-* directory under the root that was used
-// last is adopted rather than a new one started, so a machine that loses the
-// file goes back to the instance it was working in; the others stay where
-// they are as history.
+// The pointer is the only thing that says which instance a machine is: with
+// no readable one a fresh id is drawn and a new directory reserved, rather
+// than an existing pb-* directory adopted. Deleting the file is therefore a
+// way to start clean, and the directories already there stay as history.
 //
 // The shells resolve the id the same way before spawning pob-core, since they
 // need it for the toolbar and their own settings file. Whoever gets there
@@ -72,18 +72,14 @@ func ResolveInstanceID(root string) string {
 		return id
 	}
 
-	id := mostRecentInstance(root)
-	if id == "" {
-		id = newInstanceID(root)
-	}
-	_ = os.MkdirAll(root, 0o755)
+	id := newInstanceID(root)
 	_ = os.WriteFile(pointer, []byte(id+"\n"), 0o644)
 	return id
 }
 
 // readInstancePointer reads <root>/INSTANCE, ignoring anything that isn't an
-// instance id — a truncated or hand-edited file should send the machine back
-// to working the id out rather than into a directory named after junk.
+// instance id — a truncated or hand-edited file should start a new instance
+// rather than send the machine into a directory named after junk.
 func readInstancePointer(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -94,32 +90,6 @@ func readInstancePointer(path string) string {
 		return ""
 	}
 	return id
-}
-
-// mostRecentInstance is the pb-* directory under root modified last, or ""
-// when there are none. Modification time rather than the id or instance.json:
-// the directory is touched every time a session is written into it, so the
-// newest is the one that was actually being used.
-func mostRecentInstance(root string) string {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return ""
-	}
-	var newest string
-	var newestAt time.Time
-	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), InstancePrefix) {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if newest == "" || info.ModTime().After(newestAt) {
-			newest, newestAt = entry.Name(), info.ModTime()
-		}
-	}
-	return newest
 }
 
 // newInstanceID reserves a pb-<uid> directory under root. If the ID is
@@ -158,16 +128,23 @@ func (s *Storage) InstanceDir() string { return filepath.Join(s.root, s.instance
 // LogsDir returns <root>/<instance>/logs, this process's log directory.
 func (s *Storage) LogsDir() string { return filepath.Join(s.InstanceDir(), "logs") }
 
+// instanceFile is <root>/<instance>/instance.json — who this instance is (its
+// id and the name it was given) and when it last ran. It sits beside the
+// instance's settings rather than inside logs/, because it says what the
+// directory is rather than what happened in it.
 func (s *Storage) instanceFile() string {
-	return filepath.Join(s.LogsDir(), "instance.json")
+	return filepath.Join(s.InstanceDir(), "instance.json")
 }
 
-// WriteInstanceStart creates logs/instance.json recording when this instance
-// started.
+// WriteInstanceStart records when this instance started, keeping the id and
+// name already written there — an instance made by `pob new` is named before
+// it has ever run.
 func (s *Storage) WriteInstanceStart() {
-	writeJSON(s.instanceFile(), map[string]any{
-		"start_time": time.Now().Unix(),
-	})
+	entry := readJSONFile(s.instanceFile())
+	entry["id"] = s.instanceID
+	entry["start_time"] = time.Now().Unix()
+	delete(entry, "end_time")
+	writeJSON(s.instanceFile(), entry)
 }
 
 // WriteInstanceEnd records the end time into instance.json, preserving the

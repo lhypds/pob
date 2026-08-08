@@ -134,6 +134,9 @@ func showInstance(root string) {
 		showStatus(inst)
 	} else {
 		fmt.Printf("Instance:   %s (stopped)\n", inst.ID)
+		if inst.Name != "" {
+			fmt.Printf("Name:       %s\n", inst.Name)
+		}
 		fmt.Printf("Started:    %s\n", formatTime(inst.StartTime))
 		fmt.Printf("Ended:      %s\n", formatTime(inst.EndTime))
 	}

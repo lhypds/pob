@@ -9,7 +9,8 @@ Structure
     +--- INSTANCE                                 names the instance directory below; the only thing above it, apart from app.log.
     +--- app.log                                  the app's own log, across instances.
 
-    +--- pb-<uid>/                                the machine's instance directory, the same one every run.
+    +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
+         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, and when it last ran.
          +--- settings.json                       this instance's settings.
          +--- instruction.txt                     what Execute runs.
          +--- macro.txt                           what Record writes and Play replays.
@@ -17,7 +18,6 @@ Structure
 
          +--- logs/
               +--- screenshots/                   screenshots taken with the toolbar Screenshot button.
-              +--- instance.json                  instance start/end times, etc.
               +--- control.json                   written while the instance runs; advertises the [Control API](11_Control%20API.md) port used by the `pob` CLI.
 
               +--- <session>/ (instruction)       session executed from instruction.  
@@ -49,8 +49,13 @@ recorded in `~/.pob/INSTANCE`, so every session ever run lands in the same direc
 Everything an instance works with is inside its own directory and nothing is shared between IDs.
 Point `INSTANCE` at another one — write a different `pb-<4 hex>` into it, or delete the file to have
 one drawn — and Pob starts from clean settings, an empty instruction and an empty macro, with the
-old directory left untouched beside it. That is what changing it is for. Deleting the file with the
-old directories still in place adopts the one used last rather than starting a new one.  
+old directory left untouched beside it. That is what changing it is for: `INSTANCE` is the only
+thing that says which directory is in use, so deleting it always starts a new instance rather than
+picking up one of the directories already there.
+
+`pob new "Work laptop"` is that move done for you: it creates the directory, records the name in
+`instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
+which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
 `<plan>` is a unique plan ID named as a unixtime.  
 `<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  

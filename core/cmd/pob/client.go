@@ -22,6 +22,9 @@ import (
 
 type Instance struct {
 	ID string
+	// Name is what `pob new` called it, "" for an instance that was never
+	// given one.
+	Name string
 	// Dir is <root>/<id>, holding settings.json, instruction.txt and macro.txt;
 	// LogsDir is its logs/ subdirectory, holding the sessions and the two JSON
 	// files a running instance advertises itself with.
@@ -54,11 +57,12 @@ func newInstance(root, id string) *Instance {
 // Returns nil when the directory doesn't look like an instance.
 func loadInstance(root, id string) *Instance {
 	inst := newInstance(root, id)
-	instanceJSON := readJSONFile(filepath.Join(inst.LogsDir, "instance.json"))
+	instanceJSON := readJSONFile(filepath.Join(inst.Dir, "instance.json"))
 	controlJSON := readJSONFile(filepath.Join(inst.LogsDir, "control.json"))
 	if instanceJSON == nil && controlJSON == nil {
 		return nil
 	}
+	inst.Name, _ = instanceJSON["name"].(string)
 	inst.StartTime = intField(instanceJSON, "start_time")
 	inst.EndTime = intField(instanceJSON, "end_time")
 	inst.Port = int(intField(controlJSON, "port"))
@@ -142,6 +146,9 @@ func showStatus(inst *Instance) {
 	model, _ := status["model"].(string)
 
 	fmt.Printf("Instance:   %s (pid %d)\n", inst.ID, int(intField(status, "pid")))
+	if inst.Name != "" {
+		fmt.Printf("Name:       %s\n", inst.Name)
+	}
 	fmt.Printf("Root:       %s\n", status["root"])
 	if executing && session != "" {
 		fmt.Printf("Executing:  yes (session %s)\n", session)
