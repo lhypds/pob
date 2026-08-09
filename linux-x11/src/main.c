@@ -657,6 +657,25 @@ static GtkWidget *build_applog_button(void) {
     return btn;
 }
 
+// The app name at the very leading edge, and the way to the About box. macOS
+// carries both in the menu bar at the top-left of the screen; X11 has no such
+// place, so the headerbar does — click the name for the version, the same
+// panel the titlebar menu's "About Pob" opens.
+static void on_app_name_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    show_about_dialog();
+}
+
+static GtkWidget *build_app_name_button(void) {
+    GtkWidget *btn = gtk_button_new_with_label("Pob");
+    gtk_style_context_add_class(gtk_widget_get_style_context(btn),
+                                "pob-app-name");
+    gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(btn, "About Pob");
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_app_name_clicked), NULL);
+    return btn;
+}
+
 // This instance's id (pb-xxxx) as small monospaced text — the same badge the
 // macOS toolbar shows beside the window buttons. It names the instance's
 // ~/.pob/<instance>/ directory; clicking copies the dashboard it answers at,
@@ -815,8 +834,10 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.window, "window-state-event",
                      G_CALLBACK(on_window_state), NULL);
 
-    // Instance id at the leading edge, beside the window buttons — the same
-    // spot as the macOS badge.
+    // App name first, then the instance id — the same spot as the macOS badge,
+    // with the name macOS keeps in the menu bar in front of it. pack_start
+    // packs left to right, so this list reads leftmost first.
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), build_app_name_button());
     gtk_header_bar_pack_start(GTK_HEADER_BAR(hb), build_instance_id_button());
 
     // Everything else packs right, in the same left-to-right order as the
@@ -895,6 +916,15 @@ static void install_css(void) {
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
         ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
+        // App name at the leading edge: bare text like the instance id beside
+        // it, a touch larger and in the UI font. Same qualified selector, for
+        // the same reason — the compact-button rule below would otherwise win.
+        "window.pob-window headerbar button.pob-app-name {\n"
+        "  font-size: 9pt; font-weight: bold;\n"
+        "  min-width: 0; min-height: 0; padding: 2px 4px; margin-right: 2px;\n"
+        "  border: none; box-shadow: none;\n"
+        "  background-image: none; background-color: transparent;\n"
+        "}\n"
         // Instance id, matching the macOS badge: bare text, with the theme's
         // button background taken off it. Selector is qualified past the
         // compact-button rule below, which would otherwise win on specificity.

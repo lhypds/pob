@@ -124,6 +124,15 @@ public partial class ToolbarWindow : Window
         e.Handled = true;
     }
 
+    // The app name stands in for the macOS app menu, so clicking it opens what
+    // that menu's "About Pob" opens. Handled so the click doesn't also start a
+    // titlebar drag.
+    private void OnAppNameClicked(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        Dialogs.ShowAbout(this);
+    }
+
     private void OnSettingsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenSettingsFile();
 
     private void OnLogsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenLogsFolder();
