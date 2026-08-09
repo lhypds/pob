@@ -123,8 +123,7 @@ That is the *prompt* in Prompt Script Language, and the whole of what separates 
 language. A call is a macro doing what it was told. A slot is a macro asking about a screen nobody
 could describe to it in advance, at the moment it is looking at that screen.
 
-
-### What comes back
+What comes back
 
 Nothing states what kind of value is wanted — the model is shown the statement and works that out
 from where the slot sits in it, which is why the whole macro goes with it. What it answers has to
@@ -146,8 +145,7 @@ and skipped, like any other line that cannot be read. Nothing is retried: the ma
 next statement. A psl run that fails outright — no model configured, no answer — leaves the statement
 unfilled and therefore unrun, the same way.
 
-
-### Writing one
+Writing one
 
 Write an instruction a screenshot can settle — "a chat window is open", "the file list is empty",
 "the x offset to the Save button". The model is given the macro, the statement and the picture and
