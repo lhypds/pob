@@ -92,6 +92,24 @@ read first — the copy in this folder) and
 `amd64`; use `WIN_ARCHS="amd64 arm64"` to build both.
 
 
+Run it from macOS, in a VM
+--------------------------
+
+Compiling on a Mac is one thing; running is another. The Linux shell can live
+in a container — X11 is a socket, so Xvfb is a real display — but Windows
+containers need a Windows host and have no desktop even there, which leaves
+`BitBlt` capturing black and `SendInput` with nothing to inject into. A VMware
+Fusion guest is the equivalent, and it is scriptable:
+
+```
+./win/vm_deploy.sh   # build arm64, start the VM headless, install, restart Pob
+```
+
+[VM.md](../docs/VM.md) has the guest setup that matters — autologon, no screen
+lock, and why the app has to be started by the Task Scheduler rather than over
+SSH.
+
+
 Source layout
 -------------
 

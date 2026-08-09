@@ -1,0 +1,252 @@
+
+Pob in a Windows VM (macOS host)
+================================
+
+The Linux shell runs happily in a container: X11 is a socket, so `Xvfb :99`
+and `DISPLAY=:99` hand it a real root window to capture with `XGetImage` and
+a real XTest to inject into. Windows has no equivalent. A Windows container
+needs a Windows host, so it cannot run on this Mac at all — and even on a
+Windows host it ships no display driver and no interactive desktop, so
+`GetDC(NULL)` + `BitBlt` in `win/src/Services/ScreenshotService.cs` comes back
+black and `SendInput` in `win/src/Services/MouseService.cs` has no desktop to
+inject into. The shell is the eyes and hands, so the one piece that cannot
+run in a container is the piece you need.
+
+A virtual machine is the equivalent, and `vmrun … nogui` is as close to
+`docker run -d` as this gets: the guest keeps a virtual display device
+whether or not a window is on screen, so capture keeps working while nothing
+is visible. That is the difference from RDP, where disconnecting locks the
+desktop and frames go black.
+
+
+What you need
+-------------
+
+- **VMware Fusion Pro** — free, for personal *and* commercial use since
+  Broadcom dropped the price in November 2024. "Pro" is not an upgrade to buy;
+  it is the only edition left, the Player tier having been retired. The
+  download lives on `support.broadcom.com` rather than vmware.com and wants a
+  Broadcom account, which is registration, not payment. Headless (`nogui`) is
+  the reason to prefer it over Parallels and UTM here.
+
+  Releases are named by half-year now (`25H2`, `26H1`, …) with the old `13.x`
+  line beside them. Take the current one whose matrix covers the host macOS:
+  Fusion rides on Apple's hypervisor, which changes with every macOS major, so
+  a build older than the host fails to start VMs rather than degrading.
+- **A Windows 11 ARM64 disk image** from Microsoft. An M-series Mac runs ARM
+  guests only, which is why the deploy below builds `arm64` — the target
+  `win/build_docker.sh` already supports.
+- ~40 GB of disk, 4+ GB of RAM for the guest.
+
+Windows 11 wants a TPM, and Fusion supplies a virtual one — which means it
+encrypts the VM and asks for a password when you create it. Store that
+password in the keychain when prompted, or `vmrun` cannot start the VM
+unattended.
+
+
+Create the VM
+-------------
+
+In Fusion: **File → New → Install from disc or image**, pick the ARM64 ISO,
+and let it run. Two settings to change before first boot, both in **Virtual
+Machine → Settings**:
+
+- **Network Adapter → Bridged (Autodetect)**. The guest then gets a LAN
+  address and the Pob server on port 8033 is reachable from the Mac with no
+  forwarding. (With the default NAT you would be editing
+  `/Library/Preferences/VMware Fusion/vmnet8/nat.conf` instead.)
+- **Display → uncheck "Automatically adjust user interface size"**, and set a
+  fixed resolution.
+
+After Windows is up, **Virtual Machine → Install VMware Tools** for the
+display driver and the clipboard.
+
+
+The guest setup Pob needs
+-------------------------
+
+Five things, and each one is there because Pob perceives and operates a
+*desktop*, not a machine. Run these in an elevated PowerShell in the guest.
+
+**1. Autologon**, so a reboot lands on an unlocked desktop with nothing to
+type. Sysinternals
+[Autologon](https://learn.microsoft.com/sysinternals/downloads/autologon) is
+the safe way — it keeps the password in an LSA secret rather than in the
+registry in plain text:
+
+```
+autologon.exe <user> <computername> <password>
+```
+
+**2. Never lock, never sleep.** A locked desktop cannot be captured and will
+not accept injected input:
+
+```powershell
+powercfg /change monitor-timeout-ac 0
+powercfg /change standby-timeout-ac 0
+reg add "HKCU\Control Panel\Desktop" /v ScreenSaveActive /t REG_SZ /d 0 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization" `
+    /v NoLockScreen /t REG_DWORD /d 1 /f
+```
+
+**3. 100% display scaling**, in Settings → System → Display. The shell
+converts screenshot pixels to screen positions itself, so scaling is handled
+— but a display whose size changes underneath you makes macros recorded
+earlier ([Macro](03_Macro.md)) land in the wrong place. Fixed
+resolution, fixed scaling, no surprises.
+
+**4. OpenSSH server**, which is how deploys get in:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Set-Service -Name sshd -StartupType Automatic
+Start-Service sshd
+```
+
+Then authorize your Mac's key. For a member of Administrators the file is
+**not** `~/.ssh/authorized_keys` — sshd reads a shared one instead, and
+ignores it unless the ACL is right:
+
+```powershell
+$f = "$env:ProgramData\ssh\administrators_authorized_keys"
+Set-Content $f "<paste ~/.ssh/id_ed25519.pub from the Mac>"
+icacls $f /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"
+```
+
+**5. Let the Pob server through the firewall.** It listens on every
+interface (see [Pob Server](09_Server.md)), but inbound TCP is
+blocked by default:
+
+```powershell
+New-NetFirewallRule -DisplayName "Pob 8033" -Direction Inbound `
+    -Action Allow -Protocol TCP -LocalPort 8033
+```
+
+On the Mac, give the guest a name so the deploy script has something to
+talk to — in `~/.ssh/config`:
+
+```
+Host pobwin
+    HostName 192.168.1.42
+    User pob
+```
+
+
+Start Pob in the console session, not over SSH
+----------------------------------------------
+
+This is the one thing that will otherwise waste an afternoon. `pob launch`
+spawns the app in the session it is called from
+(`core/cmd/pob/launch_windows.go`), and an SSH session is not the console
+session — it is a non-interactive one with no desktop of its own. An app
+started that way is invisible, captures black frames and injects input
+nowhere. It is the container problem again, on a machine that has a perfectly
+good desktop three feet away.
+
+The fix is to have the Task Scheduler start it, since a task registered
+against the logged-on user runs in *that* user's interactive session.
+`win/vm_deploy.sh` registers this task on the first deploy, so there is nothing
+to do by hand — it is here because it is the part worth understanding:
+
+```powershell
+$exe = "$env:LOCALAPPDATA\Programs\Pob\Pob.exe"
+Register-ScheduledTask -TaskName Pob -Force `
+    -Action    (New-ScheduledTaskAction -Execute $exe) `
+    -Trigger   (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) `
+    -Principal (New-ScheduledTaskPrincipal `
+                   -UserId "$env:COMPUTERNAME\$env:USERNAME" `
+                   -LogonType Interactive -RunLevel Highest) `
+    -Settings  (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+                   -DontStopIfGoingOnBatteries `
+                   -ExecutionTimeLimit ([TimeSpan]::Zero))
+```
+
+`-AtLogOn` means autologon brings Pob up with the machine, and
+`schtasks /run /tn Pob` restarts it from an SSH session while still putting
+it on the console desktop. `-RunLevel Highest` is worth having: UIPI blocks
+synthesized input from a normal process to an elevated window, so without it
+Pob can see an elevated app but cannot click it.
+
+
+Install and update
+------------------
+
+`win/vm_deploy.sh` does the whole round trip — build, copy, install,
+restart:
+
+```
+./win/vm_deploy.sh                     # build arm64, deploy, restart Pob
+POB_SKIP_BUILD=1 ./win/vm_deploy.sh    # deploy the zip already in the root
+POB_VM_SSH=pobwin2 ./win/vm_deploy.sh  # a different guest
+```
+
+It starts the VM headless if it is not already running, waits for SSH, stops
+the running app — `install.ps1` refuses to overwrite a live install — unzips
+over the old one, registers the scheduled task if it is missing, and triggers
+it. It finishes by printing the guest's Pob address, or by telling you that
+nobody is logged on at the console if the task had no session to start in.
+
+Set `openai_api_key` in `%USERPROFILE%\.pob\settings.json` in the guest —
+`install.ps1` leaves `.pob\` alone, so it survives every later deploy.
+
+
+Run it headless
+---------------
+
+```
+vmrun start ~/VMs/PobWin.vmwarevm nogui   # boot, no window
+vmrun list                                # what is running
+vmrun stop  ~/VMs/PobWin.vmwarevm soft    # shut down cleanly
+vmrun suspend ~/VMs/PobWin.vmwarevm       # freeze, resume later
+vmrun snapshot ~/VMs/PobWin.vmwarevm clean
+vmrun revertToSnapshot ~/VMs/PobWin.vmwarevm clean
+```
+
+`vmrun` is not on the `PATH`; it lives at
+`/Applications/VMware Fusion.app/Contents/Public/vmrun`. Take a snapshot
+once the guest is set up and Pob installed — reverting to it is the cheapest
+way back to a known desktop after an agent run leaves the machine in a
+state.
+
+
+Drive it from the Mac
+---------------------
+
+Nothing here is VM-specific: the guest is just another machine on the
+network running Pob, which is the whole point.
+
+```
+ssh pobwin '%LOCALAPPDATA%\Programs\Pob\Helpers\pob.exe' status
+```
+
+prints the address to use — `http://192.168.1.42:8033/pb-xxxx`. From there
+it is the ordinary [Operation API](10_Operation%20API.md):
+
+```
+curl -o now.png                        http://192.168.1.42:8033/pb-a703/
+curl -X POST --data 'typing=hello'     http://192.168.1.42:8033/pb-a703/
+curl -X POST --data 'mouse=CLICK(0,0)' http://192.168.1.42:8033/pb-a703/
+```
+
+Open that address on a phone for the [Web UI](12_Web%20UI.md), or
+point an MCP client at the guest's [MCP server](08_MCP.md). The
+`pob` CLI is the exception: its Control API is loopback-only
+([Control API](11_Control%20API.md)), so it has to run inside the
+guest — over SSH, as above.
+
+
+When frames come back black
+---------------------------
+
+Almost always the desktop, not Pob:
+
+- **The app was started from SSH.** Check with
+  `ssh pobwin query session` — the Pob process must be in the console
+  session (session 1), not session 0. Use `schtasks /run /tn Pob`.
+- **The desktop is locked.** Autologon covers boot; a screensaver or a
+  Fusion-window disconnect can still lock it later. Steps 2 and 3 above.
+- **You RDP'd in and disconnected.** That locks the console session. Use the
+  Fusion window instead, or hand the session back before dropping the
+  connection: `tscon 1 /dest:console`.
+- **VMware Tools is not installed**, so the guest has a fallback display
+  adapter and reports a resolution nothing renders at.

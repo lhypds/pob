@@ -64,3 +64,5 @@ See also
 
 - [Architecture](01_Architecture.md) — what each folder builds and how they talk
 - [Pob Keyboard](13_Keyboard.md) — the one component with its own toolchain needs
+- [Windows VM](VM.md) — where to *run* the Windows build when the only machine
+  you have is a Mac: a Fusion guest, deployed to with `win/vm_deploy.sh`
