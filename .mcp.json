@@ -2,7 +2,7 @@
   "mcpServers": {
     "pob": {
       "type": "sse",
-      "url": "http://192.168.0.60:8032/sse"
+      "url": "http://localhost:8032/sse"
     }
   }
 }
