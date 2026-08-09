@@ -9,7 +9,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,12 +219,16 @@ func (s *Storage) SaveMacro(sessionID string) {
 	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.psl"), []byte(s.macro()), 0o644)
 }
 
-// SaveMacroSlot writes one ::…:: the AI filled during a macro session, under
+// SaveMacroSlot writes one :: … :: that psl filled during a macro session, under
 // logs/<session>/slots/<n>/. The directories are numbered in the order the slots
 // were filled, and slot.json carries the statement and the line of macro.psl
 // each one came from — so a replay can be read back against the macro that was
 // written, which is not the same text once the slots are in it.
-func (s *Storage) SaveMacroSlot(sessionID string, seq, line int, statement, prompt, value, reason string, answered bool, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
+//
+// output is what psl said on its way to the answer, kept beside the screenshot
+// it was answered from. The conversation with the model is psl's and stays
+// there: Pob no longer builds one.
+func (s *Storage) SaveMacroSlot(sessionID string, seq, line int, statement, prompt, value, model string, filled bool, output string, screenshotPNG []byte) {
 	dir := filepath.Join(s.sessionDir(sessionID), "slots", fmt.Sprintf("%d", seq))
 	_ = os.MkdirAll(dir, 0o755)
 	writeJSON(filepath.Join(dir, "slot.json"), map[string]any{
@@ -234,11 +237,12 @@ func (s *Storage) SaveMacroSlot(sessionID string, seq, line int, statement, prom
 		"statement": statement,
 		"prompt":    prompt,
 		"value":     value,
-		"answered":  answered,
-		"reason":    reason,
+		"model":     model,
+		"filled":    filled,
 	})
-	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))
-	writeJSON(filepath.Join(dir, "response.json"), response)
+	if output != "" {
+		_ = os.WriteFile(filepath.Join(dir, "psl.txt"), []byte(output+"\n"), 0o644)
+	}
 	if len(screenshotPNG) > 0 {
 		_ = os.WriteFile(filepath.Join(dir, "screenshot.png"), screenshotPNG, 0o644)
 	}
@@ -268,42 +272,11 @@ func (s *Storage) SaveSessionStartEndTimes(sessionID string, start, end time.Tim
 	writeJSON(dest, entry)
 }
 
-// SaveSessionUsage sums the usage blocks of every response.json under the
-// session directory and writes the total into session.json.
-func (s *Storage) SaveSessionUsage(sessionID string) {
-	sessionDir := s.sessionDir(sessionID)
-
-	var promptTokens, completionTokens, totalTokens, reasoningTokens, cachedTokens int
-	_ = filepath.WalkDir(sessionDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || d.Name() != "response.json" {
-			return nil
-		}
-		usage, ok := readJSONFile(path)["usage"].(map[string]any)
-		if !ok {
-			return nil
-		}
-		promptTokens += intField(usage, "prompt_tokens")
-		completionTokens += intField(usage, "completion_tokens")
-		totalTokens += intField(usage, "total_tokens")
-		if details, ok := usage["completion_tokens_details"].(map[string]any); ok {
-			reasoningTokens += intField(details, "reasoning_tokens")
-		}
-		if details, ok := usage["prompt_tokens_details"].(map[string]any); ok {
-			cachedTokens += intField(details, "cached_tokens")
-		}
-		return nil
-	})
-
-	dest := filepath.Join(sessionDir, "session.json")
-	summary := readJSONFile(dest)
-	summary["usage"] = map[string]any{
-		"prompt_tokens":             promptTokens,
-		"completion_tokens":         completionTokens,
-		"total_tokens":              totalTokens,
-		"completion_tokens_details": map[string]any{"reasoning_tokens": reasoningTokens},
-		"prompt_tokens_details":     map[string]any{"cached_tokens": cachedTokens},
+func intField(m map[string]any, key string) int {
+	if v, ok := m[key].(float64); ok {
+		return int(v)
 	}
-	writeJSON(dest, summary)
+	return 0
 }
 
 func readJSONFile(path string) map[string]any {
@@ -314,43 +287,6 @@ func readJSONFile(path string) map[string]any {
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
 		return map[string]any{}
-	}
-	return out
-}
-
-func intField(m map[string]any, key string) int {
-	if v, ok := m[key].(float64); ok {
-		return int(v)
-	}
-	return 0
-}
-
-// stripImages replaces image_url payloads with a placeholder so messages.json
-// stays readable.
-func stripImages(messages []map[string]any) []map[string]any {
-	out := make([]map[string]any, 0, len(messages))
-	for _, msg := range messages {
-		m := make(map[string]any, len(msg))
-		for k, v := range msg {
-			m[k] = v
-		}
-		if parts, ok := m["content"].([]any); ok {
-			newParts := make([]any, 0, len(parts))
-			for _, part := range parts {
-				if p, ok := part.(map[string]any); ok && p["type"] == "image_url" {
-					cp := make(map[string]any, len(p))
-					for k, v := range p {
-						cp[k] = v
-					}
-					cp["image_url"] = map[string]any{"url": "<image_stripped>"}
-					newParts = append(newParts, cp)
-				} else {
-					newParts = append(newParts, part)
-				}
-			}
-			m["content"] = newParts
-		}
-		out = append(out, m)
 	}
 	return out
 }

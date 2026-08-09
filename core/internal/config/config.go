@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"pob/core/internal/mcpserver"
+	"pob/core/internal/psl"
 	"pob/core/internal/storage"
 	"pob/server"
 )
@@ -33,11 +34,7 @@ type Config struct {
 }
 
 var defaults = map[string]any{
-	"base_url":            "https://api.openai.com/v1",
-	"openai_api_key":      "",
-	"model":               "gpt-5.6",
-	"price_input_per_1m":  0,
-	"price_output_per_1m": 0,
+	"psl":                 psl.DefaultBinary,
 	"macro_default_delay": 1000,
 	"editor":              "system",
 	"terminal":            "system",
@@ -309,35 +306,13 @@ func (c *Config) intVal(key string, fallback, minimum int) int {
 	return fallback
 }
 
-func (c *Config) APIKey() string {
-	v, _ := c.readSettings()["openai_api_key"].(string)
-	return v
-}
-
-func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.openai.com/v1") }
-func (c *Config) Model() string    { return c.str("model", "gpt-5.6") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
 
-// MissingLLMSettings names the settings a model call needs and hasn't got, in
-// the order settings.json lists them. Nothing named means a call can be made.
-//
-// What is checked is the value that would actually be sent, not the entry in
-// the file: `base_url` and `model` fall back to a working default, so a machine
-// missing only those is set up, and the key — which has no default that could
-// work — is what a fresh one is missing.
-func (c *Config) MissingLLMSettings() []string {
-	var missing []string
-	for _, setting := range []struct{ key, value string }{
-		{"base_url", c.BaseURL()},
-		{"openai_api_key", c.APIKey()},
-		{"model", c.Model()},
-	} {
-		if strings.TrimSpace(setting.value) == "" {
-			missing = append(missing, setting.key)
-		}
-	}
-	return missing
-}
+// PSLBinary is the psl compiler Pob runs to fill the :: … :: slots in a macro:
+// a name to find on the PATH, or a path to the executable. Which models it uses
+// and what keys they take are psl's own business, kept in its .pslrc — Pob
+// holds no API key of its own.
+func (c *Config) PSLBinary() string { return c.str("psl", psl.DefaultBinary) }
 
 // ServerEnabled reports whether the Pob server should run. It is on by
 // default; turning it off is how a machine stops accepting pointer and
@@ -391,19 +366,6 @@ func (c *Config) MCPHost() string {
 }
 
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
-
-// InputPricePer1M and OutputPricePer1M are what this machine is charged for the
-// model it is set to, in USD per million tokens, and they are only ever used to
-// work out the money line in llm.log. There is no default that could be right —
-// the price depends on the model, the provider and the account — so zero means
-// nobody has said, and the log reports the tokens without pricing them.
-func (c *Config) InputPricePer1M() float64 {
-	return c.floatVal("price_input_per_1m", 0, 0, 1_000_000)
-}
-
-func (c *Config) OutputPricePer1M() float64 {
-	return c.floatVal("price_output_per_1m", 0, 0, 1_000_000)
-}
 
 func (c *Config) Macro() string {
 	data, err := os.ReadFile(c.macroFile())

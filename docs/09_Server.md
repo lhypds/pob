@@ -56,7 +56,7 @@ curl -o now.png                         http://192.168.1.40:8033/pb-a703/
 
 Three pages sit around it, all part of the [Web UI](12_Web UI.md):
 
-- **`/`** — the index. What is running here — instance, root, model, session,
+- **`/`** — the index. What is running here — instance, root, psl, session,
   MCP, server — and the machine's own address to go on with. The bare root is
   deliberately *not* the machine: the shortest address on the network should
   not answer with a picture of someone's screen.

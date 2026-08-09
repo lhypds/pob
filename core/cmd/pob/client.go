@@ -142,7 +142,7 @@ func showStatus(inst *Instance) {
 	executing, _ := status["executing"].(bool)
 	recording, _ := status["recording"].(bool)
 	session, _ := status["session"].(string)
-	model, _ := status["model"].(string)
+	compiler, _ := status["psl"].(string)
 
 	fmt.Printf("Instance:   %s (pid %d)\n", inst.ID, int(intField(status, "pid")))
 	if inst.Name != "" {
@@ -155,7 +155,7 @@ func showStatus(inst *Instance) {
 		fmt.Printf("Executing:  %s\n", yesNo(executing))
 	}
 	fmt.Printf("Recording:  %s\n", yesNo(recording))
-	fmt.Printf("Model:      %s\n", model)
+	fmt.Printf("psl:        %s\n", compiler)
 
 	if mcp, ok := status["mcp"].(map[string]any); ok {
 		if running, _ := mcp["running"].(bool); running {

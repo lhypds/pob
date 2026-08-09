@@ -1,11 +1,11 @@
 // Package agent runs an instance's macro.psl — the Prompt Script Language
 // program the Play button, `pob macro` and the control API all replay. All
-// screen perception and operation goes through the bridge to the native shell.
+// screen perception and operation goes through the bridge to the native shell,
+// and the :: … :: slots in the program are filled by running the psl compiler.
 package agent
 
 import (
 	"context"
-	"encoding/base64"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,14 +13,14 @@ import (
 	"pob/core/internal/applog"
 	"pob/core/internal/bridge"
 	"pob/core/internal/config"
-	"pob/core/internal/llm"
+	"pob/core/internal/psl"
 	"pob/core/internal/storage"
 )
 
 type Runner struct {
 	cfg   *config.Config
 	store *storage.Storage
-	llm   *llm.Client
+	psl   psl.Compiler
 	br    *bridge.Bridge
 
 	mu             sync.Mutex
@@ -31,8 +31,8 @@ type Runner struct {
 	recording atomic.Bool
 }
 
-func NewRunner(cfg *config.Config, store *storage.Storage, llmClient *llm.Client, br *bridge.Bridge) *Runner {
-	return &Runner{cfg: cfg, store: store, llm: llmClient, br: br}
+func NewRunner(cfg *config.Config, store *storage.Storage, compiler psl.Compiler, br *bridge.Bridge) *Runner {
+	return &Runner{cfg: cfg, store: store, psl: compiler, br: br}
 }
 
 func (r *Runner) SetRecording(recording bool) { r.recording.Store(recording) }
@@ -136,24 +136,6 @@ func (r *Runner) recordMacro(line string) {
 	if r.recording.Load() {
 		r.cfg.AppendToMacro(line)
 	}
-}
-
-// imagePart builds an image_url content part from PNG bytes.
-func imagePart(png []byte) map[string]any {
-	return map[string]any{
-		"type": "image_url",
-		"image_url": map[string]any{
-			"url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
-		},
-	}
-}
-
-func shallowCopy(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m)+1)
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
 }
 
 func truncate(s string, n int) string {

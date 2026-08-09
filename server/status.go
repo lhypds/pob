@@ -16,7 +16,10 @@ import (
 type Status struct {
 	Instance  string `json:"instance"`
 	Root      string `json:"root"`
-	Model     string `json:"model"`
+	// PSL is where the psl compiler was found, or that it was not. It is the
+	// one thing an instance needs set up that nothing else on this page would
+	// show, and a macro with an AI slot in it will not run without it.
+	PSL       string `json:"psl"`
 	Executing bool   `json:"executing"`
 	Session   string `json:"session"`
 	Recording bool   `json:"recording"`

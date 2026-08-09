@@ -102,8 +102,9 @@ see what is running, `pob launch` to start the app. See
 [CLI](../docs/07_CLI.md).
 
 On first run the working files (`settings.json`, `macro.psl`, `logs/`,
-`app.log`, `llm.log`) are created in `~/.pob/` —
-set `openai_api_key` in `settings.json` there.
+`app.log`, `llm.log`) are created in `~/.pob/`. A macro with a `:: … ::` slot
+in it also needs [psl](https://github.com/pob/psl) installed and given a key —
+Pob holds none of its own.
 
 
 Run from source
@@ -113,7 +114,7 @@ Run from source
 git clone <repo> && cd pob
 ./setup.sh              # select 2) Linux / X11 — records the choice in SYSTEM,
                         # checks deps and builds core + shell
-vim settings.json       # set openai_api_key
+vim settings.json       # Pob's own options; the API key is psl's
 ./start.sh              # build and run in the foreground
 ./restart.sh            # rebuild and (re)start in the background (logs to app.log)
 ./stop.sh

@@ -46,7 +46,7 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 
 | Endpoint | CLI | Description |
 |----------|-----|-------------|
-| `GET /status` | `status` | Instance ID, pid, root, executing and recording state, current session, model, and the `mcp` and `server` blocks below |
+| `GET /status` | `status` | Instance ID, pid, root, executing and recording state, current session, where the `psl` compiler was found, and the `mcp` and `server` blocks below |
 | `GET /mcp` | `mcp status` | `running`, `host`, `port`, `url`, `urls` — one per network when `mcp_host` opens it to them, `url` being the first and the one the local agent CLIs are registered with — and `tools` |
 | `GET /server` | — | The [Pob server](09_Server.md): `running`, `port`, `url`, `urls` — one per network the machine is on. `pob status` reads the same block out of `/status` |
 | `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional, defaulting to the `mcp_port` setting — which is the port it is already on, so this is a no-op unless another one is asked for, and then the server moves there. 409 when the port will not bind |
@@ -61,7 +61,7 @@ port would not bind — still reports the port it *would* take rather than `0`, 
 
 ```
 $ curl -s http://127.0.0.1:57259/status
-{"executing":false,"instance":"pb-a703","mcp":{...},"model":"...", ...}
+{"executing":false,"instance":"pb-a703","mcp":{...},"psl":"/usr/local/bin/psl", ...}
 
 $ curl -s -X POST http://127.0.0.1:57259/run/macro
 {"started":true}

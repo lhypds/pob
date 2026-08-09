@@ -39,9 +39,9 @@ Download `Pob-<version>-windows-<arch>.zip` (`amd64` for Intel/AMD,
 
 `Pob.exe` starts the bundled `pob-core.exe` automatically. On first run the
 working files (`settings.json`, `macro.psl`, `logs/`, `app.log`, `llm.log`) are
-created
-in `%USERPROFILE%\.pob\` — set `openai_api_key` in
-`settings.json` there.
+created in `%USERPROFILE%\.pob\`. A macro with a `:: … ::` slot in it also
+needs [psl](https://github.com/pob/psl) installed and given a key — Pob holds
+none of its own.
 
 To keep it somewhere permanent and get the `pob` command in the terminal,
 install it instead of running it in place:
@@ -63,7 +63,7 @@ Run from source (on Windows)
 ```
 git clone <repo> ; cd pob
 powershell -ExecutionPolicy Bypass -File win\setup.ps1   # check deps, build core + shell
-notepad settings.json                                    # set openai_api_key
+notepad settings.json                                    # Pob's options; the key is psl's
 powershell -ExecutionPolicy Bypass -File win\start.ps1   # build and run in the foreground
 powershell -ExecutionPolicy Bypass -File win\restart.ps1 # rebuild and (re)start in the background
 powershell -ExecutionPolicy Bypass -File win\stop.ps1    # stop the app and the core process

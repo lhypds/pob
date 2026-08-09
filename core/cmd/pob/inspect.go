@@ -84,10 +84,12 @@ func indent(text, prefix string) string {
 // --- sessions on disk ---------------------------------------------------
 
 type sessionInfo struct {
-	ID          string
-	Dir         string
-	Start, End  int64
-	TotalTokens int64
+	ID         string
+	Dir        string
+	Start, End int64
+	// Slots is how many :: … :: psl filled during the session — the only part
+	// of a replay that is not free, now that the model calls are psl's.
+	Slots int
 }
 
 func listSessions(instanceDir string) []sessionInfo {
@@ -111,8 +113,8 @@ func listSessions(instanceDir string) []sessionInfo {
 			Start: intField(sessionJSON, "start_time"),
 			End:   intField(sessionJSON, "end_time"),
 		}
-		if usage, ok := sessionJSON["usage"].(map[string]any); ok {
-			info.TotalTokens = intField(usage, "total_tokens")
+		if slots, err := os.ReadDir(filepath.Join(dir, "slots")); err == nil {
+			info.Slots = len(slots)
 		}
 		sessions = append(sessions, info)
 	}
@@ -136,10 +138,6 @@ func showInstance(root string) {
 		fmt.Printf("Ended:      %s\n", formatTime(inst.EndTime))
 	}
 
-	settings := readJSONFile(filepath.Join(root, "settings.json"))
-	if model, ok := settings["model"].(string); ok && !inst.Running {
-		fmt.Printf("Model:      %s\n", model)
-	}
 	fmt.Printf("Logs:       %s\n", inst.LogsDir)
 
 	sessions := listSessions(inst.LogsDir)
@@ -161,14 +159,14 @@ func listSessionsCmd(root, instanceID string) {
 }
 
 func printSessionTable(sessions []sessionInfo, prefix string) {
-	fmt.Printf("%s%-13s %-20s %-10s %s\n", prefix, "SESSION", "STARTED", "DURATION", "TOKENS")
+	fmt.Printf("%s%-13s %-20s %-10s %s\n", prefix, "SESSION", "STARTED", "DURATION", "SLOTS")
 	for _, s := range sessions {
-		tokens := "—"
-		if s.TotalTokens > 0 {
-			tokens = comma(s.TotalTokens)
+		slots := "—"
+		if s.Slots > 0 {
+			slots = strconv.Itoa(s.Slots)
 		}
 		fmt.Printf("%s%-13s %-20s %-10s %s\n",
-			prefix, s.ID, formatTime(s.Start), formatDuration(s.Start, s.End), tokens)
+			prefix, s.ID, formatTime(s.Start), formatDuration(s.Start, s.End), slots)
 	}
 }
 
@@ -189,10 +187,6 @@ func showSession(root, instanceID, sessionID string) {
 	} else {
 		fmt.Printf("Ended:     — (still running or interrupted)\n")
 	}
-	if usage, ok := sessionJSON["usage"].(map[string]any); ok {
-		printUsage(usage)
-	}
-
 	// The macro as it stood when this session ran, which is not necessarily
 	// the one in the instance directory now.
 	if text, err := os.ReadFile(filepath.Join(dir, "macro.psl")); err == nil {
@@ -230,39 +224,24 @@ func printSlots(sessionDir string) {
 		prompt, _ := slotJSON["prompt"].(string)
 		statement, _ := slotJSON["statement"].(string)
 		value, _ := slotJSON["value"].(string)
-		reason, _ := slotJSON["reason"].(string)
-		answered, _ := slotJSON["answered"].(bool)
+		model, _ := slotJSON["model"].(string)
+		wasFilled, _ := slotJSON["filled"].(bool)
 
 		filled := value
-		if !answered {
-			filled = "— unanswered, statement skipped"
+		if !wasFilled {
+			filled = "— unfilled, statement skipped"
 		}
 		if line := intField(slotJSON, "line"); line > 0 {
-			fmt.Printf("  %d. [line %d] ::%s:: → %s\n", seq, line, prompt, filled)
+			fmt.Printf("  %d. [line %d] :: %s :: → %s\n", seq, line, prompt, filled)
 		} else {
-			fmt.Printf("  %d. ::%s:: → %s\n", seq, prompt, filled)
+			fmt.Printf("  %d. :: %s :: → %s\n", seq, prompt, filled)
 		}
 		if statement != "" {
 			fmt.Printf("     in: %s\n", statement)
 		}
-		if reason != "" {
-			fmt.Printf("     %s\n", reason)
+		if model != "" {
+			fmt.Printf("     filled by %s\n", model)
 		}
 	}
-}
-
-func printUsage(usage map[string]any) {
-	prompt := intField(usage, "prompt_tokens")
-	completion := intField(usage, "completion_tokens")
-	total := intField(usage, "total_tokens")
-	var cached, reasoning int64
-	if details, ok := usage["prompt_tokens_details"].(map[string]any); ok {
-		cached = intField(details, "cached_tokens")
-	}
-	if details, ok := usage["completion_tokens_details"].(map[string]any); ok {
-		reasoning = intField(details, "reasoning_tokens")
-	}
-	fmt.Printf("Usage:     %s prompt (%s cached) + %s completion (%s reasoning) = %s tokens\n",
-		comma(prompt), comma(cached), comma(completion), comma(reasoning), comma(total))
 }
 

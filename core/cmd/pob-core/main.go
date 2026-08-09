@@ -1,8 +1,9 @@
 // pob-core is the platform-independent brain of Pob. It is spawned by the
 // native shell (macos/) as a child process and speaks line-delimited JSON-RPC
-// over stdin/stdout. It owns the LLM client, session logs, Prompt Script
-// Language parsing and replay, and the MCP server; all screen perception and
-// operation is delegated back to the shell.
+// over stdin/stdout. It owns the session logs, Prompt Script Language parsing
+// and replay, and the MCP server; all screen perception and operation is
+// delegated back to the shell, and every AI slot is filled by running the psl
+// compiler.
 //
 // Usage: pob-core --root <project-root>
 package main
@@ -20,8 +21,8 @@ import (
 	"pob/core/internal/config"
 	"pob/core/internal/ctlserver"
 	"pob/core/internal/ipc"
-	"pob/core/internal/llm"
 	"pob/core/internal/mcpserver"
+	"pob/core/internal/psl"
 	"pob/core/internal/storage"
 	"pob/server"
 )
@@ -72,7 +73,11 @@ func main() {
 		applog.Logf("IPC: no frame channel (%v); frames will come down the JSON-RPC line", err)
 	}
 	br := bridge.New(client)
-	runner := agent.NewRunner(cfg, store, llm.New(cfg), br)
+	// The psl compiler is what fills the :: … :: slots in a macro. It runs in
+	// <root>, so the .pslrc naming the models and keys sits beside the rest of
+	// what Pob works with — psl falls back to the home directory itself.
+	compiler := psl.Compiler{Binary: cfg.PSLBinary(), Dir: *root}
+	runner := agent.NewRunner(cfg, store, compiler, br)
 
 	client.Handle("run.macro", func(params map[string]any) {
 		runner.RunMacro()
@@ -113,7 +118,7 @@ func main() {
 	srv.SetStatus(func() server.Status {
 		return server.Status{
 			Root:      cfg.Root,
-			Model:     cfg.Model(),
+			PSL:       compiler.Describe(),
 			Executing: runner.Running(),
 			Session:   runner.CurrentSession(),
 			Recording: runner.Recording(),
@@ -135,7 +140,7 @@ func main() {
 
 	// The control server lets the `pob` CLI drive this instance; it always
 	// runs, on an ephemeral port advertised in <instance>/instance.json.
-	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br)
+	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br, compiler)
 	_ = ctl.Start()
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())

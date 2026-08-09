@@ -234,13 +234,13 @@ func TestMCPCanBeTurnedOffAndMoved(t *testing.T) {
 func TestInstanceSettingsMoveUpToTheRoot(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "pb-aaaa", "settings.json"), map[string]any{
-		"openai_api_key": "sk-test",
-		"server_port":    9100,
+		"psl":         "/opt/psl",
+		"server_port": 9100,
 	})
 
 	cfg := New(root, "pb-aaaa")
-	if cfg.APIKey() != "sk-test" || cfg.ServerPort() != 9100 {
-		t.Errorf("APIKey() = %q, ServerPort() = %d, want the settings carried up", cfg.APIKey(), cfg.ServerPort())
+	if cfg.PSLBinary() != "/opt/psl" || cfg.ServerPort() != 9100 {
+		t.Errorf("PSLBinary() = %q, ServerPort() = %d, want the settings carried up", cfg.PSLBinary(), cfg.ServerPort())
 	}
 	if _, err := os.Stat(filepath.Join(root, "pb-aaaa", "settings.json")); err == nil {
 		t.Error("the instance still has a settings.json, want it moved rather than copied")

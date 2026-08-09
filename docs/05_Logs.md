@@ -9,7 +9,7 @@ Structure
     +--- INSTANCE                                 names the instance directory below.
     +--- settings.json                            this machine's [settings](06_Settings.md), shared by every instance.
     +--- app.log                                  the app's own log, across instances.
-    +--- llm.log                                  one block per model call, across instances: what was asked, what came back, and what it cost.
+    +--- llm.log                                  one block per psl run, across instances: which slot, which model filled it, and how long it took.
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and where the shell last left the window (`window_x`, `window_y`, `window_width`, `window_height`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
@@ -20,13 +20,12 @@ Structure
               +--- screenshots/                   screenshots taken with the toolbar Screenshot button.
 
               +--- <session>/                    one replay of macro.psl.
-                   +--- session.json              session details, start time, end time, and the usage of the `::…::` slots, if it had any.
+                   +--- session.json              session details, start time and end time.
                    +--- macro.psl                 the macro as it stood when this session ran.
-                   +--- slots/                    one directory per `::…::` slot filled, numbered in the order they were filled.
+                   +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
                         +--- <n>/
-                             +--- slot.json       the prompt, the statement and the line of macro.psl it came from, what the AI filled in, and the reason.
-                             +--- messages.json
-                             +--- response.json
+                             +--- slot.json       the instruction, the statement and the line of macro.psl it came from, what was filled in, and which model filled it.
+                             +--- psl.txt         what the compiler said while filling it.
                              +--- screenshot.png  what the slot was filled from.
                    +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.
 ```
@@ -43,9 +42,9 @@ untouched beside it. That is what changing it is for: `INSTANCE` is the only thi
 directory is in use, so deleting it always starts a new instance rather than picking up one of the
 directories already there.
 
-The [settings](06_Settings.md) are the exception, and sit at the root for it: the API key, the model
-and the port are how the machine works whichever instance is running, so a new instance is a clean
-sheet of work rather than a machine to set up again.
+The [settings](06_Settings.md) are the exception, and sit at the root for it: where psl is and which
+port the server takes are how the machine works whichever instance is running, so a new instance is a
+clean sheet of work rather than a machine to set up again.
 
 `pob new "Work laptop"` is that move done for you: it creates the directory, records the name in
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
@@ -57,43 +56,42 @@ which one to start — see [CLI](07_CLI.md).
 llm.log
 -------
 
-Every model call Pob makes is one block in `~/.pob/llm.log`, written whether it succeeded or not.
-There is one place in the code they all go through, so this is the whole of what the app spends —
+Every run of the psl compiler is one block in `~/.pob/llm.log`, written whether it succeeded or not.
+Every AI slot Pob fills goes through one, so this is the whole of what the app asks a model to do —
 across instances, since the account being billed is the machine's rather than one instance's.
 
 ```
-[2026-08-10T14:23:01Z] macro slot ::the x offset to the Save button::  (session 1752712400, macro.psl line 4)
-  endpoint   https://api.openai.com/v1/chat/completions
-  model      gpt-5.6
-  request    2 messages, 1 image, json_schema, 234.7 KB
+[2026-08-10T14:23:01Z] macro slot  (session 1752712400, macro.psl line 4)
+  compiler   psl
+  slot       the x offset to the Save button
+  model      claude-opus-5
   duration   2.413s
   status     ok
-  usage      1870 tokens = 1843 prompt (512 cached) + 27 completion (8 reasoning)
-  cost       $0.002574 estimated — in 1843 × $1.25/M + out 27 × $10/M
-  response   {"value":"-120","reason":"The Save button sits 120px left of the cursor."}
+  psl        psl: macro.psl resolved with claude-opus-5 — the x offset to the Save button
+             psl: 2 slot(s) remaining, run psl again
 ```
 
-A call that failed says so and carries what the provider said instead of the usage — including one
-that never left the machine, like a request made with no `openai_api_key`:
+A run that failed says so and carries what psl said instead:
 
 ```
   status     failed
-  error      HTTP 429: {"error":{"message":"Rate limit reached for gpt-5.6"}}
+  error      exit status 1: psl: no model configured: set OPENAI_API_KEY or write a .pslrc
 ```
 
-`cost` is the one line that needs setting up. A provider that reports what it charged is believed
-outright — that number is the one on the bill. Otherwise Pob works it out from
-`price_input_per_1m` and `price_output_per_1m` in [settings.json](06_Settings.md), which is why the
-line says *estimated*: it prices prompt and completion tokens flat, and does not know what your
-account pays for a cached token. With neither, the line names the two settings and the token counts
-are logged anyway — a bill is worked out from those either way.
+Tokens and money are not in it. Pob makes no model call of its own any more — psl does, and psl does
+not report what one cost, so anything here would be a guess. `model` is read back out of psl's own
+progress line, so the block says which model answered without Pob having to know the configuration
+that picked it.
 
-What the file does not hold is the messages. A request carries screenshots, and a base64 PNG per
-entry would make it unopenable within a day; the full conversation, images stripped, is in the
-session's own `slots/<n>/messages.json`, which the purpose line names the session and line for.
+What the file does not hold is the conversation. That is psl's, and Pob never sees it; what Pob keeps
+is the screenshot the slot was answered from and psl's output, under the session's `slots/<n>/`.
+
+
+See also
+--------
 
 - [UI](02_UI.md) — the toolbar buttons that open this tree
 - [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
 - [Control API](11_Control%20API.md) — what `instance.json` advertises while it runs
-- [Settings](06_Settings.md) — the `settings.json` kept at the root, shared by every instance, and the prices `llm.log` works the money out from
+- [Settings](06_Settings.md) — the `settings.json` kept at the root, and where psl keeps its own
 - [Macro PSL](03_Macro%20PSL.md) — the `macro.psl` a session replays

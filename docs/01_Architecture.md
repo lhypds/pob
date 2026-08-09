@@ -6,10 +6,10 @@ Pob is split into a platform-independent brain and a native shell:
 
 ```
 core/    The brain (Go, zero dependencies). The Prompt Script Language
-         engine, OpenAI-compatible LLM client, session logs, the MCP SSE
-         server — started with the instance, like the Pob server below — and
-         the localhost Control API the pob CLI drives the app with. Compiled
-         to a single binary: pob-core.
+         engine, session logs, the MCP SSE server — started with the instance,
+         like the Pob server below — and the localhost Control API the pob CLI
+         drives the app with. Compiled to a single binary: pob-core. It makes
+         no model calls of its own: an AI slot is filled by running psl.
 
 macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
          virtual cursor, mouse/keyboard event injection, and the permission

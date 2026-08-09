@@ -35,11 +35,21 @@ after it — and check:
     pob version
 
 
-2. Set your API key
--------------------
+2. Install psl, and give it a key
+---------------------------------
 
-The first run creates %USERPROFILE%\.pob\. Put your key and model in
-settings.json there — the app's toolbar has a button that opens it, or:
+A macro that asks the AI anything — a ":: ... ::" slot — is filled by running
+psl, the Prompt Script Language compiler. Pob makes no model calls of its own
+and holds no API key. Install psl from https://github.com/pob/psl, then either
+set a key:
+
+    setx ANTHROPIC_API_KEY ...          REM or OPENAI_API_KEY
+
+or write %USERPROFILE%\.pob\.pslrc naming the models and their keys — see
+psl's README. A macro with no AI slot in it needs none of this.
+
+Pob's own options live in settings.json there; the app's toolbar has a button
+that opens it, or:
 
     notepad %USERPROFILE%\.pob\settings.json
 
@@ -69,10 +79,10 @@ Where your files live
 
 Everything is under %USERPROFILE%\.pob:
 
-    settings.json           your API key, model and options (this machine's)
+    settings.json           this machine's options (no API key: psl holds those)
     INSTANCE                which instance directory is the current one
     app.log                 what the app did
-    llm.log                 every model call: tokens, duration and cost
+    llm.log                 every psl run: which slot, which model, how long
     <instance>\
         macro.psl           recorded or hand-written actions
         logs\               sessions, AI slots, screenshots

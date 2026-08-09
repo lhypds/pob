@@ -7,8 +7,8 @@ menu opens, and the one both the shell and the Go core read and edit. It is
 created from the defaults below the first time Pob starts.
 
 It sits at the root rather than inside an instance directory because it is how
-the machine works, not what one instance is doing with it: the API key, the
-model and the port are the same whichever instance is running. Pointing
+the machine works, not what one instance is doing with it: where psl is and
+which port the server takes are the same whichever instance is running. Pointing
 [`~/.pob/INSTANCE`](05_Logs.md) at another id therefore starts Pob on a clean
 `macro.psl`, on a machine that is already set up.
 
@@ -19,11 +19,7 @@ the rest are left where they are to be copied across by hand.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `base_url` | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API (e.g. `https://api.anthropic.com/v1` for Claude) |
-| `openai_api_key` | — | API key for the model provider |
-| `model` | `gpt-5.6` | Model name (e.g. `claude-sonnet-4-5`, `gemini-2.5-flash`) |
-| `price_input_per_1m` | `0` | What this machine is charged for prompt tokens, in USD per million, used only for the money line in [`llm.log`](05_Logs.md). `0` means unpriced: the call is still logged, with its token counts, and no cost is worked out |
-| `price_output_per_1m` | `0` | The same for completion tokens. A provider that reports its own cost is believed over both of these |
+| `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
 | `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
@@ -52,7 +48,7 @@ Example:
 
 ```json
 {
-  "model": "gpt-5.5",
+  "psl": "psl",
   "macro_default_delay": 1000,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
@@ -60,41 +56,40 @@ Example:
 }
 ```
 
-Pointed at Claude — the API is OpenAI-compatible, so only `base_url` and
-`model` change:
 
-```json
-{
-  "base_url": "https://api.anthropic.com/v1",
-  "openai_api_key": "",
-  "model": "claude-opus-4-8",
-  "macro_default_delay": 1000,
-  "editor": "system",
-  "terminal": "iterm2",
-  "stop_hook": ""
-}
+The model
+---------
+
+There is no model here, and no API key. A `:: … ::` slot is filled by running
+the [psl](03_Macro%20PSL.md) compiler, and psl is configured on its own terms —
+`.pslrc`, which it looks for in `~/.pob` (where Pob runs it) and then in your
+home directory:
+
+```text
+default_model=claude-opus-5
+
+[claude-opus-5]
+base_url=https://api.anthropic.com
+api_key=${ANTHROPIC_API_KEY}
+
+[gpt-5.6]
+base_url=https://api.openai.com
+api_key=${OPENAI_API_KEY}
 ```
 
-Pointed at Gemini, through its OpenAI-compatible endpoint:
+`.pslrc` is optional: with `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the
+environment psl runs without one. A single slot can name the model it wants —
+`:: gpt-5.6> the x offset to the Save button ::` — which is a psl feature Pob
+passes straight through. See psl's own README for the rest.
 
-```json
-{
-  "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-  "openai_api_key": "",
-  "model": "gemini-2.5-flash",
-  "macro_default_delay": 1000,
-  "editor": "system",
-  "terminal": "iterm2",
-  "stop_hook": ""
-}
-```
+The one setting on this side is `psl`, which says where the executable is.
 
 
 See also
 --------
 
-- [Logs](05_Logs.md) — where the per-instance copy lives, and the `llm.log` the prices above are for
-- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the model a `::…::` slot is filled by
+- [Logs](05_Logs.md) — where the per-instance copy lives, and the `llm.log` every psl run is recorded in
+- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the compiler a `:: … ::` slot is filled by
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control
 - [MCP Server](08_MCP.md) — what `mcp`, `mcp_port` and `mcp_host` control

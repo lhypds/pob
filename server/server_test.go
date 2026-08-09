@@ -309,7 +309,7 @@ func TestStatusReportsTheInstanceAndTheServer(t *testing.T) {
 	port := freePort(t)
 	server := New("pb-aaaa", &fakeTarget{}, nil)
 	server.SetStatus(func() Status {
-		return Status{Root: "/tmp/pob", Model: "a-model", Executing: true, Session: "s-1"}
+		return Status{Root: "/tmp/pob", PSL: "/usr/local/bin/psl", Executing: true, Session: "s-1"}
 	})
 	if err := server.Start(port); err != nil {
 		t.Fatal(err)

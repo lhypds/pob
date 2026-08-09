@@ -1,9 +1,5 @@
 {
-  "base_url": "",
-  "openai_api_key": "",
-  "model": "gpt-5.5",
-  "price_input_per_1m": 0,
-  "price_output_per_1m": 0,
+  "psl": "psl",
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",

@@ -202,8 +202,8 @@
           <dd id="instance">…</dd>
           <dt>Root</dt>
           <dd id="root">…</dd>
-          <dt>Model</dt>
-          <dd id="model">…</dd>
+          <dt>psl</dt>
+          <dd id="psl">…</dd>
           <dt>Executing</dt>
           <dd id="executing">…</dd>
           <dt>Recording</dt>
@@ -268,7 +268,7 @@
 
         $("instance").textContent = status.instance || "—";
         $("root").textContent = status.root || "—";
-        $("model").textContent = status.model || "—";
+        $("psl").textContent = status.psl || "—";
         $("executing").innerHTML =
           dot(status.executing) +
           (status.executing && status.session

@@ -28,6 +28,7 @@ import (
 	"pob/core/internal/bridge"
 	"pob/core/internal/config"
 	"pob/core/internal/mcpserver"
+	"pob/core/internal/psl"
 	"pob/core/internal/storage"
 	"pob/server"
 )
@@ -39,13 +40,14 @@ type Server struct {
 	mcp    *mcpserver.Server
 	pob    *server.Server
 	br     *bridge.Bridge
+	psl    psl.Compiler
 
 	server *http.Server
 	port   int
 }
 
-func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, pob *server.Server, br *bridge.Bridge) *Server {
-	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, pob: pob, br: br}
+func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, pob *server.Server, br *bridge.Bridge, compiler psl.Compiler) *Server {
+	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, pob: pob, br: br, psl: compiler}
 }
 
 // Start binds an ephemeral localhost port, advertises it in instance.json and
@@ -163,7 +165,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"executing": s.runner.Running(),
 		"session":   s.runner.CurrentSession(),
 		"recording": s.runner.Recording(),
-		"model":     s.cfg.Model(),
+		"psl":       s.psl.Describe(),
 		"mcp":       s.mcpInfo(),
 		"server":    s.pobServerInfo(),
 	})

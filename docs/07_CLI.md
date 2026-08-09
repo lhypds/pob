@@ -43,7 +43,7 @@ Flags:
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
 | `new [name]` | Create an instance — its own `macro.psl` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
-| `status` | Live status (executing, recording, model, MCP, server address) |
+| `status` | Live status (executing, recording, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
 | `macro` | Execute [`macro.psl`](03_Macro%20PSL.md) (same as the toolbar Execute button) |
 | `stop` | Stop the running session |

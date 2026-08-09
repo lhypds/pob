@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -10,19 +9,20 @@ import (
 
 	"pob/core/internal/applog"
 	"pob/core/internal/bridge"
+	"pob/core/internal/psl"
 )
 
 // macroNode is one statement of a macro: either an action call, or an if block
 // whose body only runs when its condition holds.
 type macroNode struct {
-	// raw is the statement as written, with any ::…:: slot still in it. It is
-	// what a slot is filled into, and what is parsed once it has been.
+	// raw is the statement as written, with any :: … :: slot still in it. It is
+	// the line psl fills, and what is parsed once it has been.
 	raw string
 
 	action string   // action call name; empty on an if block or an unfilled statement
 	args   []string // action arguments
 
-	// slots says the statement holds at least one ::…:: and so cannot be read
+	// slots says the statement holds at least one :: … :: and so cannot be read
 	// until the replay reaches it — action and args are empty until then.
 	slots bool
 
@@ -30,28 +30,32 @@ type macroNode struct {
 	condition string      // if only — the parenthesised expression, slots unfilled
 	body      []macroNode // if only — what runs when the condition holds
 
-	line int // 1-based line in macro.psl, for logs
+	line int // 1-based line in macro.psl, for logs and for finding the line back
 }
 
-// macroRun carries the state of one replay: the session it writes under, and
-// how many slots have been filled so far — the count names their log
-// directories.
+// macroRun carries the state of one replay: the session it writes under, the
+// macro as it was written — which is what psl is shown every time — and how many
+// slots have been filled so far, since the count names their log directories.
 type macroRun struct {
 	sessionID string
+	source    string
 	slots     int
 }
 
 // runMacro replays macro.psl statement by statement.
 func (r *Runner) runMacro(ctx context.Context) {
-	nodes := parseMacro(r.cfg.Macro())
+	source := r.cfg.Macro()
+	nodes := parseMacro(source)
 
 	// Checked before anything moves: a macro whose slots cannot be filled is one
 	// Pob cannot run as written, and finding that out halfway through would
 	// leave the statements above the slot already played.
-	if missing := r.macroSettingsMissing(nodes); missing != "" {
-		message := "macro.psl has a ::…:: slot the AI must fill, and that is a model call. settings.json has no " + missing + " — set it and run the macro again."
+	if hasMacroSlot(nodes) && !r.psl.Available() {
+		message := "macro.psl has a :: … :: slot, and Pob fills those by running the psl compiler. " +
+			"psl was not found — install it (see https://github.com/pob/psl), or set \"psl\" in " +
+			"settings.json to the path of the executable, and run the macro again."
 		applog.Logf("Macro not run: %s", message)
-		r.br.ShowAlert("Settings needed", message)
+		r.br.ShowAlert("psl needed", message)
 		return
 	}
 
@@ -74,16 +78,11 @@ func (r *Runner) runMacro(ctx context.Context) {
 	macroStart := time.Now()
 	applog.Logf("[%s] Macro session started", sessionID)
 
-	run := &macroRun{sessionID: sessionID}
+	run := &macroRun{sessionID: sessionID, source: source}
 	r.runMacroNodes(ctx, run, nodes)
 
 	r.store.SaveSessionStartEndTimes(sessionID, macroStart, time.Now())
 	applog.Logf("[%s] Macro session times saved", sessionID)
-	if run.slots > 0 {
-		// Only a slot spends tokens; a macro without one has nothing to sum.
-		r.store.SaveSessionUsage(sessionID)
-		applog.Logf("[%s] Macro session usage saved", sessionID)
-	}
 	applog.Log("Macro execution complete")
 
 	// A run that was stopped never reached its end, so nothing is announced:
@@ -128,9 +127,8 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 		return node.action, node.args, true
 	}
 
-	filled, ok := r.fillSlots(ctx, run, node, node.raw)
+	filled, ok := r.fillStatement(ctx, run, node)
 	if !ok {
-		applog.Logf("[%s] Macro line %d: %s — slot unfilled, skipping", run.sessionID, node.line, node.raw)
 		return "", nil, false
 	}
 
@@ -139,26 +137,26 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 		applog.Logf("[%s] Macro line %d: filled to %q, which does not read as a statement — skipping", run.sessionID, node.line, filled)
 		return "", nil, false
 	}
-	applog.Logf("[%s] Macro line %d: %s -> %s", run.sessionID, node.line, node.raw, filled)
 	return name, args, true
 }
 
 // evalMacroCondition works out whether an if block's condition holds. The
-// condition is ordinary PSL text: a ::…:: slot the AI fills with true or false,
+// condition is ordinary PSL text: a :: … :: slot psl fills with true or false,
 // or one of those two written out by hand.
 //
-// Anything that goes wrong — no screenshot, an unreadable answer, an answer that
-// is not true or false — reads as false: the block stays unexecuted rather than
-// running on a guess.
+// Anything that goes wrong — psl failing, an answer that is not true or false —
+// reads as false: the block stays unexecuted rather than running on a guess.
 func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) bool {
 	expr := node.condition
-	if hasSlot(expr) {
-		filled, ok := r.fillSlots(ctx, run, node, expr)
+	if psl.HasSlot(expr) {
+		filled, ok := r.fillStatement(ctx, run, node)
 		if !ok {
 			applog.Logf("[%s] Macro if (%s) — slot unfilled, skipping block", run.sessionID, expr)
 			return false
 		}
-		expr = filled
+		// The whole header line comes back, so the condition is read out of it
+		// again rather than assumed to be what replaced the slot.
+		expr, _ = parseIfHeader(strings.TrimSpace(filled))
 	}
 
 	holds, read := conditionHolds(expr)
@@ -189,135 +187,154 @@ func conditionHolds(expr string) (holds, read bool) {
 	return false, false
 }
 
-// fillSlots replaces every ::…:: in a statement with what the AI answers.
-func (r *Runner) fillSlots(ctx context.Context, run *macroRun, node macroNode, text string) (string, bool) {
-	return fillSlotsWith(text, func(statement, prompt string) (string, bool) {
+// fillStatement has psl fill every slot in one statement, one run each, and
+// returns the statement as it then reads.
+//
+// psl fills the first slot it finds in a file, so what it is shown each time is
+// the whole macro with every other slot closed up — including the ones in
+// blocks this replay skipped, which are still in the text and would otherwise
+// be the slot it went for.
+func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNode) (string, bool) {
+	statement := node.raw
+	for psl.HasSlot(statement) {
 		if ctx.Err() != nil {
 			return "", false
 		}
-		return r.fillSlot(run, node, statement, prompt)
-	})
-}
-
-// fillSlotsWith fills a statement's slots left to right, asking `ask` for each
-// one. What it is given is the statement as it stands — so the second slot of a
-// line is asked about with the first one already answered, which is the state
-// the statement is actually in by then.
-//
-// Scanning resumes past each answer, so a value that happens to hold `::` is
-// text rather than another slot to fill: what the AI says is a value, never more
-// of the program.
-func fillSlotsWith(text string, ask func(statement, prompt string) (string, bool)) (string, bool) {
-	for from := 0; ; {
-		slot, found := findSlot(text, from)
-		if !found {
-			return text, true
-		}
-		value, ok := ask(text, slot.prompt)
+		filled, ok := r.fillOneSlot(ctx, run, node, statement)
 		if !ok {
 			return "", false
 		}
-		text = text[:slot.start] + value + text[slot.end:]
-		from = slot.start + len(value)
+		if filled == statement {
+			applog.Logf("[%s] Macro line %d: psl returned the statement unchanged — giving up on it", run.sessionID, node.line)
+			return "", false
+		}
+		statement = filled
 	}
+	applog.Logf("[%s] Macro line %d: %s -> %s", run.sessionID, node.line, node.raw, statement)
+	return statement, true
 }
 
-const macroSlotSystemPrompt = `You are filling in one slot in a Prompt Script Language (PSL) macro that Pob is replaying on this machine right now.
-
-A PSL macro is one statement per line. A statement is either a call — move(dx, dy), drag(dx, dy), scroll(dx, dy), click(), rightClick(), doubleClick(), typeText("..."), keyPress("..."), sleep(ms), resetCursor(), take_screenshot() — or an if block: if (<condition>) { ... }.
-
-A ::…:: marker is a slot: a prompt standing where a value would be. You are given the whole macro, the one statement being run, the prompt inside its slot, and a screenshot of the screen as it is at this moment.
-
-Answer with the text that replaces the marker. It is substituted literally, exactly as you write it, and the statement must be valid PSL afterwards. Work out from the statement what shape the answer has to take:
-
-- a bare number where a number goes — move(::…::, 40) wants -120, not "-120" and not "120 pixels"
-- a quoted string where a whole string argument goes — typeText(::…::) wants "Hello"
-- bare text where the slot sits inside a string already — typeText("Hi ::…::") wants Bob
-- true or false in the condition of an if — if (::…::) wants true
-
-Coordinates are screenshot pixels: origin top-left, x increases right, y increases down. move and drag are relative to where the cursor is now — the arrow you can see in the screenshot — so answer with the offset from it, not with an absolute position.
-
-Go only by the screenshot and the macro. You have no memory of what the earlier statements did beyond what the picture shows. If the screenshot does not show enough to answer, say so in the reason and give the value that does the least: 0 for a number, "" for a string, false for a condition.
-
-Respond with JSON:
-  {"value": "...", "reason": "..."}
-
-The reason is one short sentence naming what you saw.`
-
-var macroSlotSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"value":  map[string]any{"type": "string"},
-		"reason": map[string]any{"type": "string"},
-	},
-	"required":             []string{"value", "reason"},
-	"additionalProperties": false,
-}
-
-// fillSlot asks the model what one slot should say, against a fresh screenshot
-// and with the whole macro for context — what a statement means is often the
-// statements around it. The judgement is kept under the session's slots/.
-func (r *Runner) fillSlot(run *macroRun, node macroNode, statement, prompt string) (string, bool) {
+// fillOneSlot runs psl once and returns the statement with its first slot
+// filled.
+func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode, statement string) (string, bool) {
 	run.slots++
 	seq := run.slots
 
+	slot, found := psl.FindSlot(statement, 0)
+	if !found {
+		return statement, true
+	}
+
 	shot, err := r.br.CaptureScreenshot(true, nil)
 	if err != nil {
-		applog.Logf("[%s] Macro slot (::%s::) — no screenshot", run.sessionID, prompt)
+		applog.Logf("[%s] Macro slot (%s) — no screenshot", run.sessionID, slot.Instruction)
 		return "", false
 	}
 
-	applog.Logf("[%s] Macro slot (::%s::) — asking...", run.sessionID, prompt)
+	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
-	messages := []map[string]any{
-		{"role": "system", "content": macroSlotSystemPrompt},
-		{"role": "user", "content": []any{
-			map[string]any{"type": "text", "text": "The macro:\n\n" + r.cfg.Macro() +
-				"\n\nThe statement being run, line " + strconv.Itoa(node.line) + ":\n\n" + statement +
-				"\n\nThe slot to fill: ::" + prompt + "::\n\nWhat replaces the marker?"},
-			imagePart(shot),
-		}},
+	source, targetLine := run.sourceFor(node.line, statement)
+	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot})
+	if err != nil {
+		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
+		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
+		psl.LogCall(run.purpose(node), slot.Instruction, nil, err)
+		return "", false
 	}
 
-	purpose := "macro slot ::" + prompt + "::  (session " + run.sessionID + ", macro.psl line " + strconv.Itoa(node.line) + ")"
-	result := r.llm.Chat(purpose, messages, nil, macroSlotSchema)
-
-	// Copy before adding usage so the raw message stays as the API returned it.
-	responseToSave := map[string]any{"error": result.Error}
-	if result.Success {
-		responseToSave = shallowCopy(result.RawAssistantMessage)
-	}
-	if result.Usage != nil {
-		responseToSave["usage"] = result.Usage
+	filled, ok := extractLine(source, result.Source, targetLine)
+	if !ok {
+		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
+		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
+		psl.LogCall(run.purpose(node), slot.Instruction, result, nil)
+		return "", false
 	}
 
-	// A half-decoded answer counts as no answer: the value is only the model's
-	// when the whole thing read cleanly.
-	var parsed struct {
-		Value  string `json:"value"`
-		Reason string `json:"reason"`
-	}
-	value, reason, ok := "", "", false
-	switch {
-	case !result.Success:
-		applog.Logf("[%s] Macro slot (::%s::) — error: %s", run.sessionID, prompt, result.Error)
-	case result.ContentText == "" || json.Unmarshal([]byte(result.ContentText), &parsed) != nil:
-		applog.Logf("[%s] Macro slot (::%s::) — unreadable answer", run.sessionID, prompt)
-	default:
-		value, reason, ok = strings.TrimSpace(parsed.Value), parsed.Reason, true
-	}
+	applog.Logf("[%s] Macro slot (%s) -> %s", run.sessionID, slot.Instruction, filled)
+	r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
+	psl.LogCall(run.purpose(node), slot.Instruction, result, nil)
+	return filled, true
+}
 
-	r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, prompt, value, reason, ok,
-		append(messages, result.RawAssistantMessage), responseToSave, shot)
+// pslHeader sits above the macro in the file psl is shown, and is not part of
+// the macro: it is the conventions a value has to be written in, which the
+// vocabulary alone does not say. Pob reads back only the macro under it.
+//
+// It carries no live slot of its own — every :: below is closed up — so the slot
+// psl finds is always the one in the macro.
+const pslHeader = `This is a Pob macro: a Prompt Script Language program that drives the mouse and
+keyboard of the machine the attached screenshot was taken on. Each line is one
+statement — move(dx, dy), drag(dx, dy), scroll(dx, dy), click(), rightClick(),
+doubleClick(), typeText("..."), keyPress("..."), sleep(ms), resetCursor(),
+take_screenshot() — or an if block: if (<condition>) { ... }.
 
-	if ok {
-		reasonSuffix := ""
-		if reason != "" {
-			reasonSuffix = " — " + reason
+Fill the slot with the text that belongs where the marker is, so that the line
+still reads as a statement. What that has to be follows from where the marker
+sits:
+
+  move(::…::, 40)          a bare number, like -120
+  typeText(::…::)          a quoted string, like "Hello"
+  typeText("Hi ::…::")     bare text, the quotes are already there, like Bob
+  if (::…::)               true or false, and nothing else
+
+Coordinates are screenshot pixels: origin top-left, x increases to the right, y
+increases downwards. move and drag are relative to where the cursor is now — the
+arrow visible in the screenshot — so answer with the offset from it, not with a
+position on the screen.
+
+Go only by the screenshot and the macro below. If the screenshot does not show
+enough to answer, give the value that does the least: 0 for a number, "" for a
+string, false for a condition.
+
+----- the macro -----
+`
+
+// purpose heads this statement's block in llm.log — what was being filled, and
+// where to look for the rest of it.
+func (run *macroRun) purpose(node macroNode) string {
+	return "macro slot  (session " + run.sessionID + ", macro.psl line " + strconv.Itoa(node.line) + ")"
+}
+
+// sourceFor builds the file psl is shown for one statement: the header, then
+// the macro as it was written with the statement in question put back as it
+// now stands and every other slot closed up. It returns the file and the
+// 0-based index of the line the answer will land on.
+func (run *macroRun) sourceFor(line int, statement string) (string, int) {
+	lines := strings.Split(run.source, "\n")
+	for i := range lines {
+		if i == line-1 {
+			lines[i] = statement
+			continue
 		}
-		applog.Logf("[%s] Macro slot (::%s::) -> %s%s", run.sessionID, prompt, value, reasonSuffix)
+		lines[i] = psl.Neutralize(lines[i])
 	}
-	return value, ok
+	header := strings.Split(pslHeader, "\n")
+	return pslHeader + strings.Join(lines, "\n"), len(header) - 1 + line - 1
+}
+
+// extractLine reads the filled statement back out of the file psl rewrote.
+//
+// The answer replaces a span inside one line, but a model that answered with
+// more than one line would leave the file longer than it was. Everything after
+// the statement is untouched either way, so what the statement became is what
+// sits between the lines before it and the lines after it.
+//
+// Trailing newlines are trimmed off both first. Whether a rewritten file ends
+// with one is the sort of thing a tool that rewrites files decides for itself,
+// and counting from the end means a single extra blank line would otherwise
+// hand back the statement below as well.
+func extractLine(before, after string, line int) (string, bool) {
+	beforeLines := strings.Split(strings.TrimRight(before, "\n"), "\n")
+	afterLines := strings.Split(strings.TrimRight(after, "\n"), "\n")
+	if line < 0 || line >= len(beforeLines) {
+		return "", false
+	}
+	tail := len(beforeLines) - line - 1
+	end := len(afterLines) - tail
+	if end <= line {
+		return "", false
+	}
+	return strings.Join(afterLines[line:end], "\n"), true
 }
 
 func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, args []string) {
@@ -433,64 +450,18 @@ func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, arg
 	}
 }
 
-const (
-	// macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by
-	// a line holding nothing but `}`. Matched whatever its case, so `IF` opens a
-	// block too: the alternative to recognising it is running the body
-	// unguarded, which is the one thing a condition was written to prevent.
-	macroIfKeyword = "if"
-	// macroAIMarker wraps a prompt the AI answers when the statement is reached,
-	// and the answer stands where the marker was. It can go anywhere in a
-	// statement — an argument, part of one, or the whole condition of an `if`.
-	macroAIMarker = "::"
-)
-
-// slotRange is where one ::…:: sits in a statement: the marker spans
-// text[start:end], and prompt is what it holds.
-type slotRange struct {
-	start, end int
-	prompt     string
-}
-
-// findSlot returns the first ::…:: at or after `from`. Markers pair off left to
-// right, and a pair holding nothing asks nothing: `::::` is passed over — both
-// its markers used up — rather than reported as a slot, since a statement should
-// only be held up by a slot there is a question in.
-func findSlot(text string, from int) (slotRange, bool) {
-	for i := from; i <= len(text); {
-		open := strings.Index(text[i:], macroAIMarker)
-		if open < 0 {
-			return slotRange{}, false
-		}
-		open += i
-		inner := open + len(macroAIMarker)
-
-		closer := strings.Index(text[inner:], macroAIMarker)
-		if closer < 0 {
-			return slotRange{}, false
-		}
-		closer += inner
-
-		if prompt := strings.TrimSpace(text[inner:closer]); prompt != "" {
-			return slotRange{start: open, end: closer + len(macroAIMarker), prompt: prompt}, true
-		}
-		i = closer + len(macroAIMarker)
-	}
-	return slotRange{}, false
-}
-
-// hasSlot reports whether a statement holds a ::…:: the AI has to fill.
-func hasSlot(text string) bool {
-	_, found := findSlot(text, 0)
-	return found
-}
+// macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by a
+// line holding nothing but `}`. Matched whatever its case, so `IF` opens a block
+// too: the alternative to recognising it is running the body unguarded, which is
+// the one thing a condition was written to prevent.
+const macroIfKeyword = "if"
 
 // parseMacro turns macro.psl into the statements to execute. Lines it cannot
 // read are logged and dropped, the way a bad action line always has been — a
 // macro runs as far as it makes sense rather than not at all.
 //
-// A statement holding a slot is kept as it was written and read again once the
-// replay has filled it: what it says is not known until then.
+// A statement holding a slot is kept as it was written and read again once psl
+// has filled it: what it says is not known until then.
 func parseMacro(text string) []macroNode {
 	nodes, _ := parseMacroBlock(strings.Split(text, "\n"), 0, 0)
 	return nodes
@@ -525,16 +496,16 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 			var body []macroNode
 			body, i = parseMacroBlock(lines, i, depth+1)
 			if condition == "" {
-				applog.Logf("Macro line %d: if wants a condition in parentheses — if (::…::) { — skipping its block", lineNo)
+				applog.Logf("Macro line %d: if wants a condition in parentheses — if (:: … ::) { — skipping its block", lineNo)
 				continue
 			}
 			nodes = append(nodes, macroNode{isIf: true, condition: condition, body: body, line: lineNo, raw: trimmed})
 			continue
 		}
 
-		if hasSlot(trimmed) {
-			// What it says depends on what the AI answers, so it is read when
-			// the replay gets to it rather than now.
+		if psl.HasSlot(trimmed) {
+			// What it says depends on what psl answers, so it is read when the
+			// replay gets to it rather than now.
 			nodes = append(nodes, macroNode{raw: trimmed, slots: true, line: lineNo})
 			continue
 		}
@@ -554,7 +525,7 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 }
 
 // parseIfHeader reads `if (<condition>) {` and returns the condition, which is
-// PSL text rather than a value: a ::…:: slot the AI fills with true or false, or
+// PSL text rather than a value: a :: … :: slot psl fills with true or false, or
 // one of those written out. The second return says the line opens a block at all
 // — a line that starts with the keyword opens one whether or not the rest of it
 // is well formed, and an empty condition is what says it was not.
@@ -571,21 +542,21 @@ func parseIfHeader(line string) (string, bool) {
 	if !ok {
 		return "", true
 	}
-	// A slot with nothing in it asks nothing, and `if ()` says nothing: either
-	// way there is no condition, and the block goes with it.
-	if expr != "" && !hasSlot(expr) && !isBoolLiteral(expr) {
+	// A condition is either asked or written out. Anything else is neither, and
+	// the block goes with it rather than running unguarded.
+	if expr != "" && !psl.HasSlot(expr) && !isBoolLiteral(expr) {
 		return "", true
 	}
 	return expr, true
 }
 
 // isBoolLiteral reports whether a condition is written out rather than asked.
+// It is conditionHolds' own answer to that, so a condition Pob would read is
+// never one it refuses to parse first — a model asked for `true` sometimes
+// answers `"true"`, and both have to travel the same path.
 func isBoolLiteral(expr string) bool {
-	switch strings.ToLower(strings.TrimSpace(expr)) {
-	case "true", "false":
-		return true
-	}
-	return false
+	_, read := conditionHolds(expr)
+	return read
 }
 
 // cutIfKeyword returns what follows the `if` keyword, and whether the line
@@ -669,37 +640,14 @@ func parseMacroLine(line string) (string, []string, bool) {
 	return name, args, true
 }
 
-// macroSettingsMissing names the settings this macro needs and hasn't got, as a
-// phrase to put in front of the user ("openai_api_key", "base_url and model").
-// Empty means it can run: a macro with no slot never calls the model, so it
-// needs nothing configured at all.
-func (r *Runner) macroSettingsMissing(nodes []macroNode) string {
-	if !hasMacroSlot(nodes) {
-		return ""
-	}
-	return joinNames(r.cfg.MissingLLMSettings())
-}
-
-// hasMacroSlot reports whether any statement holds a ::…:: slot, at any depth.
+// hasMacroSlot reports whether any statement holds a :: … :: slot, at any depth.
 func hasMacroSlot(nodes []macroNode) bool {
 	for _, node := range nodes {
-		if node.slots || hasSlot(node.condition) || hasMacroSlot(node.body) {
+		if node.slots || psl.HasSlot(node.condition) || hasMacroSlot(node.body) {
 			return true
 		}
 	}
 	return false
-}
-
-// joinNames reads a list out as a phrase: "a", "a and b", "a, b and c".
-func joinNames(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	default:
-		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-	}
 }
 
 // countMacroNodes counts every statement, an if and the statements inside it

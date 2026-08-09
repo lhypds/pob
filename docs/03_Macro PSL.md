@@ -6,12 +6,16 @@ A macro is a sequence of actions Pob plays back — recorded from what you do, o
 Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — PSL — is
 what that file is written in. This page is both: the macro, and the language it is a macro in.
 
+PSL is not Pob's own. It is a language with a compiler of its own — [psl](https://github.com/pob/psl)
+— and Pob is one program that happens to write in it. The `:: … ::` slots below are filled by running
+that compiler, which is where the models and the API keys live. Pob holds none of its own.
+
 The language is small enough that a recording is readable, and readable enough that the recording is
 worth editing afterwards. That is the whole point of the pair — you record a macro by doing the
 thing once, and what you get back is a program you can open.
 
 The name is what sets PSL apart from a scripting language that only ever does what it is told.
-Anywhere a value would go, a statement can hold a prompt instead — `::…::`, an AI slot — and what
+Anywhere a value would go, a statement can hold a prompt instead — `:: … ::`, an AI slot — and what
 the AI answers is what that part of the line then says. A macro written in PSL is part instruction
 and part question: it repeats what it was given, and asks about what it could not be.
 
@@ -19,10 +23,10 @@ and part question: it repeats what it was given, and asks about what it could no
 move(398, 915)
 click()
 drag(-775, -615)
-if (::the window focus on a wechat user::) {
-    move(::the x offset to the message box::, 738)
+if (:: the window focus on a wechat user ::) {
+    move(:: the x offset to the message box ::, 738)
     click()
-    typeText(::a short reply to the message on screen::)
+    typeText(:: a short reply to the message on screen ::)
 }
 keyPress("return")
 ```
@@ -77,29 +81,34 @@ reaches it.
 AI slot
 -------
 
-An AI slot is a prompt written where a value would go, wrapped in `::` on both sides:
+An AI slot is an instruction written where a value would go, wrapped in `::` on both sides:
 
 ```
-::instruction::
+:: instruction ::
 ```
+
+The spaces are part of it. `::` opens a slot only when whitespace follows it, and closes one only
+when whitespace comes before it — the rule that lets PSL live inside a language with its own use for
+the characters, and here what tells a slot from a `::` in text being typed. Closed up,
+`::instruction::` is not a slot at all.
 
 The instruction between the markers is a question for the model rather than something Pob carries
 out itself. It goes **anywhere in a statement** — a whole argument, part of one, the condition of an
 `if`:
 
 ```
-move(::the x offset to the Save button::, 0)
-typeText(::what to reply to this message::)
-typeText("Hi ::the name at the top of the chat::, thanks!")
-if (::a save dialog is on screen::) {
+move(:: the x offset to the Save button ::, 0)
+typeText(:: what to reply to this message ::)
+typeText("Hi :: the name at the top of the chat ::, thanks!")
+if (:: a save dialog is on screen ::) {
     keyPress("return")
 }
 ```
 
-When the replay reaches the statement, Pob takes a screenshot, sends the model the whole macro, the
-statement being run and the instruction in the slot, and what comes back is written in where the
-markers were. The statement is then read as PSL and executed. Everything outside the markers is
-written down and means exactly what it says.
+When the replay reaches the statement, Pob takes a screenshot and runs the psl compiler over the
+macro, with that screenshot attached and this one slot live. psl asks a model, writes the answer in
+where the markers were, and hands the file back; Pob reads the statement out of it, parses it as PSL
+and executes it. Everything outside the markers is written down and means exactly what it says.
 
 That is the *prompt* in Prompt Script Language, and the whole of what separates it from a scripting
 language. A call is a macro doing what it was told. A slot is a macro asking about a screen nobody
@@ -108,16 +117,16 @@ could describe to it in advance, at the moment it is looking at that screen.
 
 ### What comes back
 
-Pob does not tell the model what kind of value it wants — the model is shown the statement and works
-that out from where the slot sits in it, which is why the whole macro is sent along. What it answers
-has to leave a statement that reads as PSL:
+Nothing states what kind of value is wanted — the model is shown the statement and works that out
+from where the slot sits in it, which is why the whole macro goes with it. What it answers has to
+leave a statement that reads as PSL:
 
 | Written | What the slot has to come back as |
 |---------|-----------------------------------|
-| `move(::…::, 40)` | a bare number — `-120` |
-| `typeText(::…::)` | a quoted string — `"Hello"` |
-| `typeText("Hi ::…::")` | bare text, the quotes are already there — `Bob` |
-| `if (::…::)` | `true` or `false` |
+| `move(:: … ::, 40)` | a bare number — `-120` |
+| `typeText(:: … ::)` | a quoted string — `"Hello"` |
+| `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
+| `if (:: … ::)` | `true` or `false` |
 
 Coordinates come back as screenshot pixels, and `move` and `drag` are relative to where the cursor
 is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
@@ -125,7 +134,8 @@ not a position on the screen.
 
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to
 and skipped, like any other line that cannot be read. Nothing is retried: the macro goes on to the
-next statement.
+next statement. A psl run that fails outright — no model configured, no answer — leaves the statement
+unfilled and therefore unrun, the same way.
 
 
 ### Writing one
@@ -135,20 +145,26 @@ Write an instruction a screenshot can settle — "a chat window is open", "the f
 nothing else: it has no memory of what the statements before it actually did, so an instruction that
 turns on that is one it cannot answer.
 
-Whitespace around the instruction is trimmed, so `::a::` and `:: a ::` are the same slot. A pair of
-markers with nothing between them asks nothing and is not a slot at all — `::::` is passed over as
-text. What the model answers is a value and never more program: a `::` in the answer is text, not
-another slot to fill.
+Whitespace around the instruction is trimmed, so `:: a ::` and `::  a  ::` are the same slot. A pair
+of markers with nothing between them asks nothing and is not a slot. What the model answers is a
+value and never more program: a `::` in the answer is text, not another slot to fill.
 
-Each statement's slots are filled left to right, one model call each, and each one is asked with the
-earlier answers already in place — so the second slot of `move(::…::, ::…::)` is asked about a
-statement that already reads `move(-120, ::…::)`.
+A slot can name the model it wants, which is psl's own syntax passed straight through:
 
-A macro with no slot never calls the model at all and runs with nothing configured. A macro that has
-one needs an `openai_api_key`, and Pob checks for it over the whole macro before the first statement
-runs rather than partway through. Every fill is kept under `logs/<session>/slots/<n>/` with the
-screenshot it was answered from (see [Logs](05_Logs.md)); `pob --session <id>` lists them, and
-`~/.pob/llm.log` has the model call behind each one — tokens, duration and what it cost.
+```
+typeText(:: gpt-5.6> a short reply to the message on screen ::)
+```
+
+Each statement's slots are filled left to right, one psl run each, and each one is asked with the
+earlier answers already in place — so the second slot of `move(:: … ::, :: … ::)` is asked about a
+statement that already reads `move(-120, :: … ::)`. The rest of the macro goes along with its own
+slots closed up, so the one psl fills is always the one the replay is waiting on.
+
+A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
+psl to be found — Pob checks over the whole macro before the first statement runs rather than
+partway through, and puts up **psl needed** instead of moving the cursor. Every fill is kept under
+`logs/<session>/slots/<n>/` with the screenshot it was answered from (see [Logs](05_Logs.md));
+`pob --session <id>` lists them, and `~/.pob/llm.log` has the psl run behind each one.
 
 
 Calls
@@ -190,7 +206,7 @@ should not always happen. An `if` guards a block with a condition: it runs when 
 and is skipped when it does not.
 
 ```
-if (::a save dialog is on screen::) {
+if (:: a save dialog is on screen ::) {
     keyPress("return")
     sleep(500)
 }
@@ -204,17 +220,17 @@ another `if`, nested as deep as the macro needs. Lines after the `}` run either 
 The condition is either an AI slot, which is the usual way and the one above, or `true` / `false`
 written out — which asks nothing and costs nothing, and is how a block is parked without deleting
 it. Anything else in the parentheses is not a condition Pob can read, and the block is dropped
-rather than run unguarded.
+rather than run unguarded. A filled-in condition is read the same way, case and quotes allowed: a
+model that answered `"True"` has answered true.
 
 Write the keyword lowercase. `IF` is read too, and so is `If`: a block Pob failed to recognise would
 run its body unguarded, which is the one thing the condition was written to prevent.
 
 A slot inside a block that gets skipped is never reached, so it is never filled and costs nothing.
-The check for the settings that filling needs runs the other way round — over the whole macro,
-before the first statement: with a slot anywhere in it and no `openai_api_key`, Execute puts up
-**Settings needed** and the macro does not run at all, before the cursor has moved. Finding out
-halfway through would leave everything above the slot already played. (`base_url` and `model` have
-working defaults, so the key is what a fresh machine is missing — see [Settings](06_Settings.md).)
+The check for psl runs the other way round — over the whole macro, before the first statement: with
+a slot anywhere in it and no psl to be found, Execute puts up **psl needed** and the macro does not
+run at all, before the cursor has moved. Finding out halfway through would leave everything above
+the slot already played.
 
 Recording never writes an `if`, or any other slot. They are the part you write by hand, into a macro
 that is otherwise recorded.
@@ -233,12 +249,13 @@ The one thing that is never done is running statements a broken `if` was written
 | A name that is not one of the statements above | Logged and skipped |
 | A call whose numbers cannot be read — `move(1)`, `scroll(a, b)` | Does nothing, and says nothing |
 | A statement that does not read as PSL once its slots are filled | Logged with what it was filled to, and skipped |
-| A slot the model cannot fill — no answer, an unreadable one, no screenshot | The statement is skipped, with the reason in the log; a condition then reads as false, so its block is skipped |
+| A slot psl cannot fill — no model configured, no answer, no screenshot | The statement is skipped, with the reason in the log; a condition then reads as false, so its block is skipped |
 | An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | Its whole block is dropped, and the drop is logged |
 | An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
 | An `if` whose `}` is missing | The end of the macro closes it |
 | A `}` with no `if` above it | Logged and skipped |
-| A slot in a macro with no `openai_api_key` | The macro does not run at all: **Settings needed** goes up before the cursor moves |
+| A slot closed up — `::like this::` | Not a slot; it stays in the statement as written |
+| A slot in a macro, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
 
 
 How it runs
@@ -265,7 +282,8 @@ See also
 
 - [UI](02_UI.md) — the PSL, record and Execute buttons
 - [Key names](04_Keys.md) — what `keyPress` accepts
-- [Settings](06_Settings.md) — `macro_default_delay`, and the model a slot is filled by
+- [Settings](06_Settings.md) — `macro_default_delay`, and where the `psl` executable is
+- [psl](https://github.com/pob/psl) — the compiler, its `.pslrc`, and the models it is pointed at
 - [Logs](05_Logs.md) — the session a run writes, and where each slot the AI filled is kept
 - [CLI](07_CLI.md) — `pob macro` runs `macro.psl` from the terminal
 - [MCP Server](08_MCP.md) — the same actions as MCP tools, recorded into the same file

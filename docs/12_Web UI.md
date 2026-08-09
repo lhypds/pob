@@ -21,7 +21,7 @@ Index
 
 The page for when all you remember is the machine. Three boxes:
 
-- **Instance** — what `pob status` prints: the instance ID, root, model,
+- **Instance** — what `pob status` prints: the instance ID, root, psl,
   whether a session is executing, whether recording is on, the MCP server, and
   the port this one is on.
 - **Pages** — the control and view pages, as links to follow.
