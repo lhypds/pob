@@ -87,10 +87,14 @@ An AI slot is an instruction written where a value would go, wrapped in `::` on 
 :: instruction ::
 ```
 
-The spaces are part of it. `::` opens a slot only when whitespace follows it, and closes one only
-when whitespace comes before it — the rule that lets PSL live inside a language with its own use for
-the characters, and here what tells a slot from a `::` in text being typed. Closed up,
-`::instruction::` is not a slot at all.
+The spaces are optional. `::instruction::` and `:: instruction ::` are the same slot, and one end may
+be closed up and the other not. What the markers may not do is touch a letter or a digit on the
+outside: `typeText("std::cout")` types `std::cout`, and `typeText("a::b::c")` types `a::b::c`. That
+is what tells a slot from a `::` in the text being typed.
+
+(psl itself is stricter — it reads only the spaced form, because a PSL file is usually written in
+some other language that has its own use for `::`. A macro is PSL all the way down, so Pob is easier
+about it, and writes the slot out in full before handing the file over.)
 
 The instruction between the markers is a question for the model rather than something Pob carries
 out itself. It goes **anywhere in a statement** — a whole argument, part of one, the condition of an
@@ -145,8 +149,8 @@ Write an instruction a screenshot can settle — "a chat window is open", "the f
 nothing else: it has no memory of what the statements before it actually did, so an instruction that
 turns on that is one it cannot answer.
 
-Whitespace around the instruction is trimmed, so `:: a ::` and `::  a  ::` are the same slot. A pair
-of markers with nothing between them asks nothing and is not a slot. What the model answers is a
+Whitespace around the instruction is trimmed, so `::a::`, `:: a ::` and `::  a  ::` all ask the same
+thing. A pair of markers with nothing between them asks nothing and is not a slot. What the model answers is a
 value and never more program: a `::` in the answer is text, not another slot to fill.
 
 A slot can name the model it wants, which is psl's own syntax passed straight through:
@@ -163,8 +167,8 @@ slots closed up, so the one psl fills is always the one the replay is waiting on
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
 psl to be found — Pob checks over the whole macro before the first statement runs rather than
 partway through, and puts up **psl needed** instead of moving the cursor. Every fill is kept under
-`logs/<session>/slots/<n>/` with the screenshot it was answered from (see [Logs](05_Logs.md));
-`pob --session <id>` lists them, and `~/.pob/llm.log` has the psl run behind each one.
+`logs/<session>/slots/<n>/` with the screenshot it was answered from and what psl said while filling
+it (see [Logs](05_Logs.md)); `pob --session <id>` lists them.
 
 
 Calls
@@ -254,7 +258,7 @@ The one thing that is never done is running statements a broken `if` was written
 | An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
 | An `if` whose `}` is missing | The end of the macro closes it |
 | A `}` with no `if` above it | Logged and skipped |
-| A slot closed up — `::like this::` | Not a slot; it stays in the statement as written |
+| Markers touching a letter or digit outside them — `std::cout` | Not a slot; it stays in the statement as written |
 | A slot in a macro, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
 
 

@@ -333,15 +333,15 @@ move(:: the x offset ::, 40)`
 
 	source, line := run.sourceFor(4, `move(:: the x offset ::, 40)`)
 
-	slot, found := psl.FindSlot(source, 0)
+	slot, found := psl.FindCompilerSlot(source, 0)
 	if !found {
-		t.Fatal("no live slot in the file handed to psl")
+		t.Fatal("no slot psl would fill in the file handed to it")
 	}
 	if slot.Instruction != "the x offset" {
 		t.Errorf("psl would fill %q, want the slot on the statement being run", slot.Instruction)
 	}
-	if _, more := psl.FindSlot(source, slot.End); more {
-		t.Error("more than one live slot in the file handed to psl")
+	if _, more := psl.FindCompilerSlot(source, slot.End); more {
+		t.Error("more than one slot psl would fill in the file handed to it")
 	}
 
 	lines := strings.Split(source, "\n")
@@ -356,12 +356,19 @@ move(:: the x offset ::, 40)`
 	}
 }
 
-// The header psl reads for the conventions is not part of the macro, and must
-// not hold a slot of its own — psl fills the first one it finds.
-func TestPSLHeaderHoldsNoSlot(t *testing.T) {
-	if psl.HasSlot(pslHeader) {
-		slot, _ := psl.FindSlot(pslHeader, 0)
-		t.Errorf("the header holds a live slot (%q), which psl would fill instead of the macro's", slot.Instruction)
+// The header psl reads for the conventions is not part of the macro, and
+// whatever examples it carries must not be slots psl would fill — it fills the
+// first one it finds, and the header comes first.
+func TestPSLHeaderIsNotFilled(t *testing.T) {
+	run := &macroRun{source: "click()\nmove(::the x offset::, 40)"}
+	source, _ := run.sourceFor(2, `move(::the x offset::, 40)`)
+
+	slot, found := psl.FindCompilerSlot(source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill")
+	}
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q — something in the header got there first", slot.Instruction)
 	}
 }
 

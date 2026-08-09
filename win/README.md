@@ -38,8 +38,7 @@ Download `Pob-<version>-windows-<arch>.zip` (`amd64` for Intel/AMD,
 `arm64` for ARM), then unzip and run `Pob\Pob.exe`.
 
 `Pob.exe` starts the bundled `pob-core.exe` automatically. On first run the
-working files (`settings.json`, `macro.psl`, `logs/`, `app.log`, `llm.log`) are
-created in `%USERPROFILE%\.pob\`. A macro with a `:: … ::` slot in it also
+working files (`settings.json`, `macro.psl`, `logs/`, `app.log`) are created in `%USERPROFILE%\.pob\`. A macro with a `:: … ::` slot in it also
 needs [psl](https://github.com/pob/psl) installed and given a key — Pob holds
 none of its own.
 

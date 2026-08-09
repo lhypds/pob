@@ -122,3 +122,30 @@ func TestCompilerLeavingTheSlotUnfilledIsAnError(t *testing.T) {
 		t.Error("Fill succeeded on a file with nothing to fill, want an error")
 	}
 }
+
+// The two forms go the same way through the compiler.
+func TestBothSlotFormsFillTheSame(t *testing.T) {
+	compiler, answer := stubCompiler(t)
+	answer("-120")
+
+	for _, macro := range []string{
+		"click()\nmove(::the x offset::, 40)",
+		"click()\nmove(:: the x offset ::, 40)",
+	} {
+		run := &macroRun{sessionID: "test", source: macro}
+		statement := strings.Split(macro, "\n")[1]
+
+		source, target := run.sourceFor(2, statement)
+		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
+		if err != nil {
+			t.Fatalf("%q: %v", statement, err)
+		}
+		got, ok := extractLine(source, result.Source, target)
+		if !ok {
+			t.Fatalf("%q: could not read the filled statement back", statement)
+		}
+		if want := "move(-120, 40)"; strings.TrimSpace(got) != want {
+			t.Errorf("%q filled to %q, want %q", statement, got, want)
+		}
+	}
+}

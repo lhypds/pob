@@ -9,7 +9,6 @@ Structure
     +--- INSTANCE                                 names the instance directory below.
     +--- settings.json                            this machine's [settings](06_Settings.md), shared by every instance.
     +--- app.log                                  the app's own log, across instances.
-    +--- llm.log                                  one block per psl run, across instances: which slot, which model filled it, and how long it took.
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and where the shell last left the window (`window_x`, `window_y`, `window_width`, `window_height`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
@@ -51,40 +50,6 @@ clean sheet of work rather than a machine to set up again.
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
 `<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`).  
-
-
-llm.log
--------
-
-Every run of the psl compiler is one block in `~/.pob/llm.log`, written whether it succeeded or not.
-Every AI slot Pob fills goes through one, so this is the whole of what the app asks a model to do —
-across instances, since the account being billed is the machine's rather than one instance's.
-
-```
-[2026-08-10T14:23:01Z] macro slot  (session 1752712400, macro.psl line 4)
-  compiler   psl
-  slot       the x offset to the Save button
-  model      claude-opus-5
-  duration   2.413s
-  status     ok
-  psl        psl: macro.psl resolved with claude-opus-5 — the x offset to the Save button
-             psl: 2 slot(s) remaining, run psl again
-```
-
-A run that failed says so and carries what psl said instead:
-
-```
-  status     failed
-  error      exit status 1: psl: no model configured: set OPENAI_API_KEY or write a .pslrc
-```
-
-Tokens and money are not in it. Pob makes no model call of its own any more — psl does, and psl does
-not report what one cost, so anything here would be a guess. `model` is read back out of psl's own
-progress line, so the block says which model answered without Pob having to know the configuration
-that picked it.
-
-What the file does not hold is the conversation. That is psl's, and Pob never sees it; what Pob keeps
-is the screenshot the slot was answered from and psl's output, under the session's `slots/<n>/`.
 
 
 See also

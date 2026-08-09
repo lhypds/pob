@@ -238,7 +238,6 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	if err != nil {
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
-		psl.LogCall(run.purpose(node), slot.Instruction, nil, err)
 		return "", false
 	}
 
@@ -246,13 +245,12 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	if !ok {
 		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
 		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
-		psl.LogCall(run.purpose(node), slot.Instruction, result, nil)
 		return "", false
 	}
 
-	applog.Logf("[%s] Macro slot (%s) -> %s", run.sessionID, slot.Instruction, filled)
+	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, filled,
+		result.Model, result.Duration.Round(time.Millisecond))
 	r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
-	psl.LogCall(run.purpose(node), slot.Instruction, result, nil)
 	return filled, true
 }
 
@@ -289,12 +287,6 @@ string, false for a condition.
 ----- the macro -----
 `
 
-// purpose heads this statement's block in llm.log — what was being filled, and
-// where to look for the rest of it.
-func (run *macroRun) purpose(node macroNode) string {
-	return "macro slot  (session " + run.sessionID + ", macro.psl line " + strconv.Itoa(node.line) + ")"
-}
-
 // sourceFor builds the file psl is shown for one statement: the header, then
 // the macro as it was written with the statement in question put back as it
 // now stands and every other slot closed up. It returns the file and the
@@ -303,13 +295,18 @@ func (run *macroRun) sourceFor(line int, statement string) (string, int) {
 	lines := strings.Split(run.source, "\n")
 	for i := range lines {
 		if i == line-1 {
-			lines[i] = statement
+			// Spaced out into the form psl fills; every other slot on the line,
+			// and on every other line, closed up so psl passes over it.
+			lines[i] = psl.Prepare(statement)
 			continue
 		}
 		lines[i] = psl.Neutralize(lines[i])
 	}
-	header := strings.Split(pslHeader, "\n")
-	return pslHeader + strings.Join(lines, "\n"), len(header) - 1 + line - 1
+	// The header is closed up too. It carries examples of the markers, and
+	// leaving it to be written carefully enough never to hold a live one is a
+	// rule someone would break by editing prose.
+	header := psl.Neutralize(pslHeader)
+	return header + strings.Join(lines, "\n"), strings.Count(header, "\n") + line - 1
 }
 
 // extractLine reads the filled statement back out of the file psl rewrote.

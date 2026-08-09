@@ -88,7 +88,7 @@ The one setting on this side is `psl`, which says where the executable is.
 See also
 --------
 
-- [Logs](05_Logs.md) — where the per-instance copy lives, and the `llm.log` every psl run is recorded in
+- [Logs](05_Logs.md) — the tree a run writes, and where every filled slot is kept
 - [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the compiler a `:: … ::` slot is filled by
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control

@@ -102,7 +102,7 @@ see what is running, `pob launch` to start the app. See
 [CLI](../docs/07_CLI.md).
 
 On first run the working files (`settings.json`, `macro.psl`, `logs/`,
-`app.log`, `llm.log`) are created in `~/.pob/`. A macro with a `:: … ::` slot
+`app.log`) are created in `~/.pob/`. A macro with a `:: … ::` slot
 in it also needs [psl](https://github.com/pob/psl) installed and given a key —
 Pob holds none of its own.
 

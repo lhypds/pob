@@ -91,7 +91,6 @@ Everything is under ~/.pob:
     settings.json           this machine's options (no API key: psl holds those)
     INSTANCE                which instance directory is the current one
     app.log                 what the app did
-    llm.log                 every psl run: which slot, which model, how long
     <instance>/
         macro.psl           recorded or hand-written actions
         logs/               sessions, AI slots, screenshots
