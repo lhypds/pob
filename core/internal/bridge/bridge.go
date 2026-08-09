@@ -64,6 +64,22 @@ type ShotOptions struct {
 	MaxWidth int
 	// Quality is JPEG quality, 1-100. 0 takes the shell's default.
 	Quality int
+	// KeepWindow lets the shell leave the Pob window on the screen for the
+	// grab, at the price of it appearing in the picture.
+	//
+	// It matters on one platform. macOS captures below the window and Windows
+	// marks it excluded, so on both it stays on screen either way and this
+	// changes nothing. X11 has neither: the window has to actually go for the
+	// duration of the grab, and a stream of frames keeps it gone the whole
+	// time the watcher is watching — the window vanishing off its own desktop
+	// as the price of a picture without it in.
+	//
+	// So the caller says which it would rather have. An agent's screenshot
+	// must not show Pob's own chrome — it is reading the screen and would read
+	// the toolbar as part of it — and pays the disappearance. A frame for
+	// someone watching does not care: the window in the corner of the picture
+	// is at worst noise, and at best tells them Pob is there.
+	KeepWindow bool
 }
 
 // Shot is a captured frame and the sizes needed to make sense of it.
@@ -105,6 +121,11 @@ func (b *Bridge) CaptureShot(opts ShotOptions) (Shot, error) {
 	}
 	if opts.Quality > 0 {
 		params["quality"] = opts.Quality
+	}
+	// Sent only when asked for, so the agent's capture goes over the wire
+	// exactly as it always has and an older shell sees nothing new.
+	if opts.KeepWindow {
+		params["keepWindow"] = true
 	}
 
 	data, result, err := b.ipc.CallFrame("screenshot.capture", params)

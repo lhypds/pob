@@ -219,8 +219,12 @@ public static class CoreBridge
                 string format = MemberString(parameters, "format", "png");
                 int maxWidth = (int)MemberDouble(parameters, "maxWidth", 0);
                 int quality = (int)MemberDouble(parameters, "quality", 0);
+                // Absent means the caller wants Pob out of the picture — the
+                // agent's capture, and what every capture was before the view
+                // page asked otherwise.
+                bool keepWindow = MemberBool(parameters, "keepWindow", false);
                 ScreenshotService.HandleCapture(id, withCursor, hasCrop, cx, cy, cw, ch,
-                                                format, maxWidth, quality);
+                                                format, maxWidth, quality, keepWindow);
                 break;
             }
 

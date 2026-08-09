@@ -9,12 +9,9 @@
 #include <gtk/gtk.h>
 
 // Colors copied from the macOS shell (SwiftUI system palette) so both
-// platforms render identically.
-#define POB_COLOR_GRAY_R (142.0 / 255.0) // SwiftUI Color.gray = systemGray
-#define POB_COLOR_GRAY_G (142.0 / 255.0)
-#define POB_COLOR_GRAY_B (147.0 / 255.0)
-#define POB_COLOR_GRAY_A 0.2
-
+// platforms render identically. The one exception is the content area's
+// background: macOS and Windows wash theirs with Color.gray.opacity(0.2),
+// X11 leaves its own clear (see content_view.c's on_draw).
 #define POB_COLOR_BLUE_R (0.0 / 255.0) // SwiftUI Color.blue = systemBlue
 #define POB_COLOR_BLUE_G (122.0 / 255.0)
 #define POB_COLOR_BLUE_B (255.0 / 255.0)

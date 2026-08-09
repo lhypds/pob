@@ -10,6 +10,7 @@
 #include "mouse_service.h"
 #include "settings_service.h"
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <gdk/gdkx.h>
 #include <string.h>
@@ -974,6 +975,29 @@ static void on_composited_changed(GdkScreen *screen, gpointer data) {
     gtk_widget_queue_draw(GTK_WIDGET(g_state.window));
 }
 
+// Asks the compositor not to draw a shadow behind this window.
+//
+// A drop shadow is drawn as a rectangle *behind* the window, and a compositor
+// only takes the window's own pixels out of it when the window is opaque
+// enough to hide it anyway. Pob's content area is 20% gray over nothing, so
+// there is nothing to hide it: the shadow shows straight through the part of
+// the window that is supposed to be a hole, and the app being driven turns
+// gray. Measured under xcompmgr -c, its 0.75-black shadow took the desktop's
+// own 128 gray down to 57.
+//
+// picom and compton read this property; xcompmgr does not, and has no
+// per-window opt-out at all — there, the shadow has to come off the
+// compositor (run it without -c, which still composites the ARGB visual the
+// translucent content needs, and only gives up the shadows).
+static void disable_compositor_shadow(GdkWindow *gw) {
+    if (!gw) return;
+    Display *dpy = GDK_DISPLAY_XDISPLAY(gdk_display_get_default());
+    Atom prop = XInternAtom(dpy, "_COMPTON_SHADOW", False);
+    long value = 0;
+    XChangeProperty(dpy, GDK_WINDOW_XID(gw), prop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&value, 1);
+}
+
 // Logs the facts transparency depends on, so app.log answers "why is the
 // window opaque" without guesswork.
 static void on_window_realize(GtkWidget *w, gpointer data) {
@@ -983,6 +1007,7 @@ static void on_window_realize(GtkWidget *w, gpointer data) {
     app_logger_log("Window realized: visual depth=%d (32 = ARGB ok), composited=%d",
                    depth,
                    gdk_screen_is_composited(gtk_widget_get_screen(w)));
+    disable_compositor_shadow(gw);
 }
 
 static void on_activate(GtkApplication *app, gpointer data) {

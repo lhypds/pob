@@ -271,8 +271,14 @@ static void dispatch(JsonObject *msg) {
             : "png";
         int max_width = (int)member_double(params, "maxWidth", 0);
         int quality = (int)member_double(params, "quality", 0);
+        // Absent means the caller wants Pob out of the picture — the agent's
+        // capture, and what every capture was before the view page asked
+        // otherwise.
+        gboolean keep_window = params
+            ? json_object_get_boolean_member_with_default(params, "keepWindow", FALSE)
+            : FALSE;
         screenshot_handle_capture(id, with_cursor, has_crop, cx, cy, cw, ch,
-                                  format, max_width, quality);
+                                  format, max_width, quality, keep_window);
 
     } else if (g_str_equal(method, "frames.channel")) {
         int port = (int)member_double(params, "port", 0);

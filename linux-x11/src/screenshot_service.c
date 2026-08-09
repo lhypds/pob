@@ -46,6 +46,7 @@ typedef struct {
     char *format;  // "png" (the agent's) or "jpeg" (the view page's)
     int max_width; // shrink to at most this many pixels across; 0 leaves it
     int quality;   // JPEG quality 1-100; 0 takes the default below
+    gboolean keep_window; // leave the window on the screen, and in the picture
 } PendingShot;
 
 static PendingShot *pending = NULL;
@@ -288,8 +289,10 @@ static gboolean surface_to_bytes(cairo_surface_t *surface, const char *format,
 
 static void finish_pending(void) {
     // The screen is free again: start the clock on bringing the window back,
-    // which the next frame of a stream will push out ahead of itself.
-    schedule_window_restore();
+    // which the next frame of a stream will push out ahead of itself. A frame
+    // that never took the window away has nothing to bring back — and must not
+    // touch the clock, since a burst that did may still be running on it.
+    if (!pending || !pending->keep_window) schedule_window_restore();
 
     if (!pending) return;
     g_free(pending->id);
@@ -452,7 +455,7 @@ static gboolean do_capture(gpointer data) {
 void screenshot_handle_capture(const char *id, gboolean with_cursor,
                                gboolean has_crop, double crop_x, double crop_y,
                                double crop_w, double crop_h, const char *format,
-                               int max_width, int quality) {
+                               int max_width, int quality, gboolean keep_window) {
     if (pending) { // should not happen — the core awaits each capture
         core_bridge_respond_error(id, "Capture already in progress");
         return;
@@ -473,6 +476,16 @@ void screenshot_handle_capture(const char *id, gboolean with_cursor,
     pending->format = g_strdup(format && *format ? format : "png");
     pending->max_width = max_width;
     pending->quality = quality;
+    pending->keep_window = keep_window;
+
+    if (keep_window) {
+        // Watching, not reading: the window stays where it is and lands in the
+        // picture. Nothing to take away means nothing to wait for — and the
+        // burst bookkeeping below is left alone, since a frame that never hid
+        // the window is not part of a burst that did.
+        do_capture(NULL);
+        return;
+    }
 
     gint64 now = g_get_monotonic_time();
     if (last_capture_us) last_gap_us = now - last_capture_us;

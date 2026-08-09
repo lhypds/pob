@@ -38,7 +38,9 @@ func (r *Remote) KeyPress(key string) error  { return r.br.KeyPress(key) }
 
 // CaptureView takes the whole frame with the cursor in it: it is watched, not
 // measured, so there is nothing to crop to and the pointer is the one thing a
-// watcher most needs to see.
+// watcher most needs to see. For the same reason the window stays put — a
+// watcher would rather see Pob in the picture than watch it vanish off the
+// desktop for as long as the page is open (see ShotOptions.KeepWindow).
 //
 // format is "png" or "jpeg", maxWidth shrinks the picture to at most that many
 // pixels across (0 leaves it alone) and quality is JPEG quality (0 takes the
@@ -51,6 +53,7 @@ func (r *Remote) CaptureView(format string, maxWidth, quality int) ([]byte, int,
 		Format:     format,
 		MaxWidth:   maxWidth,
 		Quality:    quality,
+		KeepWindow: true,
 	})
 	if err != nil {
 		return nil, 0, 0, err

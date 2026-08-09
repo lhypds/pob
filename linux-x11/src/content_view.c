@@ -263,9 +263,9 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     double W = alloc.width, H = alloc.height;
     int scale = widget_scale();
 
-    // A capture is reading these pixels: everything below this point would
-    // land in it, starting with the gray. Clear to nothing instead, with
-    // OPERATOR_SOURCE so the theme's own background goes too.
+    // A capture is reading these pixels: the cursor, the overlays and the
+    // toast below this point would all land in it. Clear to nothing and stop,
+    // with OPERATOR_SOURCE so the theme's own background goes too.
     if (capture_hidden) {
         cairo_save(cr);
         cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
@@ -275,14 +275,22 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         return FALSE;
     }
 
-    // Translucent gray background (Color.gray.opacity(0.2)). Painted with
-    // OPERATOR_SOURCE so the pixels become exactly 20%-alpha gray no matter
-    // what the theme painted underneath — some themes (e.g. PiXflat) fill
-    // the window with an opaque background-image that CSS overrides miss.
+    // Nothing at all: the content area is a hole in the window, and what
+    // shows through it is the app being driven, untinted. macOS and Windows
+    // wash theirs with Color.gray.opacity(0.2); X11 does not, because the
+    // wash is not the only thing that lands on those pixels — a compositor
+    // drop shadow sits behind the window and shows through anything less than
+    // opaque, and a faint gray on top of that reads as a dirty window rather
+    // than as Pob's own tint (see disable_compositor_shadow in main.c).
+    //
+    // Still painted rather than skipped, and with OPERATOR_SOURCE: some
+    // themes (e.g. PiXflat) fill the window with an opaque background-image
+    // that CSS overrides miss, and clearing to zero alpha is what takes it
+    // off. Skipping the paint would leave the theme's background, which is
+    // the opposite of transparent.
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(cr, POB_COLOR_GRAY_R, POB_COLOR_GRAY_G,
-                          POB_COLOR_GRAY_B, POB_COLOR_GRAY_A);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0);
     cairo_paint(cr);
     cairo_restore(cr);
 

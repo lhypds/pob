@@ -106,9 +106,15 @@ public static class ScreenshotService
 
     private static PendingShot? _pending;
 
+    // keepWindow leaves the overlay on the screen and in the picture. On a
+    // machine that took the exclusion flag it changes nothing — the overlay
+    // never goes anywhere and never shows up either way. It is the fallback
+    // path it speaks to: there, a stream of frames would blink the overlay at
+    // the frame rate, and a watcher would rather see it than see it flicker.
     public static void HandleCapture(string id, bool withCursor, bool hasCrop,
                                      double cropX, double cropY, double cropW, double cropH,
-                                     string format, int maxWidth, int quality)
+                                     string format, int maxWidth, int quality,
+                                     bool keepWindow = false)
     {
         if (_pending != null)
         { // should not happen — the core awaits each capture
@@ -125,10 +131,11 @@ public static class ScreenshotService
         _pending = new PendingShot(id, withCursor, hasCrop, cropX, cropY, cropW, cropH,
                                    format, maxWidth, quality);
 
-        if (_excluded)
+        if (_excluded || keepWindow)
         {
-            // The overlay is already invisible to the grab: nothing to hide,
-            // no compositor round trip to wait out, straight to the pixels.
+            // Nothing to hide: either the overlay is already invisible to the
+            // grab, or this frame is content to have it in. Either way there is
+            // no compositor round trip to wait out — straight to the pixels.
             DoCapture();
             return;
         }

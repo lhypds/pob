@@ -60,6 +60,16 @@ full-size PNG the agent works from. It asks for a JPEG no wider than the box
 it is about to draw the frame in — on a typical window, a fifth of the bytes
 and an eighth of the time, which is what a watchable frame rate is made of.
 
+Watching also leaves the window where it is. The agent's screenshot must not
+show Pob's own toolbar — it would read it as part of the screen — and on macOS
+it captures below the window, on Windows the window is marked out of every
+capture; either way the window stays on the desktop and out of the picture.
+X11 can do neither: the only way to keep a window out of a root grab is for it
+not to be there, so the agent's captures take it off the screen for the length
+of the grab. A stream of them would hold it off for as long as the page stayed
+open, so the view page's frames don't ask for that — on Linux the picture is
+the screen with Pob still in it.
+
 **Click straight on it.** Where you click is where it lands: the point is read
 off the picture, scaled back up by however much the frame was shrunk on the
 way over, and sent as `MOVE_TO`. Click, double-click, right-click, drag and
