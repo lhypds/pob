@@ -19,8 +19,8 @@ the rest are left where they are to be copied across by hand.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `openai_api_key` | — | API key for the model provider |
 | `base_url` | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API (e.g. `https://api.anthropic.com/v1` for Claude) |
+| `openai_api_key` | — | API key for the model provider |
 | `model` | `gpt-5.6` | Model name (e.g. `claude-sonnet-4-5`, `gemini-2.5-flash`) |
 | `max_tokens` | `2000` | Maximum tokens in the response |
 | `max_steps` | `12` | Maximum tool-execution steps per plan before pausing with a warning |
@@ -69,8 +69,8 @@ Pointed at Claude — the API is OpenAI-compatible, so only `base_url` and
 
 ```json
 {
-  "openai_api_key": "",
   "base_url": "https://api.anthropic.com/v1",
+  "openai_api_key": "",
   "model": "claude-opus-4-8",
   "max_steps": 50,
   "max_resumes": 5,
@@ -86,8 +86,8 @@ Pointed at Gemini, through its OpenAI-compatible endpoint:
 
 ```json
 {
-  "openai_api_key": "",
   "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+  "openai_api_key": "",
   "model": "gemini-2.5-flash",
   "max_steps": 50,
   "max_resumes": 5,

@@ -33,8 +33,8 @@ type Config struct {
 }
 
 var defaults = map[string]any{
-	"openai_api_key":      "",
 	"base_url":            "https://api.openai.com/v1",
+	"openai_api_key":      "",
 	"model":               "gpt-5.6",
 	"max_steps":           12,
 	"max_resumes":         5,
