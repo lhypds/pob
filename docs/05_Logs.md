@@ -19,14 +19,14 @@ Structure
               +--- screenshots/                   screenshots taken with the toolbar Screenshot button.
 
               +--- <session>/                    one replay of macro.psl.
-                   +--- session.json              session details, start time, end time, and the usage of the `if` conditions, if it had any.
+                   +--- session.json              session details, start time, end time, and the usage of the `::…::` slots, if it had any.
                    +--- macro.psl                 the macro as it stood when this session ran.
-                   +--- conditions/               one directory per `if` condition judged, numbered in the order they were judged.
+                   +--- slots/                    one directory per `::…::` slot filled, numbered in the order they were filled.
                         +--- <n>/
-                             +--- condition.json  the condition, which line of macro.psl it came from, the verdict and the reason.
+                             +--- slot.json       the prompt, the statement and the line of macro.psl it came from, what the AI filled in, and the reason.
                              +--- messages.json
                              +--- response.json
-                             +--- screenshot.png  what the condition was judged from.
+                             +--- screenshot.png  what the slot was filled from.
                    +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.
 ```
 
@@ -50,7 +50,7 @@ sheet of work rather than a machine to set up again.
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
-`<n>` is the position of an [`if`](03_Macro%20PSL.md) condition in the order the macro judged them (e.g. `1`, `2`, `3`).  
+`<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`).  
 
 
 See also

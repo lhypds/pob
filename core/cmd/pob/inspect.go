@@ -203,13 +203,13 @@ func showSession(root, instanceID, sessionID string) {
 		fmt.Printf("\nScreenshots: %d in %s\n", len(shots), filepath.Join(dir, "screenshots"))
 	}
 
-	printConditions(dir)
+	printSlots(dir)
 }
 
-// printConditions renders the if conditions a macro session judged, in the
-// order it judged them.
-func printConditions(sessionDir string) {
-	entries, err := os.ReadDir(filepath.Join(sessionDir, "conditions"))
+// printSlots renders the ::…:: slots a macro session filled, in the order it
+// filled them — the statement as written, and what the AI put in it.
+func printSlots(sessionDir string) {
+	entries, err := os.ReadDir(filepath.Join(sessionDir, "slots"))
 	if err != nil || len(entries) == 0 {
 		return
 	}
@@ -221,23 +221,29 @@ func printConditions(sessionDir string) {
 	}
 	sort.Ints(seqs)
 
-	fmt.Println("\nConditions:")
+	fmt.Println("\nSlots:")
 	for _, seq := range seqs {
-		conditionJSON := readJSONFile(filepath.Join(sessionDir, "conditions", strconv.Itoa(seq), "condition.json"))
-		if conditionJSON == nil {
+		slotJSON := readJSONFile(filepath.Join(sessionDir, "slots", strconv.Itoa(seq), "slot.json"))
+		if slotJSON == nil {
 			continue
 		}
-		condition, _ := conditionJSON["condition"].(string)
-		result, _ := conditionJSON["result"].(bool)
-		reason, _ := conditionJSON["reason"].(string)
-		verdict := "false — block skipped"
-		if result {
-			verdict = "true — block executed"
+		prompt, _ := slotJSON["prompt"].(string)
+		statement, _ := slotJSON["statement"].(string)
+		value, _ := slotJSON["value"].(string)
+		reason, _ := slotJSON["reason"].(string)
+		answered, _ := slotJSON["answered"].(bool)
+
+		filled := value
+		if !answered {
+			filled = "— unanswered, statement skipped"
 		}
-		if line := intField(conditionJSON, "line"); line > 0 {
-			fmt.Printf("  %d. [line %d] if (::%s::) → %s\n", seq, line, condition, verdict)
+		if line := intField(slotJSON, "line"); line > 0 {
+			fmt.Printf("  %d. [line %d] ::%s:: → %s\n", seq, line, prompt, filled)
 		} else {
-			fmt.Printf("  %d. if (::%s::) → %s\n", seq, condition, verdict)
+			fmt.Printf("  %d. ::%s:: → %s\n", seq, prompt, filled)
+		}
+		if statement != "" {
+			fmt.Printf("     in: %s\n", statement)
 		}
 		if reason != "" {
 			fmt.Printf("     %s\n", reason)

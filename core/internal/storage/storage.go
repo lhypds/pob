@@ -220,18 +220,21 @@ func (s *Storage) SaveMacro(sessionID string) {
 	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.psl"), []byte(s.macro()), 0o644)
 }
 
-// SaveMacroCondition writes one IF judgement of a macro session under
-// logs/<session>/conditions/<n>/. The directories are numbered in the order the
-// conditions were judged, and condition.json carries the line of macro.psl each
-// one came from.
-func (s *Storage) SaveMacroCondition(sessionID string, seq, line int, condition string, result bool, reason string, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
-	dir := filepath.Join(s.sessionDir(sessionID), "conditions", fmt.Sprintf("%d", seq))
+// SaveMacroSlot writes one ::…:: the AI filled during a macro session, under
+// logs/<session>/slots/<n>/. The directories are numbered in the order the slots
+// were filled, and slot.json carries the statement and the line of macro.psl
+// each one came from — so a replay can be read back against the macro that was
+// written, which is not the same text once the slots are in it.
+func (s *Storage) SaveMacroSlot(sessionID string, seq, line int, statement, prompt, value, reason string, answered bool, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
+	dir := filepath.Join(s.sessionDir(sessionID), "slots", fmt.Sprintf("%d", seq))
 	_ = os.MkdirAll(dir, 0o755)
-	writeJSON(filepath.Join(dir, "condition.json"), map[string]any{
+	writeJSON(filepath.Join(dir, "slot.json"), map[string]any{
 		"sequence":  seq,
 		"line":      line,
-		"condition": condition,
-		"result":    result,
+		"statement": statement,
+		"prompt":    prompt,
+		"value":     value,
+		"answered":  answered,
 		"reason":    reason,
 	})
 	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))

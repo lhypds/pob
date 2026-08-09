@@ -92,7 +92,7 @@ See also
 --------
 
 - [Logs](05_Logs.md) — where the per-instance copy lives
-- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the model an `if` is judged with
+- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the model a `::…::` slot is filled by
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control
 - [MCP Server](08_MCP.md) — what `mcp`, `mcp_port` and `mcp_host` control

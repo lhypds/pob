@@ -50,10 +50,12 @@ three.
 
 Press Record in the toolbar, do the thing once, and press Execute to have it
 done again — the actions land in the instance's `macro.psl`, a
-[macro](docs/03_Macro%20PSL.md) you can then open and edit. A step that needs
-the screen read rather than repeated is an `if (::…::)` you write in by hand;
-that one calls a model, so put your API key in `~/.pob/settings.json` first.
-Or drive the machine yourself from a phone, a terminal, or another computer.
+[macro](docs/03_Macro%20PSL.md) you can then open and edit. Anywhere the macro
+should read the screen instead of repeating a value, write a `::…::` in its
+place and the AI fills it in as the macro runs — a coordinate, a piece of text,
+a true or false. Those call a model, so put your API key in
+`~/.pob/settings.json` first. Or drive the machine yourself from a phone, a
+terminal, or another computer.
 
 
 Documentation
@@ -63,7 +65,7 @@ Documentation
 |-----|--------------|
 | [Architecture](docs/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
 | [UI](docs/02_UI.md) | The window and every toolbar button |
-| [Macro PSL](docs/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `if (::…::)` a macro asks the AI to judge |
+| [Macro PSL](docs/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `::…::` slots the AI fills in as it runs |
 | [Key names](docs/04_Keys.md) | What `keyPress` / `key_press` accepts |
 | [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory and its sessions |
 | [Settings](docs/06_Settings.md) | Every key in `settings.json` |
