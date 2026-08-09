@@ -1,19 +1,11 @@
-// Modal dialogs mirroring the macOS/Linux shells: the max-step warning,
-// the run-macro-or-instruction choice, the record-over-a-macro warning, the
-// reset menu (stacked buttons) and the About box.
+// Modal dialogs mirroring the macOS/Linux shells: the record-over-a-macro
+// warning, the reset menu (stacked buttons) and the About box.
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Pob.Services;
 
 namespace Pob.Views;
-
-public enum MacroChoice
-{
-    Cancel,
-    RunMacro,
-    RunInstruction,
-}
 
 public enum RecordChoice
 {
@@ -55,40 +47,6 @@ public static class Dialogs
         return button;
     }
 
-    // ── "Max step exceed." Continue/Stop ────────────────────────────────────
-
-    public static bool ShowMaxStep(Window? owner)
-    {
-        Window dialog = MakeDialog(owner, "Warning");
-        bool shouldContinue = false;
-
-        var message = new TextBlock
-        {
-            Text = "Max step exceed.",
-            Margin = new Thickness(0, 0, 0, 12),
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        buttons.Children.Add(MakeButton("Stop", () => dialog.Close()));
-        buttons.Children.Add(MakeButton("Continue", () =>
-        {
-            shouldContinue = true;
-            dialog.Close();
-        }));
-
-        var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(message);
-        panel.Children.Add(buttons);
-        dialog.Content = panel;
-        dialog.ShowDialog();
-        return shouldContinue;
-    }
-
     // ── Whatever the core has to say, with an OK ────────────────────────────
 
     public static void ShowAlert(Window? owner, string title, string message)
@@ -115,46 +73,7 @@ public static class Dialogs
         dialog.ShowDialog();
     }
 
-    // ── "What would you like to run?" ───────────────────────────────────────
-
-    public static MacroChoice ShowMacroChoice(Window? owner)
-    {
-        Window dialog = MakeDialog(owner, "What would you like to run?");
-        MacroChoice choice = MacroChoice.Cancel;
-
-        var message = new TextBlock
-        {
-            Text = "macro.txt has recorded actions.",
-            Margin = new Thickness(0, 0, 0, 12),
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        buttons.Children.Add(MakeButton("Cancel", () => dialog.Close()));
-        buttons.Children.Add(MakeButton("Run Macro", () =>
-        {
-            choice = MacroChoice.RunMacro;
-            dialog.Close();
-        }));
-        buttons.Children.Add(MakeButton("Run Instruction", () =>
-        {
-            choice = MacroChoice.RunInstruction;
-            dialog.Close();
-        }));
-
-        var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(message);
-        panel.Children.Add(buttons);
-        dialog.Content = panel;
-        dialog.ShowDialog();
-        return choice;
-    }
-
-    // ── "macro.txt has recorded actions." Clear/Keep/Cancel ─────────────────
+    // ── "macro.psl has recorded actions." Clear/Keep/Cancel ─────────────────
 
     public static RecordChoice ShowRecordWarning(Window? owner)
     {
@@ -163,7 +82,7 @@ public static class Dialogs
 
         var message = new TextBlock
         {
-            Text = "macro.txt has recorded actions. Clear them before recording?",
+            Text = "macro.psl has recorded actions. Clear them before recording?",
             Margin = new Thickness(0, 0, 0, 12),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
@@ -218,15 +137,10 @@ public static class Dialogs
             MouseService.ResetCursor();
             content?.ShowMessage("Mouse position reset");
         });
-        AddAction("Reset instruction.txt", () =>
-        {
-            SettingsService.ClearInstruction();
-            content?.ShowMessage("instruction.txt reset");
-        });
-        AddAction("Reset macro.txt", () =>
+        AddAction("Reset macro.psl", () =>
         {
             SettingsService.ClearMacro();
-            content?.ShowMessage("macro.txt reset");
+            content?.ShowMessage("macro.psl reset");
         });
         AddAction("Close", () => { });
 

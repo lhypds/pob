@@ -38,8 +38,8 @@ Download `Pob-<version>-windows-<arch>.zip` (`amd64` for Intel/AMD,
 `arm64` for ARM), then unzip and run `Pob\Pob.exe`.
 
 `Pob.exe` starts the bundled `pob-core.exe` automatically. On first run the
-working files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`,
-`app.log`) are created in `%USERPROFILE%\.pob\` — set `openai_api_key` in
+working files (`settings.json`, `macro.psl`, `logs/`, `app.log`) are created
+in `%USERPROFILE%\.pob\` — set `openai_api_key` in
 `settings.json` there.
 
 To keep it somewhere permanent and get the `pob` command in the terminal,

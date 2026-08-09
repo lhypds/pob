@@ -7,7 +7,7 @@ import (
 
 func testStorage(t *testing.T, root, id string) *Storage {
 	t.Helper()
-	return New(root, id, func() map[string]any { return nil }, func() string { return "" }, func() string { return "" })
+	return New(root, id, func() map[string]any { return nil }, func() string { return "" })
 }
 
 // The control port shares instance.json with the name and the times, and the

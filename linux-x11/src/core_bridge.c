@@ -19,8 +19,6 @@ static guint child_watch = 0;
 
 static GMutex write_mutex;
 
-// Pending ui.confirmMaxStep request id (main thread only).
-static gchar *max_step_request_id = NULL;
 
 // ── writing ─────────────────────────────────────────────────────────────────
 
@@ -165,16 +163,11 @@ static JsonBuilder *add_nothing(JsonBuilder *b, gpointer data) {
     return b;
 }
 
-void core_bridge_run_instruction(gboolean recording) {
-    notify("run.instruction", add_recording, GINT_TO_POINTER(recording));
-}
-
 void core_bridge_run_macro(void) {
     notify("run.macro", add_nothing, NULL);
 }
 
 void core_bridge_stop_execution(void) {
-    core_bridge_resolve_max_step(FALSE);
     notify("run.stop", add_nothing, NULL);
 }
 
@@ -186,18 +179,6 @@ void core_bridge_recording_changed(gboolean recording) {
 // shot, and records a take_screenshot() macro line while recording.
 void core_bridge_take_screenshot(void) {
     notify("screenshot.take", add_nothing, NULL);
-}
-
-void core_bridge_resolve_max_step(gboolean should_continue) {
-    if (!max_step_request_id) return;
-    gchar *id = max_step_request_id;
-    max_step_request_id = NULL;
-
-    JsonBuilder *b = begin_response(id);
-    json_builder_set_member_name(b, "continue");
-    json_builder_add_boolean_value(b, should_continue);
-    end_response(b);
-    g_free(id);
 }
 
 // ── dispatch (main thread) ──────────────────────────────────────────────────
@@ -331,12 +312,6 @@ static void dispatch(JsonObject *msg) {
     } else if (g_str_equal(method, "ui.flash")) {
         content_view_flash();
         if (id) core_bridge_respond_empty(id);
-
-    } else if (g_str_equal(method, "ui.confirmMaxStep")) {
-        if (!id) return;
-        g_free(max_step_request_id);
-        max_step_request_id = g_strdup(id);
-        app_show_max_step_dialog();
 
     } else if (g_str_equal(method, "ui.alert")) {
         const gchar *title = params

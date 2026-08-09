@@ -10,7 +10,7 @@ It sits at the root rather than inside an instance directory because it is how
 the machine works, not what one instance is doing with it: the API key, the
 model and the port are the same whichever instance is running. Pointing
 [`~/.pob/INSTANCE`](05_Logs.md) at another id therefore starts Pob on a clean
-`instruction.txt` and `macro.txt`, on a machine that is already set up.
+`macro.psl`, on a machine that is already set up.
 
 A settings file from an older Pob — one per instance, inside its directory — is
 moved up to the root on the next run, so a machine that was set up stays set
@@ -22,13 +22,10 @@ the rest are left where they are to be copied across by hand.
 | `base_url` | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API (e.g. `https://api.anthropic.com/v1` for Claude) |
 | `openai_api_key` | — | API key for the model provider |
 | `model` | `gpt-5.6` | Model name (e.g. `claude-sonnet-4-5`, `gemini-2.5-flash`) |
-| `max_tokens` | `2000` | Maximum tokens in the response |
-| `max_steps` | `12` | Maximum tool-execution steps per plan before pausing with a warning |
-| `max_resumes` | `5` | Maximum step-resume attempts per plan before the plan is force-stopped and regenerated |
-| `max_steplogs` | `10` | Maximum AI log iterations for a single step before it is automatically resumed |
+| `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
-| `stop_hook` | — | Shell command to run when a session completes (e.g. `afplay /System/Library/Sounds/Morse.aiff`) |
+| `stop_hook` | — | Shell command to run when a macro runs to its end (e.g. `afplay /System/Library/Sounds/Morse.aiff`). A stopped run does not fire it |
 | `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web UI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
 | `webui_view_fps` | `5` | How often the [Web UI](12_Web UI.md)'s view page refetches the picture, in frames per second (`0.1`–`30`, clamped). Every frame is a screen capture on this machine, which is why the rate is set here and not on the page |
@@ -54,10 +51,7 @@ Example:
 ```json
 {
   "model": "gpt-5.5",
-  "max_tokens": 2000,
-  "max_steps": 12,
-  "max_resumes": 5,
-  "max_steplogs": 10,
+  "macro_default_delay": 1000,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
   ...
@@ -72,9 +66,6 @@ Pointed at Claude — the API is OpenAI-compatible, so only `base_url` and
   "base_url": "https://api.anthropic.com/v1",
   "openai_api_key": "",
   "model": "claude-opus-4-8",
-  "max_steps": 50,
-  "max_resumes": 5,
-  "max_steplogs": 10,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",
@@ -89,9 +80,6 @@ Pointed at Gemini, through its OpenAI-compatible endpoint:
   "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
   "openai_api_key": "",
   "model": "gemini-2.5-flash",
-  "max_steps": 50,
-  "max_resumes": 5,
-  "max_steplogs": 10,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",
@@ -104,6 +92,7 @@ See also
 --------
 
 - [Logs](05_Logs.md) — where the per-instance copy lives
+- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the model an `if` is judged with
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control
 - [MCP Server](08_MCP.md) — what `mcp`, `mcp_port` and `mcp_host` control

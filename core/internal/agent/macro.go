@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ type macroNode struct {
 	args      []string    // action arguments
 	condition string      // if only — what the AI is asked to judge
 	body      []macroNode // if only — what runs when the condition holds
-	line      int         // 1-based line in macro.txt, for logs
+	line      int         // 1-based line in macro.psl, for logs
 }
 
 func (n macroNode) isIf() bool { return n.condition != "" }
@@ -32,7 +33,7 @@ type macroRun struct {
 	conditions int
 }
 
-// runMacro replays macro.txt statement by statement.
+// runMacro replays macro.psl statement by statement.
 func (r *Runner) runMacro(ctx context.Context) {
 	nodes := parseMacro(r.cfg.Macro())
 
@@ -40,7 +41,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	// Pob cannot run as written, and finding that out halfway through would
 	// leave the actions above the if already played.
 	if missing := r.macroSettingsMissing(nodes); missing != "" {
-		message := "macro.txt has an if the AI must judge, and that is a model call. settings.json has no " + missing + " — set it and run the macro again."
+		message := "macro.psl has an if the AI must judge, and that is a model call. settings.json has no " + missing + " — set it and run the macro again."
 		applog.Logf("Macro not run: %s", message)
 		r.br.ShowAlert("Settings needed", message)
 		return
@@ -76,6 +77,14 @@ func (r *Runner) runMacro(ctx context.Context) {
 		applog.Logf("[%s] Macro session usage saved", sessionID)
 	}
 	applog.Log("Macro execution complete")
+
+	// A run that was stopped never reached its end, so nothing is announced:
+	// the hook is what says the macro finished.
+	if ctx.Err() == nil {
+		if hook := r.cfg.StopHook(); hook != "" {
+			_ = exec.Command("/bin/sh", "-c", hook).Start()
+		}
+	}
 }
 
 // runMacroNodes executes a block of statements, recursing into the if blocks
@@ -311,7 +320,7 @@ const (
 	macroAIMarker = "::"
 )
 
-// parseMacro turns macro.txt into the statements to execute. Lines it cannot
+// parseMacro turns macro.psl into the statements to execute. Lines it cannot
 // read are logged and dropped, the way a bad action line always has been — a
 // macro runs as far as it makes sense rather than not at all.
 func parseMacro(text string) []macroNode {

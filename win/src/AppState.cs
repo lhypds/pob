@@ -153,12 +153,6 @@ public static class AppState
 
     // ── dialogs ─────────────────────────────────────────────────────────────
 
-    public static void ShowMaxStepDialog()
-    {
-        bool shouldContinue = Dialogs.ShowMaxStep(Toolbar);
-        CoreBridge.ResolveMaxStep(shouldContinue);
-    }
-
     // Whatever the core has to say for itself, with an OK — the settings a
     // macro's IF needs and hasn't got, say.
     public static void ShowAlertDialog(string title, string message)

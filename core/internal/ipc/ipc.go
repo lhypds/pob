@@ -1,6 +1,6 @@
 // Package ipc implements bidirectional line-delimited JSON-RPC 2.0 over
 // stdin/stdout. The Swift shell spawns pob-core as a child process:
-//   - Swift -> Go: notifications (run.instruction, run.macro, run.stop, recording.changed)
+//   - Swift -> Go: notifications (run.macro, run.stop, recording.changed)
 //   - Go -> Swift: requests (screenshot.capture, mouse.*, keyboard.*, ui.*) and
 //     notifications (session.state)
 //

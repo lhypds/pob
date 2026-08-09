@@ -39,7 +39,7 @@ type Server struct {
 	port     int
 }
 
-// MacroRecorder is the macro.txt sink. An action driven over MCP is an action
+// MacroRecorder is the macro.psl sink. An action driven over MCP is an action
 // the machine performed, so a recording that is running captures it the same
 // as one the agent loop performed: same file, same grammar, one stream in the
 // order things happened.

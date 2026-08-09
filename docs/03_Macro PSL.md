@@ -1,14 +1,19 @@
 
-Prompt Script Language
-======================
+Macro PSL
+=========
 
-Prompt Script Language — PSL — is the language a macro is written in. A `macro.txt` is a program in
-it, and so is every line the record button appends while you work: the language is small enough that
-a recording is readable, and readable enough that the recording is worth editing afterwards.
+A macro is a sequence of actions Pob plays back — recorded from what you do, or written by hand.
+Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — PSL — is
+what that file is written in. This page is both: the macro, and the language it is a macro in.
 
-The name is what sets it apart from a scripting language that only ever does what it is told. A
+The language is small enough that a recording is readable, and readable enough that the recording is
+worth editing afterwards. That is the whole point of the pair — you record a macro by doing the
+thing once, and what you get back is a program you can open.
+
+The name is what sets PSL apart from a scripting language that only ever does what it is told. A
 statement can hold a prompt instead of a value — `::…::`, an AI slot — and what the AI answers is
-what the line then says. A macro written in PSL is part instruction and part question.
+what the line then says. A macro written in PSL is part instruction and part question: it repeats
+what it was given, and asks about what it could not be.
 
 ```
 move(398, 915)
@@ -22,10 +27,35 @@ typeText("done")
 keyPress("return")
 ```
 
-Three things write it and one thing runs it. Recording writes it from what you, the AI session and
-the [MCP](08_MCP.md) clients do; you write it by hand in an editor; the AI writes it as it works.
-Play, `pob macro` and the [Control API](11_Control%20API.md) all run it the same way — see
-[Macro](03_Macro.md) for the buttons and the file, this page for the language.
+Three things write a macro and one thing runs it. Recording writes it from what you, the AI and the
+[MCP](08_MCP.md) clients do; you write it by hand in an editor; the AI writes it as it works.
+Execute, `pob macro` and the [Control API](11_Control%20API.md) all run it the same way.
+
+
+macro.psl
+---------
+
+Each instance has one macro, `macro.psl`, in its `~/.pob/<instance>/` directory. The PSL button
+(🪄) in the toolbar opens it in your editor; Execute (▶) replays it; Reset (↻) empties it.
+
+Use the record button (⏺) to write it instead of typing it — actions are appended to `macro.psl` as
+they happen. Starting a recording while `macro.psl` still holds statements asks what to do with them
+first: clear them, or keep them and record after them. Keeping them writes a `resetCursor()` between
+the old lines and the new ones, since every move recorded next is relative to the origin a replay
+starts at.
+
+Recording captures every action that drives the machine, whichever one of the three is driving it:
+your own mouse and keyboard, the AI's tool calls, and the tools an [MCP](08_MCP.md) client calls.
+They all append to the same `macro.psl`, in the order things happened. The MCP tools that take an
+absolute `(x, y)` are written down as the relative `move(dx, dy)` this vocabulary replays, so a
+recording made through MCP plays back like any other.
+
+Your own mouse and keyboard are recorded on macOS only, for now — watching the input of other
+applications is a different mechanism on each system, and the Linux and Windows shells do not have
+it yet. On those two the record button still captures everything the AI and MCP clients drive.
+
+A macro recorded before the file was named `macro.psl` is carried over from `macro.txt` the first
+time this Pob runs, so nothing that was recorded is lost to the rename.
 
 
 Structure
@@ -51,7 +81,8 @@ Calls
 -----
 
 A call is `name(argument, argument)` — the name, then arguments in parentheses, and nothing after
-the closing one. Names are case-sensitive, spelled as below.
+the closing one. Names are case-sensitive, spelled as below. These are also the tools the AI calls
+and the actions the [MCP](08_MCP.md) server exposes: one vocabulary, whoever is driving.
 
 | Statement | Arguments | What it does |
 |-----------|-----------|--------------|
@@ -79,10 +110,11 @@ indented.
 if blocks
 ---------
 
-`if` is where the AI comes into a macro. Its condition goes in parentheses, and what fills them is
-an AI slot: when the replay reaches the line Pob takes a screenshot and asks the
-[model](06_Settings.md) the prompt inside the slot. The answer — true or false — is what the
-condition then is, and the block runs or is skipped on it.
+A macro plays the same actions every time, which is the point of one — until the screen it plays
+against is not always the same screen. `if` is where the AI comes into a macro. Its condition goes
+in parentheses, and what fills them is an AI slot: when the replay reaches the line Pob takes a
+screenshot and asks the [model](06_Settings.md) the prompt inside the slot. The answer — true or
+false — is what the condition then is, and the block runs or is skipped on it.
 
 ```
 if (::a save dialog is on screen::) {
@@ -107,9 +139,15 @@ model is given the condition and the picture and nothing else: it has no memory 
 that ran before, so a condition about what the macro has already done is one it cannot see.
 
 Each `if` is one model call, made as the replay reaches it — a condition inside a block that gets
-skipped costs nothing, and a macro with no `if` never calls the model at all. Each judgement is kept
-under `logs/<session>/conditions/<n>/`, with the screenshot it was judged from (see
-[Logs](05_Logs.md)), and `pob --session <id>` lists them.
+skipped costs nothing, and a macro with no `if` never calls the model at all and runs with nothing
+configured. A macro that does use one needs the settings that model call is made with:
+`openai_api_key`, and the `base_url` and `model` that already have working defaults (see
+[Settings](06_Settings.md)). Without them Execute puts up **Settings needed** and the macro does
+not run at all, before the cursor has moved — finding out halfway through would leave everything
+above the `if` already played.
+
+Each judgement is kept under `logs/<session>/conditions/<n>/`, with the screenshot it was judged
+from (see [Logs](05_Logs.md)), and `pob --session <id>` lists them.
 
 Recording never writes an `if`. It is the part you write by hand, into a macro that is otherwise
 recorded.
@@ -143,21 +181,22 @@ cursor home mid-sequence: skip the jump back and every move after it starts from
 
 All coordinates are screenshot pixels, origin top-left, x right, y down. The cursor is held inside
 the Pob window: a move that would take it past an edge stops at the edge, since everything the
-script addresses — what the screenshots show, what the clicks go through — is inside that window.
+macro addresses — what the screenshots show, what the clicks go through — is inside that window.
 
 Between one call and the next Pob waits `macro_default_delay` milliseconds, one second by default
 (see [Settings](06_Settings.md)). A UI that needs longer gets an explicit `sleep()`. Judging an `if`
 adds no delay of its own — the model call is the wait.
 
-Stop halts the run between statements, and during a `sleep()` rather than after it.
+Stop halts the run between statements, and during a `sleep()` rather than after it. A run that
+reaches the end fires `stop_hook`, if one is set; a stopped run does not.
 
 
 See also
 --------
 
-- [Macro](03_Macro.md) — `macro.txt`, the record and play buttons, and what a recording captures
+- [UI](02_UI.md) — the PSL, record and Execute buttons
 - [Key names](04_Keys.md) — what `keyPress` accepts
 - [Settings](06_Settings.md) — `macro_default_delay`, and the model an `if` is judged with
 - [Logs](05_Logs.md) — the session a run writes, and where each `if` judgement is kept
-- [CLI](07_CLI.md) — `pob macro` runs `macro.txt` from the terminal
+- [CLI](07_CLI.md) — `pob macro` runs `macro.psl` from the terminal
 - [MCP Server](08_MCP.md) — the same actions as MCP tools, recorded into the same file

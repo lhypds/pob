@@ -1,7 +1,7 @@
 // Choosing and creating instances (`pob launch`, `pob new`). An instance is
-// a directory under ~/.pob holding its own settings, instruction, macro and
-// logs; ~/.pob/INSTANCE names the one in use. These commands are how that
-// pointer is moved without editing the file by hand.
+// a directory under ~/.pob holding its own macro.psl and logs; ~/.pob/INSTANCE
+// names the one in use. These commands are how that pointer is moved without
+// editing the file by hand.
 package main
 
 import (
@@ -34,9 +34,9 @@ func cmdNew(root, name string) {
 	if err != nil {
 		fail("could not create the instance: %v", err)
 	}
-	// Seed its instruction.txt and macro.txt, so the directory is ready to be
-	// opened and edited before the app has ever started it. Settings are the
-	// machine's and are already there — a new instance starts configured.
+	// Seed its macro.psl, so the directory is ready to be opened and edited
+	// before the app has ever started it. Settings are the machine's and are
+	// already there — a new instance starts configured.
 	config.New(root, info.ID)
 
 	running := theInstance(root)

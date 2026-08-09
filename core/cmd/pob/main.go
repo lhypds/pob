@@ -13,8 +13,7 @@
 //	pob new "Work laptop"            create an instance and switch to it
 //	pob launch                       start the app (asks which, with several)
 //	pob --session Y                  show one session's details
-//	pob start                        run instruction.txt
-//	pob run "open the settings"      replace instruction.txt, then run it
+//	pob macro                        run macro.psl
 //	pob mcp start                    register the MCP server with the agent CLIs
 package main
 
@@ -34,7 +33,7 @@ const usage = `pob — control and inspect Pob from the command line
 
 Everything lives in ~/.pob, created on first use and shared with the Pob app:
 settings.json is the machine's, INSTANCE names the instance directory, and that
-directory holds its instruction.txt, macro.txt and logs/.
+directory holds its macro.psl and logs/.
 
 Usage: pob [flags] [command] [args]
 
@@ -47,13 +46,11 @@ Commands:
   launch [instance]  Start the app. With more than one instance and nothing
                      named, lists them and asks which to start — arrow keys to
                      move, enter to start. <instance> is a name or an id
-  new [name]         Create an instance — its own settings, instruction, macro
-                     and logs — and make it the one Pob starts next
+  new [name]         Create an instance — its own macro.psl and logs — and make
+                     it the one Pob starts next
   status             Live status of the instance
   sessions           List the instance's sessions
-  start              Execute instruction.txt (the toolbar Execute button)
-  run <text...>      Replace instruction.txt with <text>, then execute it
-  macro              Execute macro.txt
+  macro              Execute macro.psl (the toolbar Execute button)
   stop               Stop the running session
   kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
@@ -69,7 +66,7 @@ Examples:
   pob                          # what's running?
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
-  pob run "click the Save button and close the dialog"
+  pob macro                    # replay this instance's macro.psl
   pob --session 1752712400
   pob mcp start
 `
@@ -120,16 +117,6 @@ func main() {
 
 	case "status":
 		showStatus(runningInstance(root))
-
-	case "start":
-		cmdStart(runningInstance(root), "")
-
-	case "run":
-		text := strings.TrimSpace(strings.Join(args[1:], " "))
-		if text == "" {
-			fail("run needs the instruction text: pob run \"open the settings\"")
-		}
-		cmdStart(runningInstance(root), text)
 
 	case "macro":
 		cmdMacro(runningInstance(root))

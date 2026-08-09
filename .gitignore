@@ -6,8 +6,7 @@ CLAUDE.md
 logs/
 .env
 settings.json
-instruction.txt
-macro.txt
+macro.psl
 app.log
 macos_app/
 core/bin/

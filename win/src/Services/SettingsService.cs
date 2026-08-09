@@ -1,12 +1,12 @@
 // UI-side view of the files Pob works with, mirroring the macOS/Linux
-// SettingsService. The Go core owns settings.json defaults, instruction.txt,
-// macro.txt and the logs tree; this service only resolves the project root,
+// SettingsService. The Go core owns settings.json defaults, macro.psl and
+// the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
 //
 // What an instance owns lives under ~/.pob/<instance>/; settings.json sits
 // above them at ~/.pob and is shared — pointing ~/.pob/INSTANCE at another id
-// starts Pob on a clean instruction and macro, on a machine already set up.
+// starts Pob on a clean macro, on a machine already set up.
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -39,7 +39,7 @@ public static class SettingsService
 
     /// <summary>
     /// ~/.pob/&lt;InstanceId&gt;, everything this instance owns: its
-    /// instruction.txt, macro.txt and logs/. Passed to pob-core via
+    /// macro.psl and logs/. Passed to pob-core via
     /// --instance.
     /// </summary>
     public static string InstanceId => _instanceId ??= AllocateInstance();
@@ -366,16 +366,9 @@ public static class SettingsService
         OpenWithEditor(path);
     }
 
-    public static void OpenInstructionFile()
-    {
-        string path = InstancePath("instruction.txt");
-        EnsureFile(path);
-        OpenWithEditor(path);
-    }
-
     public static void OpenMacroFile()
     {
-        string path = InstancePath("macro.txt");
+        string path = InstancePath("macro.psl");
         EnsureFile(path);
         OpenWithEditor(path);
     }
@@ -400,7 +393,7 @@ public static class SettingsService
     {
         try
         {
-            return File.ReadAllText(InstancePath("macro.txt"));
+            return File.ReadAllText(InstancePath("macro.psl"));
         }
         catch
         {
@@ -409,7 +402,7 @@ public static class SettingsService
     }
 
     // Appends one action line, keeping the file newline-terminated. Read-
-    // modify-write like the macOS shell's appendToMacro: macro.txt is small
+    // modify-write like the macOS shell's appendToMacro: macro.psl is small
     // and the core is the only other writer.
     public static void AppendToMacro(string line)
     {
@@ -417,16 +410,14 @@ public static class SettingsService
         if (content.Length > 0 && !content.EndsWith("\n")) content += "\n";
         try
         {
-            File.WriteAllText(InstancePath("macro.txt"), content + line + "\n");
+            File.WriteAllText(InstancePath("macro.psl"), content + line + "\n");
         }
         catch (IOException)
         {
         }
     }
 
-    public static void ClearMacro() => TryTruncate(InstancePath("macro.txt"));
-
-    public static void ClearInstruction() => TryTruncate(InstancePath("instruction.txt"));
+    public static void ClearMacro() => TryTruncate(InstancePath("macro.psl"));
 
     /// <summary>
     /// Takes the lock handle, or reports that someone else has it. Already

@@ -1,7 +1,7 @@
-// Package storage writes the instance/session/plan/step/verification log
-// tree under <root>/<instance>/logs/ (see README "Logs" section). One instance
-// runs on a machine and it keeps one id for good, so every session it ever
-// writes lands in the same directory — see ResolveInstanceID.
+// Package storage writes the instance/session log tree under
+// <root>/<instance>/logs/ (see README "Logs" section). One instance runs on a
+// machine and it keeps one id for good, so every session it ever writes lands
+// in the same directory — see ResolveInstanceID.
 package storage
 
 import (
@@ -20,7 +20,6 @@ type Storage struct {
 	root         string
 	instanceID   string
 	settingsDict func() map[string]any
-	instruction  func() string
 	macro        func() string
 }
 
@@ -39,7 +38,7 @@ const instancePointer = "INSTANCE"
 // writes lives under that directory. instanceID is the one the shell resolved
 // and passed in; an empty one is resolved here, which is what the CLI does
 // when it runs without a shell.
-func New(root, instanceID string, settingsDict func() map[string]any, instruction, macro func() string) *Storage {
+func New(root, instanceID string, settingsDict func() map[string]any, macro func() string) *Storage {
 	if instanceID == "" {
 		instanceID = ResolveInstanceID(root)
 	}
@@ -47,7 +46,6 @@ func New(root, instanceID string, settingsDict func() map[string]any, instructio
 		root:         root,
 		instanceID:   instanceID,
 		settingsDict: settingsDict,
-		instruction:  instruction,
 		macro:        macro,
 	}
 	_ = os.MkdirAll(s.LogsDir(), 0o755)
@@ -215,69 +213,16 @@ func (s *Storage) CreateSession() string {
 	return sessionID
 }
 
-// CreatePlan creates logs/<session>/<unixtime>/ and returns the plan ID.
-func (s *Storage) CreatePlan(sessionID string) string {
-	planID := unixNow()
-	_ = os.MkdirAll(filepath.Join(s.sessionDir(sessionID), planID), 0o755)
-	return planID
-}
-
-func (s *Storage) SaveInstruction(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "instruction.txt"), []byte(s.instruction()), 0o644)
-}
-
+// SaveMacro copies the macro a session ran into logs/<session>/macro.psl, so
+// what happened can still be read against the lines it happened from after the
+// instance's own macro.psl has been edited or re-recorded.
 func (s *Storage) SaveMacro(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.txt"), []byte(s.macro()), 0o644)
-}
-
-// SavePlan writes plan.json, messages.json, response.json, screenshot.png and
-// creates numbered step directories with step.json.
-func (s *Storage) SavePlan(plan string, messages []map[string]any, response map[string]any, sessionID, planID string, screenshotPNG []byte) {
-	planDir := filepath.Join(s.sessionDir(sessionID), planID)
-	_ = os.MkdirAll(planDir, 0o755)
-	_ = os.WriteFile(filepath.Join(planDir, "plan.json"), []byte(plan), 0o644)
-	writeJSON(filepath.Join(planDir, "messages.json"), stripImages(messages))
-	writeJSON(filepath.Join(planDir, "response.json"), response)
-	if len(screenshotPNG) > 0 {
-		_ = os.WriteFile(filepath.Join(planDir, "screenshot.png"), screenshotPNG, 0o644)
-	}
-
-	var parsed struct {
-		Steps []map[string]any `json:"steps"`
-	}
-	if err := json.Unmarshal([]byte(plan), &parsed); err != nil {
-		return
-	}
-	for _, step := range parsed.Steps {
-		seq, ok := step["sequence"].(float64)
-		if !ok {
-			continue
-		}
-		stepDir := filepath.Join(planDir, fmt.Sprintf("%d", int(seq)))
-		_ = os.MkdirAll(stepDir, 0o755)
-		inst, _ := step["instruction"].(string)
-		exp, _ := step["expectation"].(string)
-		writeJSON(filepath.Join(stepDir, "step.json"), map[string]any{
-			"sequence":    int(seq),
-			"instruction": inst,
-			"expectation": exp,
-		})
-	}
-}
-
-func (s *Storage) SaveVerification(sessionID, planID string, stepSeq int, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
-	dir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq), "verification")
-	_ = os.MkdirAll(dir, 0o755)
-	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))
-	writeJSON(filepath.Join(dir, "response.json"), response)
-	if len(screenshotPNG) > 0 {
-		_ = os.WriteFile(filepath.Join(dir, "screenshot.png"), screenshotPNG, 0o644)
-	}
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.psl"), []byte(s.macro()), 0o644)
 }
 
 // SaveMacroCondition writes one IF judgement of a macro session under
 // logs/<session>/conditions/<n>/. The directories are numbered in the order the
-// conditions were judged, and condition.json carries the line of macro.txt each
+// conditions were judged, and condition.json carries the line of macro.psl each
 // one came from.
 func (s *Storage) SaveMacroCondition(sessionID string, seq, line int, condition string, result bool, reason string, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
 	dir := filepath.Join(s.sessionDir(sessionID), "conditions", fmt.Sprintf("%d", seq))
@@ -294,25 +239,6 @@ func (s *Storage) SaveMacroCondition(sessionID string, seq, line int, condition 
 	if len(screenshotPNG) > 0 {
 		_ = os.WriteFile(filepath.Join(dir, "screenshot.png"), screenshotPNG, 0o644)
 	}
-}
-
-func (s *Storage) WriteStepStatus(status, sessionID, planID string, stepSeq int) {
-	stepDir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq))
-	_ = os.MkdirAll(stepDir, 0o755)
-	_ = os.WriteFile(filepath.Join(stepDir, "status.txt"), []byte(status), 0o644)
-}
-
-// SaveStepLog writes one conversation round under logs/<session>/<plan>/<step>/<unixtime>/.
-func (s *Storage) SaveStepLog(sessionID, planID string, stepSeq int, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
-	dir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq), unixNow())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
-	}
-	if len(screenshotPNG) > 0 {
-		_ = os.WriteFile(filepath.Join(dir, "screenshot.png"), screenshotPNG, 0o644)
-	}
-	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))
-	writeJSON(filepath.Join(dir, "response.json"), response)
 }
 
 func (s *Storage) SaveScreenshot(png []byte, sessionID string) {

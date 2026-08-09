@@ -201,14 +201,15 @@ Keyboard and timing:
 | `wait` | `milliseconds`: number | Pause to let the UI settle. Capped at 10000 ms. |
 
 
-While the record button (⏺) is on, tool calls made over MCP are appended to `macro.txt`
-alongside the actions the AI and your own hand perform — see [Macro](03_Macro.md).
+While the record button (⏺) is on, tool calls made over MCP are appended to `macro.psl`
+alongside the actions the AI and your own hand perform — see
+[Macro PSL](03_Macro%20PSL.md).
 
 
 See also
 --------
 
 - [Key names](04_Keys.md) — what `key_press` accepts
-- [Macro](03_Macro.md) — recording MCP tool calls, and replaying them
+- [Macro PSL](03_Macro%20PSL.md) — recording MCP tool calls, and replaying them
 - [Operation API](10_Operation%20API.md) — the same actions over plain HTTP
 - [CLI](07_CLI.md) — `pob mcp status` / `start` / `stop`

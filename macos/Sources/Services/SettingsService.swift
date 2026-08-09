@@ -2,15 +2,15 @@ import AppKit
 import Foundation
 
 /// UI-side view of the files Pob works with. The Go core (pob-core) owns
-/// settings.json defaults, instruction.txt, macro.txt and the logs tree;
-/// this service only resolves the project root, opens files in the user's
-/// editor, persists the window frame and clears user files on request.
+/// settings.json defaults, macro.psl and the logs tree; this service only
+/// resolves the project root, opens files in the user's editor, persists the
+/// window frame and clears user files on request.
 ///
 /// A machine has one instance and it keeps its id for good: the same
-/// ~/.pob/<instance>/ directory every run, holding that instance's
-/// instruction.txt, macro.txt and logs/. settings.json sits above them at
-/// ~/.pob and is shared — pointing ~/.pob/INSTANCE at another id starts Pob
-/// on a clean instruction and macro, on a machine that is already set up.
+/// ~/.pob/<instance>/ directory every run, holding that instance's macro.psl
+/// and logs/. settings.json sits above them at ~/.pob and is shared — pointing
+/// ~/.pob/INSTANCE at another id starts Pob on a clean macro, on a machine
+/// that is already set up.
 class SettingsService {
     private let fileManager = FileManager.default
 
@@ -64,12 +64,10 @@ class SettingsService {
         instanceDir.appendingPathComponent("instance.json")
     }
 
-    private var instructionFile: URL {
-        instanceDir.appendingPathComponent("instruction.txt")
-    }
-
+    /// This instance's Prompt Script Language program — what Record writes and
+    /// Execute replays.
     private var macroFile: URL {
-        instanceDir.appendingPathComponent("macro.txt")
+        instanceDir.appendingPathComponent("macro.psl")
     }
 
     private var logsFolder: URL {
@@ -222,10 +220,6 @@ class SettingsService {
         openWithEditor(settingsFile)
     }
 
-    func openInstructionFile() {
-        openWithEditor(instructionFile)
-    }
-
     func openMacroFile() {
         openWithEditor(macroFile)
     }
@@ -238,7 +232,7 @@ class SettingsService {
         try? "".write(to: macroFile, atomically: true, encoding: .utf8)
     }
 
-    /// Appends one action line to macro.txt (same format as the Go core's
+    /// Appends one action line to macro.psl (same format as the Go core's
     /// AppendToMacro). Only called while no session is executing, so it never
     /// races with the Go core's own appends.
     func appendToMacro(_ line: String) {
@@ -262,10 +256,6 @@ class SettingsService {
         if !content.isEmpty { content += "\n" }
         try? content.write(to: macroFile, atomically: true, encoding: .utf8)
         return true
-    }
-
-    func clearInstruction() {
-        try? "".write(to: instructionFile, atomically: true, encoding: .utf8)
     }
 
     /// Takes the flock, or reports that someone else has it. Already holding

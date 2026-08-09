@@ -239,17 +239,6 @@ func (b *Bridge) FlashScreenshot() {
 	_, _ = b.ipc.Call("ui.flash", nil)
 }
 
-// ConfirmMaxStep shows the "Max step exceed" alert and blocks until the user
-// picks Continue (true) or Stop (false).
-func (b *Bridge) ConfirmMaxStep() bool {
-	result, err := b.ipc.Call("ui.confirmMaxStep", nil)
-	if err != nil {
-		return false
-	}
-	cont, _ := result["continue"].(bool)
-	return cont
-}
-
 // ShowAlert puts a message in front of the user and returns without waiting for
 // it to be dismissed — what the core reaches for when something it was asked to
 // run cannot run, and the log alone would leave the button looking dead.

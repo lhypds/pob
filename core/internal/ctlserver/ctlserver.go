@@ -11,8 +11,7 @@
 //	POST /mcp/start        — start the MCP server; optional body {"port": 8032}
 //	                         moves a running one to that port
 //	POST /mcp/stop         — stop the MCP server
-//	POST /run/instruction  — run instruction.txt; optional body {"instruction": "..."} replaces it first
-//	POST /run/macro        — run macro.txt
+//	POST /run/macro        — run macro.psl
 //	POST /run/stop         — stop the running session
 //	POST /screenshot       — capture and save a screenshot, returns its path
 package ctlserver
@@ -58,7 +57,6 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp/start", s.handleMCPStart)
 	mux.HandleFunc("/mcp/stop", s.handleMCPStop)
 	mux.HandleFunc("/server", s.handleServerInfo)
-	mux.HandleFunc("/run/instruction", s.handleRunInstruction)
 	mux.HandleFunc("/run/macro", s.handleRunMacro)
 	mux.HandleFunc("/run/stop", s.handleRunStop)
 	mux.HandleFunc("/screenshot", s.handleScreenshot)
@@ -207,28 +205,6 @@ func (s *Server) handleMCPStop(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mcp.Stop()
 	writeJSON(w, http.StatusOK, s.mcpInfo())
-}
-
-func (s *Server) handleRunInstruction(w http.ResponseWriter, r *http.Request) {
-	if !requirePost(w, r) {
-		return
-	}
-	var body struct {
-		Instruction string `json:"instruction"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.Instruction != "" {
-		if err := s.cfg.WriteInstruction(body.Instruction); err != nil {
-			writeError(w, http.StatusInternalServerError, "cannot write instruction.txt: "+err.Error())
-			return
-		}
-	}
-	if !s.runner.RunInstruction() {
-		writeError(w, http.StatusConflict, "a session is already running")
-		return
-	}
-	applog.Log("CtlServer: instruction session started")
-	writeJSON(w, http.StatusOK, map[string]any{"started": true})
 }
 
 func (s *Server) handleRunMacro(w http.ResponseWriter, r *http.Request) {

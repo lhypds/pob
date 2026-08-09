@@ -1,10 +1,10 @@
 // UI-side view of the shared project files, mirroring the macOS
-// SettingsService. The Go core owns settings.json defaults, instruction.txt,
-// macro.txt and the logs tree; this service only resolves the project root,
+// SettingsService. The Go core owns settings.json defaults, macro.psl and
+// the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
 //
-// settings.json is the machine's, at ~/.pob; instruction.txt, macro.txt and
+// settings.json is the machine's, at ~/.pob; macro.psl and
 // logs/ belong to the instance, under ~/.pob/<instance>/.
 #ifndef POB_SETTINGS_SERVICE_H
 #define POB_SETTINGS_SERVICE_H
@@ -16,7 +16,7 @@ const char *settings_project_root(void);
 
 // The machine's ~/.pob/<instance> directory id — the same one on every run
 // (cached after first call, never freed). That directory holds this instance's
-// instruction.txt, macro.txt and logs/; the id is passed to pob-core via
+// macro.psl and logs/; the id is passed to pob-core via
 // --instance.
 const char *settings_instance_id(void);
 
@@ -32,18 +32,16 @@ gboolean settings_get_window_frame(int *x, int *y, int *w, int *h);
 void settings_save_window_frame(int x, int y, int w, int h);
 
 void settings_open_settings_file(void);
-void settings_open_instruction_file(void);
 void settings_open_macro_file(void);
 void settings_open_app_log(void);
 void settings_open_logs_folder(void);
 
-// Contents of macro.txt ("" when missing); caller frees.
+// Contents of macro.psl ("" when missing); caller frees.
 gchar *settings_get_macro(void);
 
-// Appends one action line to macro.txt.
+// Appends one action line to macro.psl.
 void settings_append_macro(const char *line);
 
 void settings_clear_macro(void);
-void settings_clear_instruction(void);
 
 #endif

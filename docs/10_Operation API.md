@@ -8,7 +8,7 @@ server](09_Server.md) takes its commands as `text/plain` POSTs, which is what th
 that can send an HTTP request can move the pointer and type on the machine.
 
 (The other one is the [Control API](11_Control%20API.md), which drives the *app* —
-run an instruction, stop a session — and is the `pob` CLI's private channel.)
+replay a macro, stop a session — and is the `pob` CLI's private channel.)
 
 ```
 curl -X POST --data 'typing=hello'          http://192.168.1.40:8033/pb-a703/

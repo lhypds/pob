@@ -17,7 +17,7 @@ It allows AI to:
 - View the current desktop or application window
 - Move and click the mouse
 - Type text and press keys
-- Record and replay operation macros
+- Record and replay operation macros, with the AI judging a step when the screen varies
 - Work with MCP-compatible AI clients
 
 The same bridge works for people, not only for AI: every instance runs a
@@ -48,9 +48,12 @@ On macOS drag `Pob.app` to Applications and use **Pob → Install 'pob'
 Command…** in the app menu. See [CLI](docs/07_CLI.md) for the details of all
 three.
 
-Put your API key and model in `~/.pob/settings.json`, write what you
-want done in the instance's `instruction.txt` below it, and press Execute in the toolbar — or drive the
-machine yourself from a phone, a terminal, or another computer.
+Press Record in the toolbar, do the thing once, and press Execute to have it
+done again — the actions land in the instance's `macro.psl`, a
+[macro](docs/03_Macro%20PSL.md) you can then open and edit. A step that needs
+the screen read rather than repeated is an `if (::…::)` you write in by hand;
+that one calls a model, so put your API key in `~/.pob/settings.json` first.
+Or drive the machine yourself from a phone, a terminal, or another computer.
 
 
 Documentation
@@ -60,9 +63,9 @@ Documentation
 |-----|--------------|
 | [Architecture](docs/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
 | [UI](docs/02_UI.md) | The window and every toolbar button |
-| [Macro](docs/03_Macro.md) | `macro.txt`, the functions the AI and macros both call, and the `if (::…::)` a macro asks the AI to judge |
+| [Macro PSL](docs/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `if (::…::)` a macro asks the AI to judge |
 | [Key names](docs/04_Keys.md) | What `keyPress` / `key_press` accepts |
-| [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory, its sessions, plans and steps |
+| [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory and its sessions |
 | [Settings](docs/06_Settings.md) | Every key in `settings.json` |
 | [CLI](docs/07_CLI.md) | The `pob` command |
 | [MCP Server](docs/08_MCP.md) | Driving Pob from Claude Code, Claude Desktop, Gemini CLI |
@@ -73,4 +76,3 @@ Documentation
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
 | [Windows VM](docs/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |
-| [Prompt Script Language](docs/16_Prompt%20Script%20Language.md) | PSL, the language `macro.txt` is written in: every statement, the `if (::…::)` block, and what a wrong line does |

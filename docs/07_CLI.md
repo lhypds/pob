@@ -23,8 +23,8 @@ The dev scripts build the CLI to `core/bin/pob` next to `pob-core` instead
 
 Everything lives in `~/.pob`, created on first use and shared by the app and
 the CLI: `settings.json` is the machine's, `INSTANCE` names the instance
-directory, and that directory holds its `instruction.txt`, `macro.txt`,
-`instance.json` and `logs/`.
+directory, and that directory holds its `macro.psl`, `instance.json` and
+`logs/`.
 
 A running Pob serves a small control API on an ephemeral localhost port,
 advertised in `~/.pob/<instance>/control.json`; the CLI reads that file
@@ -42,12 +42,10 @@ Flags:
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
-| `new [name]` | Create an instance — its own `instruction.txt`, `macro.txt` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
+| `new [name]` | Create an instance — its own `macro.psl` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, model, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
-| `start` | Execute `instruction.txt` (same as the toolbar Execute button) |
-| `run <text...>` | Replace `instruction.txt` with `<text>`, then execute it |
-| `macro` | Execute `macro.txt` |
+| `macro` | Execute [`macro.psl`](03_Macro%20PSL.md) (same as the toolbar Execute button) |
 | `stop` | Stop the running session |
 | `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
@@ -63,9 +61,8 @@ pob                                      # what's running?
 pob new "Work laptop"                    # create an instance and switch to it
 pob launch                               # start the app (asks which, if there are several)
 pob launch "Work laptop"                 # start that one
-pob run "click Save and close the dialog"
-pob start                                # run instruction.txt
-pob --session 1752712400                 # session detail: plans, steps, usage
+pob macro                                # replay macro.psl
+pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
 ```
 
@@ -92,8 +89,8 @@ stdin and stdout, a pipe a `pob` typed into a terminal has no way to join. So
 The port is whatever the OS hands out, so it is a different one on every
 launch and the file is the only way to find it. The two fields are there only
 while the instance runs — it stops advertising itself by clearing them, so a
-file without a `port` is a stopped instance. `status`, `start`, `run`,
-`macro`, `stop`, `screenshot` and the `mcp` commands are each one call to that
+file without a `port` is a stopped instance. `status`, `macro`, `stop`,
+`screenshot` and the `mcp` commands are each one call to that
 API; the rest read the `logs/` tree directly, which is why they still work
 with the app closed.
 
@@ -109,6 +106,7 @@ the signal itself rather than handing it to the terminal.
 See also
 --------
 
+- [Macro PSL](03_Macro%20PSL.md) — what `pob macro` runs
 - [Control API](11_Control%20API.md) — the endpoints behind these commands
 - [Logs](05_Logs.md) — the tree `pob` reads for session detail
 - [MCP Server](08_MCP.md) — the server `pob mcp start` registers

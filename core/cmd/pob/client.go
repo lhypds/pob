@@ -25,9 +25,9 @@ type Instance struct {
 	// Name is what `pob new` called it, "" for an instance that was never
 	// given one.
 	Name string
-	// Dir is <root>/<id>, holding instance.json, instruction.txt and macro.txt
-	// — settings.json is the machine's, at the root beside INSTANCE. LogsDir is
-	// its logs/ subdirectory, holding the sessions.
+	// Dir is <root>/<id>, holding instance.json and macro.psl — settings.json
+	// is the machine's, at the root beside INSTANCE. LogsDir is its logs/
+	// subdirectory, holding the sessions.
 	Dir       string
 	LogsDir   string
 	StartTime int64
@@ -196,23 +196,8 @@ func showStatus(inst *Instance) {
 	}
 }
 
-// cmdStart runs instruction.txt; a non-empty text replaces it first. After
-// starting it polls briefly so it can print the new session's ID.
-func cmdStart(inst *Instance, text string) {
-	var body any
-	if text != "" {
-		body = map[string]any{"instruction": text}
-	}
-	if _, err := inst.post("/run/instruction", body, 5*time.Second); err != nil {
-		fail("start failed: %v", err)
-	}
-	fmt.Printf("Instruction session started on instance %s.\n", inst.ID)
-	if session := waitForSession(inst); session != "" {
-		fmt.Printf("Session:  %s\n", session)
-		fmt.Printf("Logs:     %s\n", filepath.Join(inst.LogsDir, session))
-	}
-}
-
+// cmdMacro replays the instance's macro.psl. After starting it polls briefly
+// so it can print the new session's ID.
 func cmdMacro(inst *Instance) {
 	if _, err := inst.post("/run/macro", nil, 5*time.Second); err != nil {
 		fail("macro failed: %v", err)

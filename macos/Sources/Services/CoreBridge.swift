@@ -10,13 +10,11 @@ final class CoreBridge: ObservableObject {
     /// True while the Go core is executing a session; drives the cursor
     /// overlay, window lock and click-through logic in the UI.
     @Published var isExecuting = false
-    /// True while something outside the agent loop is driving this instance —
-    /// an MCP client connected to the MCP server, a browser on the Pob server —
-    /// i.e. the cursor may move at any moment. Drives the cursor overlay only:
+    /// True while something outside a replay is driving this instance — an MCP
+    /// client connected to the MCP server, a browser on the Pob server — i.e.
+    /// the cursor may move at any moment. Drives the cursor overlay only:
     /// unlike isExecuting it does not lock the window or pause the recorder.
     @Published var isMCPDriving = false
-    /// Set when the Go core asks the user whether to continue past max_steps.
-    @Published var showMaxStepWarning = false
     /// Set when the Go core has something to say that the log alone would not
     /// get across — the settings a macro's IF needs and hasn't got, say. The
     /// core owns both strings; the alert only shows them and an OK.
@@ -62,9 +60,6 @@ final class CoreBridge: ObservableObject {
             mouse.contentPixelSize = lastContext?.pixelSize ?? .zero
         }
     }
-    /// Pending ui.confirmMaxStep request id, answered via resolveMaxStep.
-    private var maxStepRequestId: Any?
-
     init(settings: SettingsService, mouse: MouseService) {
         self.settings = settings
         self.mouse = mouse
@@ -140,16 +135,11 @@ final class CoreBridge: ObservableObject {
 
     // MARK: - Commands (Swift -> Go notifications)
 
-    func runInstruction(recording: Bool) {
-        notify(method: "run.instruction", params: ["recording": recording])
-    }
-
     func runMacro() {
         notify(method: "run.macro", params: [:])
     }
 
     func stopExecution() {
-        resolveMaxStep(false)
         notify(method: "run.stop", params: [:])
     }
 
@@ -161,14 +151,6 @@ final class CoreBridge: ObservableObject {
     /// shot, and records a take_screenshot() macro line while recording.
     func takeScreenshot() {
         notify(method: "screenshot.take", params: [:])
-    }
-
-    /// Answers the pending max-step confirmation from the Go core.
-    func resolveMaxStep(_ shouldContinue: Bool) {
-        guard let id = maxStepRequestId else { return }
-        maxStepRequestId = nil
-        DispatchQueue.main.async { self.showMaxStepWarning = false }
-        respond(id: id, result: ["continue": shouldContinue])
     }
 
     // MARK: - Message plumbing
@@ -294,11 +276,6 @@ final class CoreBridge: ObservableObject {
         case "ui.flash":
             DispatchQueue.main.async { self.flashTick += 1 }
             if let id { respond(id: id, result: [:]) }
-
-        case "ui.confirmMaxStep":
-            guard let id else { return }
-            maxStepRequestId = id
-            DispatchQueue.main.async { self.showMaxStepWarning = true }
 
         case "ui.alert":
             let title = params["title"] as? String ?? "Pob"

@@ -139,8 +139,6 @@ public partial class ToolbarWindow : Window
 
     private void OnAppLogClicked(object sender, RoutedEventArgs e) => SettingsService.OpenAppLog();
 
-    private void OnInstructionClicked(object sender, RoutedEventArgs e) => SettingsService.OpenInstructionFile();
-
     private void OnMacroClicked(object sender, RoutedEventArgs e) => SettingsService.OpenMacroFile();
 
     private void OnRecordClicked(object sender, RoutedEventArgs e)
@@ -155,7 +153,7 @@ public partial class ToolbarWindow : Window
             StartRecording(clearingMacro: false);
             return;
         }
-        // Recording appends, so whatever is in macro.txt already would replay
+        // Recording appends, so whatever is in macro.psl already would replay
         // in front of everything recorded next.
         switch (Dialogs.ShowRecordWarning(this))
         {
@@ -168,7 +166,7 @@ public partial class ToolbarWindow : Window
         }
     }
 
-    // Starts macro recording, either over an emptied macro.txt or appending to
+    // Starts macro recording, either over an emptied macro.psl or appending to
     // what is already in it.
     private void StartRecording(bool clearingMacro)
     {
@@ -213,24 +211,8 @@ public partial class ToolbarWindow : Window
             CoreBridge.StopExecution();
             return;
         }
-        string macro = SettingsService.GetMacro().Trim();
-        if (macro.Length == 0)
-        {
-            SetLocked(true);
-            CoreBridge.RunInstruction(AppState.IsRecording);
-        }
-        else
-            switch (Dialogs.ShowMacroChoice(this))
-            {
-                case MacroChoice.RunInstruction:
-                    SetLocked(true);
-                    CoreBridge.RunInstruction(AppState.IsRecording);
-                    break;
-                case MacroChoice.RunMacro:
-                    SetLocked(true);
-                    CoreBridge.RunMacro();
-                    break;
-            }
+        SetLocked(true);
+        CoreBridge.RunMacro();
     }
 
     private void OnTargetClicked(object sender, RoutedEventArgs e) =>

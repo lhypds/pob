@@ -161,7 +161,7 @@ public class ContentView : FrameworkElement
     }
 
     // Shows a transient message (bottom center, black pill, white text) that
-    // disappears after ~2 s — action feedback like "macro.txt reset".
+    // disappears after ~2 s — action feedback like "macro.psl reset".
     public void ShowMessage(string text)
     {
         _toastText = text;

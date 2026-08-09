@@ -31,6 +31,6 @@ on an Apple board.
 See also
 --------
 
-- [Macro](03_Macro.md) — `keyPress` in macros and AI sessions
+- [Macro PSL](03_Macro%20PSL.md) — `keyPress` in a macro
 - [MCP Server](08_MCP.md) — `key_press` as an MCP tool
 - [Operation API](10_Operation%20API.md) — `keycode=`, the HID spelling of the same keys

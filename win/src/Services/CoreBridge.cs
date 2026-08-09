@@ -17,8 +17,6 @@ public static class CoreBridge
     private static StreamWriter? _stdin;
     private static readonly object WriteLock = new();
 
-    // Pending ui.confirmMaxStep request id (UI thread only).
-    private static string? _maxStepRequestId;
 
     // ── writing ─────────────────────────────────────────────────────────────
 
@@ -99,11 +97,6 @@ public static class CoreBridge
 
     // ── commands (shell -> Go) ──────────────────────────────────────────────
 
-    public static void RunInstruction(bool recording)
-    {
-        Notify("run.instruction", new Dictionary<string, object?> { ["recording"] = recording });
-    }
-
     public static void RunMacro()
     {
         Notify("run.macro", new Dictionary<string, object?>());
@@ -111,7 +104,6 @@ public static class CoreBridge
 
     public static void StopExecution()
     {
-        ResolveMaxStep(false);
         Notify("run.stop", new Dictionary<string, object?>());
     }
 
@@ -125,19 +117,6 @@ public static class CoreBridge
     public static void TakeScreenshot()
     {
         Notify("screenshot.take", new Dictionary<string, object?>());
-    }
-
-    public static void ResolveMaxStep(bool shouldContinue)
-    {
-        if (_maxStepRequestId == null) return;
-        string id = _maxStepRequestId;
-        _maxStepRequestId = null;
-        Send(new Dictionary<string, object?>
-        {
-            ["jsonrpc"] = "2.0",
-            ["id"] = id,
-            ["result"] = new Dictionary<string, object?> { ["continue"] = shouldContinue },
-        });
     }
 
     // ── dispatch (UI thread) ────────────────────────────────────────────────
@@ -287,12 +266,6 @@ public static class CoreBridge
             case "ui.flash":
                 AppState.Overlay?.ContentView.Flash();
                 if (id != null) RespondEmpty(id);
-                break;
-
-            case "ui.confirmMaxStep":
-                if (id == null) return;
-                _maxStepRequestId = id;
-                AppState.ShowMaxStepDialog();
                 break;
 
             case "ui.alert":

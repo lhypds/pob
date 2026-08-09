@@ -649,7 +649,7 @@ func TestScreenshotReportsItsDimensions(t *testing.T) {
 	}
 }
 
-// fakeRecorder stands in for macro.txt and the shell's record toggle.
+// fakeRecorder stands in for macro.psl and the shell's record toggle.
 type fakeRecorder struct {
 	mu    sync.Mutex
 	on    bool
@@ -751,7 +751,7 @@ func TestRecordedActionNamesAreReplayable(t *testing.T) {
 	}
 }
 
-// The toggle is the shell's: with recording off, nothing reaches macro.txt.
+// The toggle is the shell's: with recording off, nothing reaches macro.psl.
 func TestNothingIsRecordedWhileRecordingIsOff(t *testing.T) {
 	srv, shell := newTestServer(t)
 	rec := &fakeRecorder{on: false}

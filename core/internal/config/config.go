@@ -1,15 +1,15 @@
 // Package config reads and maintains the machine's settings.json and an
-// instance's instruction.txt and macro.txt. It mirrors the behavior of the old
-// Swift SettingsService: defaults are created on first run and missing keys are
+// instance's macro.psl. It mirrors the behavior of the old Swift
+// SettingsService: defaults are created on first run and missing keys are
 // backfilled into an existing settings file. Values are re-read from disk on
 // every access so edits take effect without restarting.
 //
 // settings.json sits at <root>, shared by every instance: the API key, the
 // model and the port are how a machine works, not what one instance is doing
 // with it, so moving <root>/INSTANCE to another id does not mean setting them
-// again. What an instance owns is its own — instruction.txt, macro.txt and its
-// logs/ tree, under <root>/<instance>/ — and pointing INSTANCE at a new id
-// gives a machine a clean set of those, which is what changing it is for.
+// again. What an instance owns is its own — macro.psl and its logs/ tree,
+// under <root>/<instance>/ — and pointing INSTANCE at a new id gives a machine
+// a clean set of those, which is what changing it is for.
 package config
 
 import (
@@ -36,9 +36,6 @@ var defaults = map[string]any{
 	"base_url":            "https://api.openai.com/v1",
 	"openai_api_key":      "",
 	"model":               "gpt-5.6",
-	"max_steps":           12,
-	"max_resumes":         5,
-	"max_steplogs":        10,
 	"macro_default_delay": 1000,
 	"editor":              "system",
 	"terminal":            "system",
@@ -85,8 +82,13 @@ func (c *Config) legacySettingsFile() string {
 	return filepath.Join(c.InstanceDir(), "settings.json")
 }
 
-func (c *Config) instructionFile() string { return filepath.Join(c.InstanceDir(), "instruction.txt") }
-func (c *Config) macroFile() string       { return filepath.Join(c.InstanceDir(), "macro.txt") }
+// macroFile is <root>/<instance>/macro.psl, the Prompt Script Language program
+// Play and `pob macro` run.
+func (c *Config) macroFile() string { return filepath.Join(c.InstanceDir(), "macro.psl") }
+
+// legacyMacroFile is macro.txt, where the macro used to be kept before it had
+// a language and an extension of its own. See migrateMacroToPSL.
+func (c *Config) legacyMacroFile() string { return filepath.Join(c.InstanceDir(), "macro.txt") }
 
 func (c *Config) ensureFiles() {
 	// The instance directory must exist before any file below is written —
@@ -97,6 +99,7 @@ func (c *Config) ensureFiles() {
 	// only one instance's settings can become the machine's.
 	c.migrateWindowFrame(c.legacySettingsFile())
 	c.migrateSettingsToRoot()
+	c.migrateMacroToPSL()
 
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
@@ -115,12 +118,27 @@ func (c *Config) ensureFiles() {
 			c.writeSettings(settings)
 		}
 	}
-	if _, err := os.Stat(c.instructionFile()); os.IsNotExist(err) {
-		_ = os.WriteFile(c.instructionFile(), []byte("Describe what you see in this screenshot and identify any UI elements."), 0o644)
-	}
 	if _, err := os.Stat(c.macroFile()); os.IsNotExist(err) {
 		_ = os.WriteFile(c.macroFile(), []byte(""), 0o644)
 	}
+}
+
+// migrateMacroToPSL carries an instance's macro over to macro.psl, the name it
+// has now that the vocabulary it is written in is a language with a name of its
+// own. A recording is work someone did with the app, so it is moved rather than
+// left behind under a name nothing reads any more.
+//
+// A directory that already has a macro.psl keeps it — the old file is then a
+// leftover from a Pob that ran before the move, and overwriting the current
+// macro with it would lose whatever has been recorded since.
+func (c *Config) migrateMacroToPSL() {
+	if _, err := os.Stat(c.legacyMacroFile()); err != nil {
+		return
+	}
+	if _, err := os.Stat(c.macroFile()); err == nil {
+		return
+	}
+	_ = os.Rename(c.legacyMacroFile(), c.macroFile())
 }
 
 // migrateLegacyKeys rewrites settings that have been renamed, keeping the
@@ -370,18 +388,7 @@ func (c *Config) MCPHost() string {
 	return c.str("mcp_host", mcpserver.DefaultHost)
 }
 
-func (c *Config) MaxSteps() int          { return c.intVal("max_steps", 12, 1) }
-func (c *Config) MaxStepLogs() int       { return c.intVal("max_steplogs", 10, 1) }
-func (c *Config) MaxResumes() int        { return c.intVal("max_resumes", 5, 1) }
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
-
-func (c *Config) Instruction() string {
-	data, err := os.ReadFile(c.instructionFile())
-	if err != nil {
-		return "Describe what you see in this screenshot."
-	}
-	return string(data)
-}
 
 func (c *Config) Macro() string {
 	data, err := os.ReadFile(c.macroFile())
@@ -389,12 +396,6 @@ func (c *Config) Macro() string {
 		return ""
 	}
 	return string(data)
-}
-
-// WriteInstruction replaces this instance's instruction.txt — used by the
-// CLI's `pob run "<text>"`.
-func (c *Config) WriteInstruction(text string) error {
-	return os.WriteFile(c.instructionFile(), []byte(text), 0o644)
 }
 
 func (c *Config) AppendToMacro(line string) {

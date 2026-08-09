@@ -5,11 +5,11 @@ Architecture
 Pob is split into a platform-independent brain and a native shell:
 
 ```
-core/    The brain (Go, zero dependencies). Agent loop (plan → execute →
-         verify), OpenAI-compatible LLM client, session logs, macro engine,
-         the MCP SSE server — started with the instance, like the Pob server
-         below — and the localhost Control API the pob CLI drives the app
-         with. Compiled to a single binary: pob-core.
+core/    The brain (Go, zero dependencies). The Prompt Script Language
+         engine, OpenAI-compatible LLM client, session logs, the MCP SSE
+         server — started with the instance, like the Pob server below — and
+         the localhost Control API the pob CLI drives the app with. Compiled
+         to a single binary: pob-core.
 
 macos/   The hands and eyes (Swift). Overlay window UI, screenshot capture,
          virtual cursor, mouse/keyboard event injection, and the permission
@@ -36,10 +36,9 @@ keyboard/  Pob Keyboard (Go + Fyne), a separate desktop app: a full-size
 The shell spawns `pob-core` as a child process and the two talk over
 stdin/stdout with line-delimited JSON-RPC:
 
-- Shell → core: `run.instruction`, `run.macro`, `run.stop`, `recording.changed`
+- Shell → core: `run.macro`, `run.stop`, `recording.changed`
 - Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
-  `keyboard.type`, `ui.confirmMaxStep`, `ui.alert`, … and `session.state`
-  notifications
+  `keyboard.type`, `ui.alert`, … and `session.state` notifications
 
 Captured frames are the one thing that does not travel that way. They go down
 a second, binary connection instead: the core listens on loopback and offers
@@ -52,9 +51,9 @@ thirty it is the difference between a view you can work in and one you can
 only watch. A shell that does not connect keeps answering with base64 on the
 JSON-RPC line, which is what every shell did before the channel existed.
 
-Everything that drives the machine goes through those same calls — the agent
-loop, the MCP server, and the Pob server — so a tap on a phone and a tool call
-from a model take exactly the same path.
+Everything that drives the machine goes through those same calls — a macro
+replay, the MCP server, and the Pob server — so a tap on a phone and a tool
+call from a model take exactly the same path.
 
 All coordinates crossing the boundary are screenshot pixels; the shell owns
 the conversion to real screen positions. Porting to a new platform means
@@ -64,6 +63,7 @@ reimplementing only the shell — the brain is shared.
 See also
 --------
 
+- [Macro PSL](03_Macro%20PSL.md) — `macro.psl` and the language the engine runs
 - [Pob Server](09_Server.md) — the HTTP server started with every instance
 - [MCP Server](08_MCP.md) — the other one started with it, for MCP clients
 - [Control API](11_Control%20API.md) — the other server, loopback only, for the CLI

@@ -69,9 +69,7 @@ The first run creates ~/.pob/. Put your key and model in
     pob                     What is running: the instance and its sessions
     pob launch              Start the app
     pob status              Live status — executing, model, MCP, server address
-    pob run "click Save"    Write that instruction and execute it
-    pob start               Execute what is already in instruction.txt
-    pob macro               Replay macro.txt
+    pob macro               Replay macro.psl
     pob stop                Stop the running session
     pob kill                Quit the running instance
     pob screenshot          Capture the screen; prints the file it saved
@@ -91,9 +89,8 @@ Everything is under ~/.pob:
     settings.json           your API key, model and options (this machine's)
     INSTANCE                which instance directory is the current one
     <instance>/
-        instruction.txt     what you want done
-        macro.txt           recorded or hand-written actions
-        logs/               sessions, plans, steps, screenshots
+        macro.psl           recorded or hand-written actions
+        logs/               sessions, conditions, screenshots
 
 Uninstalling never touches ~/.pob.
 

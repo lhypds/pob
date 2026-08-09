@@ -137,8 +137,8 @@ gboolean settings_claim_instance(void) {
     return claimed;
 }
 
-// This instance's ~/.pob/<instance>/ directory, holding its instruction.txt,
-// macro.txt and logs/. The machine's settings.json sits above them, at the
+// This instance's ~/.pob/<instance>/ directory, holding its macro.psl and
+// logs/. The machine's settings.json sits above them, at the
 // root, and is the one thing every id shares.
 const char *settings_instance_id(void) {
     static gchar *instance_id = NULL;
@@ -526,15 +526,8 @@ void settings_open_settings_file(void) {
     g_free(path);
 }
 
-void settings_open_instruction_file(void) {
-    gchar *path = instance_path("instruction.txt");
-    ensure_file(path);
-    open_with_editor(path);
-    g_free(path);
-}
-
 void settings_open_macro_file(void) {
-    gchar *path = instance_path("macro.txt");
+    gchar *path = instance_path("macro.psl");
     ensure_file(path);
     open_with_editor(path);
     g_free(path);
@@ -557,7 +550,7 @@ void settings_open_logs_folder(void) {
 // ── file contents / clearing ────────────────────────────────────────────────
 
 gchar *settings_get_macro(void) {
-    gchar *path = instance_path("macro.txt");
+    gchar *path = instance_path("macro.psl");
     gchar *contents = NULL;
     if (!g_file_get_contents(path, &contents, NULL, NULL)) contents = g_strdup("");
     g_free(path);
@@ -565,13 +558,13 @@ gchar *settings_get_macro(void) {
 }
 
 // Appends one action line, keeping the file newline-terminated. Read-modify-
-// write like the macOS shell's appendToMacro: macro.txt is small and the core
+// write like the macOS shell's appendToMacro: macro.psl is small and the core
 // is the only other writer.
 void settings_append_macro(const char *line) {
     gchar *contents = settings_get_macro();
     gboolean needs_newline = *contents != '\0' && !g_str_has_suffix(contents, "\n");
     gchar *next = g_strconcat(contents, needs_newline ? "\n" : "", line, "\n", NULL);
-    gchar *path = instance_path("macro.txt");
+    gchar *path = instance_path("macro.psl");
     g_file_set_contents(path, next, -1, NULL);
     g_free(path);
     g_free(next);
@@ -579,13 +572,7 @@ void settings_append_macro(const char *line) {
 }
 
 void settings_clear_macro(void) {
-    gchar *path = instance_path("macro.txt");
-    g_file_set_contents(path, "", 0, NULL);
-    g_free(path);
-}
-
-void settings_clear_instruction(void) {
-    gchar *path = instance_path("instruction.txt");
+    gchar *path = instance_path("macro.psl");
     g_file_set_contents(path, "", 0, NULL);
     g_free(path);
 }

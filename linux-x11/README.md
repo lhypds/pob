@@ -37,7 +37,7 @@ Requirements
   `Window realized: visual depth=…, composited=…`.
 
 - A text editor and a file manager. The toolbar buttons that open
-  `settings.json`, `instruction.txt`, `macro.txt` and `app.log` hand the file
+  `settings.json`, `macro.psl` and `app.log` hand the file
   to an editor; the Logs button hands `logs/` to a file manager. Mainstream
   desktops ship both, but a bare X session, a container or a trimmed-down
   install can have neither — the content area then says `Cannot open it — no
@@ -101,8 +101,8 @@ The command that lands on the `PATH` is the CLI from `Helpers/` — `pob` to
 see what is running, `pob launch` to start the app. See
 [CLI](../docs/07_CLI.md).
 
-On first run the working files (`settings.json`, `instruction.txt`,
-`macro.txt`, `logs/`, `app.log`) are created in `~/.pob/` —
+On first run the working files (`settings.json`, `macro.psl`, `logs/`,
+`app.log`) are created in `~/.pob/` —
 set `openai_api_key` in `settings.json` there.
 
 
@@ -138,7 +138,7 @@ side, the `pob` CLI in `Helpers/`, plus `install.sh` and the `README.txt`
 users read first — the copy in this folder) and
 `Pob-<version>-linux-<arch>.zip` at the project root.
 
-Project files (`settings.json`, `instruction.txt`, `macro.txt`, `logs/`)
+Project files (`settings.json`, `macro.psl`, `logs/`)
 always live in `~/.pob` (same rule as macOS).
 
 

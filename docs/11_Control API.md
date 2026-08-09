@@ -2,7 +2,7 @@
 Control API
 ===========
 
-The API that *controls* the app — run an instruction, stop a session, start
+The API that *controls* the app — replay a macro, stop a session, start
 the MCP server, ask what is going on. It is how the [`pob` CLI](07_CLI.md)
 reaches a running instance, and it is meant for nothing else.
 
@@ -51,8 +51,7 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | `GET /server` | — | The [Pob server](09_Server.md): `running`, `port`, `url`, `urls` — one per network the machine is on. `pob status` reads the same block out of `/status` |
 | `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional, defaulting to the `mcp_port` setting — which is the port it is already on, so this is a no-op unless another one is asked for, and then the server moves there. 409 when the port will not bind |
 | `POST /mcp/stop` | `mcp stop` | Always succeeds |
-| `POST /run/instruction` | `start`, `run` | Body `{"instruction": "..."}` optional; given, it replaces `instruction.txt` before running. 409 when a session is already running |
-| `POST /run/macro` | `macro` | Same 409 |
+| `POST /run/macro` | `macro` | Replays [`macro.psl`](03_Macro%20PSL.md). 409 when a session is already running |
 | `POST /run/stop` | `stop` | Idempotent |
 | `POST /screenshot` | `screenshot` | Returns `{"path": "..."}`. 409 while a session is running — it owns the capture pipeline |
 
@@ -64,8 +63,7 @@ port would not bind — still reports the port it *would* take rather than `0`, 
 $ curl -s http://127.0.0.1:57259/status
 {"executing":false,"instance":"pb-a703","mcp":{...},"model":"...", ...}
 
-$ curl -s -X POST http://127.0.0.1:57259/run/instruction \
-       -d '{"instruction":"click Save and close the dialog"}'
+$ curl -s -X POST http://127.0.0.1:57259/run/macro
 {"started":true}
 ```
 
@@ -75,7 +73,7 @@ Reach
 
 **This API binds `127.0.0.1` only, and carries no authentication** — the
 loopback bind is what stands in for one. It is the CLI's private channel, not
-a public interface: it can run instructions and take screenshots, so putting
+a public interface: it can replay a macro and take screenshots, so putting
 it on a network interface would hand the machine to that network.
 
 That is also why it stays separate from the [Pob server](09_Server.md), which

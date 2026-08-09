@@ -67,24 +67,64 @@ func TestCurrentKeyWinsOverLegacyKey(t *testing.T) {
 
 // What an instance is doing sits under <root>/<instance>/; how the machine is
 // configured sits above it. Pointing INSTANCE at another id is what gives a
-// machine a clean instruction and macro — not a machine to set up again.
+// machine a clean macro — not a machine to set up again.
 func TestInstanceOwnsItsWorkAndTheRootHoldsTheSettings(t *testing.T) {
 	root := t.TempDir()
 	New(root, "pb-aaaa")
 
-	for _, name := range []string{"instruction.txt", "macro.txt"} {
-		if _, err := os.Stat(filepath.Join(root, "pb-aaaa", name)); err != nil {
-			t.Errorf("%s is missing from the instance directory: %v", name, err)
-		}
-		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
-			t.Errorf("%s was written at the root", name)
-		}
+	if _, err := os.Stat(filepath.Join(root, "pb-aaaa", "macro.psl")); err != nil {
+		t.Errorf("macro.psl is missing from the instance directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "macro.psl")); err == nil {
+		t.Error("macro.psl was written at the root")
 	}
 	if _, err := os.Stat(filepath.Join(root, "settings.json")); err != nil {
 		t.Errorf("settings.json is missing from the root: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "pb-aaaa", "settings.json")); err == nil {
 		t.Error("settings.json was written into the instance directory")
+	}
+}
+
+// A macro recorded before macro.txt was renamed is work someone did with the
+// app, so it comes over to macro.psl rather than being left behind under a name
+// nothing reads any more.
+func TestALegacyMacroIsCarriedOverToPSL(t *testing.T) {
+	root := t.TempDir()
+	instanceDir := filepath.Join(root, "pb-aaaa")
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "macro.txt"), []byte("click()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if macro := New(root, "pb-aaaa").Macro(); macro != "click()\n" {
+		t.Errorf("Macro() = %q, want the lines that were in macro.txt", macro)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, "macro.txt")); err == nil {
+		t.Error("macro.txt is still there — it should have been moved, not copied")
+	}
+}
+
+// An instance that has a macro.psl already keeps it: the macro.txt beside it is
+// then a leftover from a Pob that ran before the rename, and letting it win
+// would lose whatever has been recorded since.
+func TestALegacyMacroDoesNotOverwriteAnExistingPSL(t *testing.T) {
+	root := t.TempDir()
+	instanceDir := filepath.Join(root, "pb-aaaa")
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "macro.txt"), []byte("click()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "macro.psl"), []byte("doubleClick()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if macro := New(root, "pb-aaaa").Macro(); macro != "doubleClick()\n" {
+		t.Errorf("Macro() = %q, want the macro.psl that was already there", macro)
 	}
 }
 

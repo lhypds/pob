@@ -86,7 +86,6 @@ func indent(text, prefix string) string {
 type sessionInfo struct {
 	ID          string
 	Dir         string
-	Type        string // instruction | macro
 	Start, End  int64
 	TotalTokens int64
 }
@@ -109,12 +108,8 @@ func listSessions(instanceDir string) []sessionInfo {
 		info := sessionInfo{
 			ID:    entry.Name(),
 			Dir:   dir,
-			Type:  "instruction",
 			Start: intField(sessionJSON, "start_time"),
 			End:   intField(sessionJSON, "end_time"),
-		}
-		if _, err := os.Stat(filepath.Join(dir, "macro.txt")); err == nil {
-			info.Type = "macro"
 		}
 		if usage, ok := sessionJSON["usage"].(map[string]any); ok {
 			info.TotalTokens = intField(usage, "total_tokens")
@@ -166,14 +161,14 @@ func listSessionsCmd(root, instanceID string) {
 }
 
 func printSessionTable(sessions []sessionInfo, prefix string) {
-	fmt.Printf("%s%-13s %-12s %-20s %-10s %s\n", prefix, "SESSION", "TYPE", "STARTED", "DURATION", "TOKENS")
+	fmt.Printf("%s%-13s %-20s %-10s %s\n", prefix, "SESSION", "STARTED", "DURATION", "TOKENS")
 	for _, s := range sessions {
 		tokens := "—"
 		if s.TotalTokens > 0 {
 			tokens = comma(s.TotalTokens)
 		}
-		fmt.Printf("%s%-13s %-12s %-20s %-10s %s\n",
-			prefix, s.ID, s.Type, formatTime(s.Start), formatDuration(s.Start, s.End), tokens)
+		fmt.Printf("%s%-13s %-20s %-10s %s\n",
+			prefix, s.ID, formatTime(s.Start), formatDuration(s.Start, s.End), tokens)
 	}
 }
 
@@ -186,13 +181,8 @@ func showSession(root, instanceID, sessionID string) {
 
 	start := intField(sessionJSON, "start_time")
 	end := intField(sessionJSON, "end_time")
-	sessionType := "instruction"
-	if _, err := os.Stat(filepath.Join(dir, "macro.txt")); err == nil {
-		sessionType = "macro"
-	}
 
 	fmt.Printf("Session:   %s (instance %s)\n", sessionID, instanceID)
-	fmt.Printf("Type:      %s\n", sessionType)
 	fmt.Printf("Started:   %s\n", formatTime(start))
 	if end != 0 {
 		fmt.Printf("Ended:     %s (%s)\n", formatTime(end), formatDuration(start, end))
@@ -203,9 +193,10 @@ func showSession(root, instanceID, sessionID string) {
 		printUsage(usage)
 	}
 
-	if text, err := os.ReadFile(filepath.Join(dir, sessionType+".txt")); err == nil {
-		title := strings.ToUpper(sessionType[:1]) + sessionType[1:]
-		fmt.Printf("\n%s:\n%s\n", title, indent(string(text), "  "))
+	// The macro as it stood when this session ran, which is not necessarily
+	// the one in the instance directory now.
+	if text, err := os.ReadFile(filepath.Join(dir, "macro.psl")); err == nil {
+		fmt.Printf("\nMacro:\n%s\n", indent(string(text), "  "))
 	}
 
 	if shots, err := os.ReadDir(filepath.Join(dir, "screenshots")); err == nil && len(shots) > 0 {
@@ -213,7 +204,6 @@ func showSession(root, instanceID, sessionID string) {
 	}
 
 	printConditions(dir)
-	printPlans(dir)
 }
 
 // printConditions renders the if conditions a macro session judged, in the
@@ -270,75 +260,3 @@ func printUsage(usage map[string]any) {
 		comma(prompt), comma(cached), comma(completion), comma(reasoning), comma(total))
 }
 
-// printPlans renders the plan/step tree of an instruction session.
-func printPlans(sessionDir string) {
-	entries, err := os.ReadDir(sessionDir)
-	if err != nil {
-		return
-	}
-	var planIDs []string
-	for _, entry := range entries {
-		// Everything else a session directory holds is a plan; "screenshots"
-		// and "conditions" are the two directories that are not one.
-		if entry.IsDir() && entry.Name() != "screenshots" && entry.Name() != "conditions" {
-			planIDs = append(planIDs, entry.Name())
-		}
-	}
-	if len(planIDs) == 0 {
-		return
-	}
-	sort.Strings(planIDs)
-
-	fmt.Println("\nPlans:")
-	for _, planID := range planIDs {
-		planDir := filepath.Join(sessionDir, planID)
-		fmt.Printf("  %s\n", planID)
-		for _, step := range readSteps(planDir) {
-			status := ""
-			if step.status != "" {
-				status = " [" + step.status + "]"
-			}
-			fmt.Printf("    %d. %s%s\n", step.sequence, step.instruction, status)
-			if step.expectation != "" {
-				fmt.Printf("       expect: %s\n", step.expectation)
-			}
-		}
-	}
-}
-
-type stepInfo struct {
-	sequence    int
-	instruction string
-	expectation string
-	status      string
-}
-
-func readSteps(planDir string) []stepInfo {
-	entries, err := os.ReadDir(planDir)
-	if err != nil {
-		return nil
-	}
-	var steps []stepInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		seq, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		stepDir := filepath.Join(planDir, entry.Name())
-		stepJSON := readJSONFile(filepath.Join(stepDir, "step.json"))
-		step := stepInfo{sequence: seq}
-		if stepJSON != nil {
-			step.instruction, _ = stepJSON["instruction"].(string)
-			step.expectation, _ = stepJSON["expectation"].(string)
-		}
-		if data, err := os.ReadFile(filepath.Join(stepDir, "status.txt")); err == nil {
-			step.status = strings.TrimSpace(string(data))
-		}
-		steps = append(steps, step)
-	}
-	sort.Slice(steps, func(i, j int) bool { return steps[i].sequence < steps[j].sequence })
-	return steps
-}

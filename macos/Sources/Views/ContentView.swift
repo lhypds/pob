@@ -45,7 +45,6 @@ struct InstanceContentView: View {
     @State private var isClickThrough = true
     @State private var isLocked = false
     @State private var isRecording = false
-    @State private var showMacroChoice = false
     @State private var showRecordWarning = false
     @State private var showResetChoice = false
     @State private var mousePosition: CGPoint? = nil
@@ -181,47 +180,26 @@ struct InstanceContentView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
             instance.window?.makeKeyAndOrderFront(nil)
         }
-        .alert("Warning", isPresented: $bridge.showMaxStepWarning) {
-            Button("Continue") {
-                bridge.resolveMaxStep(true)
-            }
-            Button("Stop", role: .cancel) {
-                bridge.resolveMaxStep(false)
-            }
-        } message: {
-            Text("Max step exceed.")
-        }
         .alert(bridge.coreAlertTitle, isPresented: $bridge.showCoreAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(bridge.coreAlertMessage)
-        }
-        .alert("What would you like to run?", isPresented: $showMacroChoice) {
-            Button("Run Instruction") { lockWindow(); bridge.runInstruction(recording: isRecording) }
-            Button("Run Macro") { lockWindow(); bridge.runMacro() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("macro.txt has recorded actions.")
         }
         .alert("Warning", isPresented: $showRecordWarning) {
             Button("Clear") { startRecording(clearingMacro: true) }
             Button("Keep") { startRecording(clearingMacro: false) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("macro.txt has recorded actions. Clear them before recording?")
+            Text("macro.psl has recorded actions. Clear them before recording?")
         }
         .confirmationDialog("Reset", isPresented: $showResetChoice) {
             Button("Reset mouse position") {
                 mouseService.resetCursor()
                 showToast("Mouse position reset")
             }
-            Button("Reset instruction.txt") {
-                instance.settings.clearInstruction()
-                showToast("instruction.txt reset")
-            }
-            Button("Reset macro.txt") {
+            Button("Reset macro.psl") {
                 instance.settings.clearMacro()
-                showToast("macro.txt reset")
+                showToast("macro.psl reset")
             }
             Button("Close", role: .cancel) {}
         }
@@ -379,16 +357,10 @@ struct InstanceContentView: View {
             AppLogButton { instance.settings.openAppLog() }
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { instance.settings.openInstructionFile() }) {
-                Image(systemName: "text.alignleft")
-            }
-            .help("Instruction")
-        }
-        ToolbarItem(placement: .automatic) {
             Button(action: { instance.settings.openMacroFile() }) {
                 Image(systemName: "wand.and.rays")
             }
-            .help("Macro")
+            .help("PSL")
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
@@ -397,7 +369,7 @@ struct InstanceContentView: View {
                 } else if instance.settings.getMacro().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     startRecording(clearingMacro: false)
                 } else {
-                    // Recording appends, so whatever is in macro.txt already
+                    // Recording appends, so whatever is in macro.psl already
                     // would replay in front of everything recorded next.
                     showRecordWarning = true
                 }
@@ -412,13 +384,8 @@ struct InstanceContentView: View {
                 if bridge.isExecuting {
                     bridge.stopExecution()
                 } else {
-                    let macro = instance.settings.getMacro()
-                    if macro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        lockWindow()
-                        bridge.runInstruction(recording: isRecording)
-                    } else {
-                        showMacroChoice = true
-                    }
+                    lockWindow()
+                    bridge.runMacro()
                 }
             }) {
                 Image(systemName: bridge.isExecuting ? "stop.fill" : "play.fill")
@@ -492,7 +459,7 @@ struct InstanceContentView: View {
 
     // MARK: - Helpers
 
-    /// Starts macro recording, either over an emptied macro.txt or appending to
+    /// Starts macro recording, either over an emptied macro.psl or appending to
     /// what is already in it.
     private func startRecording(clearingMacro: Bool) {
         if clearingMacro {
@@ -526,7 +493,7 @@ struct InstanceContentView: View {
     }
 
     /// Shows a transient bottom-centered message (black pill, white text) that
-    /// fades out after ~2 s — action feedback like "macro.txt reset".
+    /// fades out after ~2 s — action feedback like "macro.psl reset".
     private func showToast(_ message: String) {
         toastMessage = message
         toastToken += 1
@@ -541,7 +508,7 @@ struct InstanceContentView: View {
     }
 
     /// Running and recording both make the window's frame part of the result:
-    /// every coordinate written to macro.txt is relative to it, so a nudge or a
+    /// every coordinate written to macro.psl is relative to it, so a nudge or a
     /// resize partway through aims the replay at the wrong pixels. Play and
     /// Record turn the lock on themselves; turning it back off stays the
     /// user's call, as it was before.

@@ -1,8 +1,8 @@
 // pob-core is the platform-independent brain of Pob. It is spawned by the
 // native shell (macos/) as a child process and speaks line-delimited JSON-RPC
-// over stdin/stdout. It owns the agent loop, the LLM client, session logs,
-// macro parsing and the MCP server; all screen perception and operation is
-// delegated back to the shell.
+// over stdin/stdout. It owns the LLM client, session logs, Prompt Script
+// Language parsing and replay, and the MCP server; all screen perception and
+// operation is delegated back to the shell.
 //
 // Usage: pob-core --root <project-root>
 package main
@@ -26,10 +26,10 @@ import (
 	"pob/server"
 )
 
-// macroRecorder lets the MCP server write to macro.txt under the one toggle
+// macroRecorder lets the MCP server write to macro.psl under the one toggle
 // everything else obeys — the shell's record button, which flips
-// runner.SetRecording. An MCP client drives the same machine the agent loop
-// does, so what it did belongs in the same recording.
+// runner.SetRecording. An MCP client drives the same machine a replay does, so
+// what it did belongs in the same recording.
 type macroRecorder struct {
 	runner *agent.Runner
 	cfg    *config.Config
@@ -40,7 +40,7 @@ func (m macroRecorder) AppendToMacro(line string) { m.cfg.AppendToMacro(line) }
 
 func main() {
 	root := flag.String("root", "", "project root holding INSTANCE and the <instance>/ directories")
-	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's instruction.txt, macro.txt and logs/")
+	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's macro.psl and logs/")
 	flag.Parse()
 	if *root == "" {
 		home, err := os.UserHomeDir()
@@ -61,7 +61,7 @@ func main() {
 
 	applog.Init(*root)
 	cfg := config.New(*root, instanceID)
-	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Instruction, cfg.Macro)
+	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Macro)
 
 	client := ipc.NewStdio()
 	// Frames go down their own connection rather than sharing the JSON-RPC
@@ -74,12 +74,6 @@ func main() {
 	br := bridge.New(client)
 	runner := agent.NewRunner(cfg, store, llm.New(cfg), br)
 
-	client.Handle("run.instruction", func(params map[string]any) {
-		if recording, ok := params["recording"].(bool); ok {
-			runner.SetRecording(recording)
-		}
-		runner.RunInstruction()
-	})
 	client.Handle("run.macro", func(params map[string]any) {
 		runner.RunMacro()
 	})
