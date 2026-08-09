@@ -52,6 +52,9 @@ void app_set_server_url(const char *url);
 void app_set_targeting(gboolean targeting);  // also syncs toolbar + click-through
 void app_set_cropping(gboolean cropping);
 void app_show_max_step_dialog(void); // "Max step exceed." Continue/Stop
+// Whatever the core has to say for itself, with an OK — the settings a macro's
+// IF needs and hasn't got, say. Both strings come from the core.
+void app_show_alert_dialog(const char *title, const char *message);
 const char *app_version(void);
 
 #endif

@@ -275,6 +275,27 @@ func (s *Storage) SaveVerification(sessionID, planID string, stepSeq int, messag
 	}
 }
 
+// SaveMacroCondition writes one IF judgement of a macro session under
+// logs/<session>/conditions/<n>/. The directories are numbered in the order the
+// conditions were judged, and condition.json carries the line of macro.txt each
+// one came from.
+func (s *Storage) SaveMacroCondition(sessionID string, seq, line int, condition string, result bool, reason string, messages []map[string]any, response map[string]any, screenshotPNG []byte) {
+	dir := filepath.Join(s.sessionDir(sessionID), "conditions", fmt.Sprintf("%d", seq))
+	_ = os.MkdirAll(dir, 0o755)
+	writeJSON(filepath.Join(dir, "condition.json"), map[string]any{
+		"sequence":  seq,
+		"line":      line,
+		"condition": condition,
+		"result":    result,
+		"reason":    reason,
+	})
+	writeJSON(filepath.Join(dir, "messages.json"), stripImages(messages))
+	writeJSON(filepath.Join(dir, "response.json"), response)
+	if len(screenshotPNG) > 0 {
+		_ = os.WriteFile(filepath.Join(dir, "screenshot.png"), screenshotPNG, 0o644)
+	}
+}
+
 func (s *Storage) WriteStepStatus(status, sessionID, planID string, stepSeq int) {
 	stepDir := filepath.Join(s.sessionDir(sessionID), planID, fmt.Sprintf("%d", stepSeq))
 	_ = os.MkdirAll(stepDir, 0o755)

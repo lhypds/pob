@@ -295,6 +295,16 @@ public static class CoreBridge
                 AppState.ShowMaxStepDialog();
                 break;
 
+            case "ui.alert":
+                // Answered before the dialog goes up: it is modal, and the core
+                // is not waiting on it — it has already given up on whatever it
+                // was asked to do.
+                if (id != null) RespondEmpty(id);
+                AppState.ShowAlertDialog(
+                    MemberString(parameters, "title", "Pob"),
+                    MemberString(parameters, "message", ""));
+                break;
+
             default:
                 if (id != null) RespondError(id, $"Unknown method: {method}");
                 break;

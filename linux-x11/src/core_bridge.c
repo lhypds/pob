@@ -338,6 +338,16 @@ static void dispatch(JsonObject *msg) {
         max_step_request_id = g_strdup(id);
         app_show_max_step_dialog();
 
+    } else if (g_str_equal(method, "ui.alert")) {
+        const gchar *title = params
+            ? json_object_get_string_member_with_default(params, "title", "Pob")
+            : "Pob";
+        const gchar *message = params
+            ? json_object_get_string_member_with_default(params, "message", "")
+            : "";
+        app_show_alert_dialog(title, message);
+        if (id) core_bridge_respond_empty(id);
+
     } else {
         if (id) {
             gchar *msg_text = g_strdup_printf("Unknown method: %s", method);

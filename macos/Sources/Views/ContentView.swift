@@ -191,6 +191,11 @@ struct InstanceContentView: View {
         } message: {
             Text("Max step exceed.")
         }
+        .alert(bridge.coreAlertTitle, isPresented: $bridge.showCoreAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(bridge.coreAlertMessage)
+        }
         .alert("What would you like to run?", isPresented: $showMacroChoice) {
             Button("Run Instruction") { lockWindow(); bridge.runInstruction(recording: isRecording) }
             Button("Run Macro") { lockWindow(); bridge.runMacro() }

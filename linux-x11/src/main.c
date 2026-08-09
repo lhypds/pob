@@ -388,6 +388,22 @@ void app_show_max_step_dialog(void) {
     gtk_widget_show_all(dialog);
 }
 
+static void on_alert_response(GtkDialog *dialog, gint response, gpointer data) {
+    (void)response;
+    (void)data;
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+void app_show_alert_dialog(const char *title, const char *message) {
+    GtkWidget *dialog = gtk_message_dialog_new(
+        g_state.window, GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s", title && *title ? title : "Pob");
+    if (message && *message)
+        gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", message);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_alert_response), NULL);
+    gtk_widget_show_all(dialog);
+}
+
 enum {
     RESPONSE_RUN_INSTRUCTION = 1,
     RESPONSE_RUN_MACRO = 2,

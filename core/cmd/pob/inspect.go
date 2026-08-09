@@ -212,7 +212,47 @@ func showSession(root, instanceID, sessionID string) {
 		fmt.Printf("\nScreenshots: %d in %s\n", len(shots), filepath.Join(dir, "screenshots"))
 	}
 
+	printConditions(dir)
 	printPlans(dir)
+}
+
+// printConditions renders the if conditions a macro session judged, in the
+// order it judged them.
+func printConditions(sessionDir string) {
+	entries, err := os.ReadDir(filepath.Join(sessionDir, "conditions"))
+	if err != nil || len(entries) == 0 {
+		return
+	}
+	var seqs []int
+	for _, entry := range entries {
+		if seq, err := strconv.Atoi(entry.Name()); entry.IsDir() && err == nil {
+			seqs = append(seqs, seq)
+		}
+	}
+	sort.Ints(seqs)
+
+	fmt.Println("\nConditions:")
+	for _, seq := range seqs {
+		conditionJSON := readJSONFile(filepath.Join(sessionDir, "conditions", strconv.Itoa(seq), "condition.json"))
+		if conditionJSON == nil {
+			continue
+		}
+		condition, _ := conditionJSON["condition"].(string)
+		result, _ := conditionJSON["result"].(bool)
+		reason, _ := conditionJSON["reason"].(string)
+		verdict := "false — block skipped"
+		if result {
+			verdict = "true — block executed"
+		}
+		if line := intField(conditionJSON, "line"); line > 0 {
+			fmt.Printf("  %d. [line %d] if (::%s::) → %s\n", seq, line, condition, verdict)
+		} else {
+			fmt.Printf("  %d. if (::%s::) → %s\n", seq, condition, verdict)
+		}
+		if reason != "" {
+			fmt.Printf("     %s\n", reason)
+		}
+	}
 }
 
 func printUsage(usage map[string]any) {
@@ -238,7 +278,9 @@ func printPlans(sessionDir string) {
 	}
 	var planIDs []string
 	for _, entry := range entries {
-		if entry.IsDir() && entry.Name() != "screenshots" {
+		// Everything else a session directory holds is a plan; "screenshots"
+		// and "conditions" are the two directories that are not one.
+		if entry.IsDir() && entry.Name() != "screenshots" && entry.Name() != "conditions" {
 			planIDs = append(planIDs, entry.Name())
 		}
 	}

@@ -35,8 +35,14 @@ Structure
                    +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.  
 
               +--- <session>/ (macro)             session executed from macro.
-                   +--- session.json              session details, start time, end time, etc.
+                   +--- session.json              session details, start time, end time, and the usage of the `if` conditions, if it had any.
                    +--- macro.txt
+                   +--- conditions/               one directory per `if` condition judged, numbered in the order they were judged.
+                        +--- <n>/
+                             +--- condition.json  the condition, which line of macro.txt it came from, the verdict and the reason.
+                             +--- messages.json
+                             +--- response.json
+                             +--- screenshot.png  what the condition was judged from.
                    +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.
 ```
 
@@ -63,6 +69,7 @@ which one to start — see [CLI](07_CLI.md).
 `<plan>` is a unique plan ID named as a unixtime.  
 `<step>` is the sequence number of the step (e.g. `1`, `2`, `3`).  
 `<log>` is a unique log ID named as a unixtime.  
+`<n>` is the position of an [`if`](03_Macro.md) condition in the order the macro judged them (e.g. `1`, `2`, `3`).  
 
 
 See also

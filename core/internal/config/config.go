@@ -298,6 +298,27 @@ func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.opena
 func (c *Config) Model() string    { return c.str("model", "gpt-5.6") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
 
+// MissingLLMSettings names the settings a model call needs and hasn't got, in
+// the order settings.json lists them. Nothing named means a call can be made.
+//
+// What is checked is the value that would actually be sent, not the entry in
+// the file: `base_url` and `model` fall back to a working default, so a machine
+// missing only those is set up, and the key — which has no default that could
+// work — is what a fresh one is missing.
+func (c *Config) MissingLLMSettings() []string {
+	var missing []string
+	for _, setting := range []struct{ key, value string }{
+		{"base_url", c.BaseURL()},
+		{"openai_api_key", c.APIKey()},
+		{"model", c.Model()},
+	} {
+		if strings.TrimSpace(setting.value) == "" {
+			missing = append(missing, setting.key)
+		}
+	}
+	return missing
+}
+
 // ServerEnabled reports whether the Pob server should run. It is on by
 // default; turning it off is how a machine stops accepting pointer and
 // keyboard commands from the local network — which also takes the web UI down

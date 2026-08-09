@@ -60,7 +60,7 @@ Documentation
 |-----|--------------|
 | [Architecture](docs/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
 | [UI](docs/02_UI.md) | The window and every toolbar button |
-| [Macro](docs/03_Macro.md) | `macro.txt`, and the functions the AI and macros both call |
+| [Macro](docs/03_Macro.md) | `macro.txt`, the functions the AI and macros both call, and the `if (::…::)` a macro asks the AI to judge |
 | [Key names](docs/04_Keys.md) | What `keyPress` / `key_press` accepts |
 | [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory, its sessions, plans and steps |
 | [Settings](docs/06_Settings.md) | Every key in `settings.json` |
@@ -73,3 +73,4 @@ Documentation
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
 | [Windows VM](docs/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |
+| [Prompt Script Language](docs/16_Prompt%20Script%20Language.md) | PSL, the language `macro.txt` is written in: every statement, the `if (::…::)` block, and what a wrong line does |

@@ -89,6 +89,32 @@ public static class Dialogs
         return shouldContinue;
     }
 
+    // ── Whatever the core has to say, with an OK ────────────────────────────
+
+    public static void ShowAlert(Window? owner, string title, string message)
+    {
+        Window dialog = MakeDialog(owner, string.IsNullOrEmpty(title) ? "Pob" : title);
+
+        var text = new TextBlock
+        {
+            Text = message,
+            // The core writes these, and a sentence of settings advice is
+            // longer than a dialog is wide.
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 360,
+            Margin = new Thickness(0, 0, 0, 12),
+        };
+
+        Button ok = MakeButton("OK", () => dialog.Close());
+        ok.HorizontalAlignment = HorizontalAlignment.Center;
+
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(text);
+        panel.Children.Add(ok);
+        dialog.Content = panel;
+        dialog.ShowDialog();
+    }
+
     // ── "What would you like to run?" ───────────────────────────────────────
 
     public static MacroChoice ShowMacroChoice(Window? owner)

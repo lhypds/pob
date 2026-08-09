@@ -38,7 +38,8 @@ Functions
 ---------
 
 These are the tools the AI can call during a session, and the same vocabulary a
-macro line is written in:  
+macro line is written in — written out as a language, with the quoting rules and
+the blocks, in [Prompt Script Language](16_Prompt%20Script%20Language.md):  
 
 | Function | Parameters | Description |
 |----------|------------|-------------|
@@ -59,10 +60,70 @@ The cursor is held inside the Pob window: a move that would take it past an edge
 everything it addresses — what the screenshots show, what the clicks are aimed through — is inside that window.  
 
 
+if
+--
+
+A macro plays the same actions every time, which is the point of one — until the screen it plays
+against is not always the same screen. `if` is where the AI comes into a macro: the condition goes in
+parentheses, written in plain language between `::` and `::`, and when the replay reaches the line
+Pob takes a screenshot and asks the [model](06_Settings.md) whether it holds right now. The block
+runs when it does, and is skipped when it does not.
+
+```
+move(398, 915)
+click()
+drag(-775, -615)
+if (::the window focus on a wechat user::) {
+    move(128, 738)
+    click()
+}
+typeText("done")
+```
+
+`::…::` is an AI slot: a prompt that stands where a value would, and is replaced by what the AI
+answers when the line is reached. In the condition of an `if` that answer is true or false.
+
+The condition is the parenthesised expression between the keyword and the `{` that ends the line,
+and a `}` on a line of its own closes the block. What is inside is ordinary macro lines — including
+another `if`, nested as deep as the macro needs. Lines after the `}` run either way. Write the
+keyword lowercase; `IF` is read too, since a block that went unrecognised would run its body
+unguarded.
+
+Write the condition as something a screenshot can settle — "a chat window is open", "the file list
+is empty", "a save dialog is on screen". The model is given the condition and the picture and
+nothing else: it has no memory of the lines that ran before, so a condition about what the macro
+has already done is one it cannot see.
+
+Each `if` is one model call, and it is judged as the replay reaches it — a condition inside a block
+that gets skipped costs nothing. A macro that never uses `if` never calls the model, and runs with
+nothing configured exactly as it always has.
+
+A macro that does use one needs the settings that model call is made with — `openai_api_key`, and
+the `base_url` and `model` that already have working defaults (see [Settings](06_Settings.md)).
+Without them Play puts up **Settings needed** and the macro does not run at all, before the cursor
+has moved: finding out halfway through would leave everything above the `if` already played.
+
+Anything that goes wrong once it is running reads as false: no answer from the provider, an answer
+that cannot be read, no screenshot to judge from. The block is skipped and the reason is written to
+the log, since a condition was put there to hold actions back and running them on a failed check is
+the one outcome nobody asked for. A malformed `if` — one missing its parentheses, its `::…::` slot
+or its `{` — skips its block the same way. An `if` whose `}` is missing is closed by the end of the
+macro.
+
+Each judgement is kept with the session, under `logs/<session>/conditions/<n>/` — the condition, the
+verdict and the model's one-line reason in `condition.json`, beside the screenshot it was judged
+from and the messages that were sent (see [Logs](05_Logs.md)). `pob --session <id>` lists them in the
+order they were judged. Recording never writes an `if`: it is written by hand, into a macro that is
+otherwise recorded.
+
+
 See also
 --------
 
+- [Prompt Script Language](16_Prompt%20Script%20Language.md) — PSL, the language reference: every statement, quoting, blocks, and what a wrong line does
 - [Key names](04_Keys.md) — what `keyPress` accepts
 - [UI](02_UI.md) — the record and play buttons
 - [MCP Server](08_MCP.md) — the same actions as MCP tools
 - [CLI](07_CLI.md) — `pob macro` runs `macro.txt` from the terminal
+- [Settings](06_Settings.md) — the API key and model an `if` is judged with
+- [Logs](05_Logs.md) — where each `if` judgement is kept

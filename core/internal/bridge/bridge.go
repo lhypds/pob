@@ -250,6 +250,13 @@ func (b *Bridge) ConfirmMaxStep() bool {
 	return cont
 }
 
+// ShowAlert puts a message in front of the user and returns without waiting for
+// it to be dismissed — what the core reaches for when something it was asked to
+// run cannot run, and the log alone would leave the button looking dead.
+func (b *Bridge) ShowAlert(title, message string) {
+	b.ipc.Notify("ui.alert", map[string]any{"title": title, "message": message})
+}
+
 // NotifyExecutionState tells the UI whether an execution session is running.
 func (b *Bridge) NotifyExecutionState(executing bool) {
 	b.ipc.Notify("session.state", map[string]any{"executing": executing})

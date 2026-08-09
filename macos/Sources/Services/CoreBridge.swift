@@ -17,6 +17,12 @@ final class CoreBridge: ObservableObject {
     @Published var isMCPDriving = false
     /// Set when the Go core asks the user whether to continue past max_steps.
     @Published var showMaxStepWarning = false
+    /// Set when the Go core has something to say that the log alone would not
+    /// get across — the settings a macro's IF needs and hasn't got, say. The
+    /// core owns both strings; the alert only shows them and an OK.
+    @Published var showCoreAlert = false
+    @Published var coreAlertTitle = ""
+    @Published var coreAlertMessage = ""
     /// Where this instance answers on the network —
     /// http://<machine>:<port>/<instance> — or nil while the Pob server is off
     /// ("server": false in settings.json). Pushed by the Go core once at
@@ -293,6 +299,16 @@ final class CoreBridge: ObservableObject {
             guard let id else { return }
             maxStepRequestId = id
             DispatchQueue.main.async { self.showMaxStepWarning = true }
+
+        case "ui.alert":
+            let title = params["title"] as? String ?? "Pob"
+            let message = params["message"] as? String ?? ""
+            DispatchQueue.main.async {
+                self.coreAlertTitle = title
+                self.coreAlertMessage = message
+                self.showCoreAlert = true
+            }
+            if let id { respond(id: id, result: [:]) }
 
         default:
             if let id { respondError(id: id, message: "Unknown method: \(method)") }
