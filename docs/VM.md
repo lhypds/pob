@@ -33,8 +33,10 @@ What you need
   line beside them. Take the current one whose matrix covers the host macOS:
   Fusion rides on Apple's hypervisor, which changes with every macOS major, so
   a build older than the host fails to start VMs rather than degrading.
-- **A Windows 11 ARM64 disk image** from Microsoft. An M-series Mac runs ARM
-  guests only, which is why the deploy below builds `arm64` — the target
+- **A Windows 11 ARM64 disk image**, from
+  `microsoft.com/software-download/windows11arm64` — Microsoft hands these out
+  directly, no build tricks needed. An M-series Mac runs ARM guests only,
+  which is why the deploy below builds `arm64` — the target
   `win/build_docker.sh` already supports.
 - ~40 GB of disk, 4+ GB of RAM for the guest.
 
@@ -48,8 +50,12 @@ Create the VM
 -------------
 
 In Fusion: **File → New → Install from disc or image**, pick the ARM64 ISO,
-and let it run. Two settings to change before first boot, both in **Virtual
-Machine → Settings**:
+and let it run. Save it as `~/VMs/PobWin.vmwarevm`, which is what
+`vm_deploy.sh` looks for by default — anywhere else and the script needs
+`POB_VM` pointed at it.
+
+Two settings to change before first boot, both in **Virtual Machine →
+Settings**:
 
 - **Network Adapter → Bridged (Autodetect)**. The guest then gets a LAN
   address and the Pob server on port 8033 is reachable from the Mac with no
@@ -57,6 +63,12 @@ Machine → Settings**:
   `/Library/Preferences/VMware Fusion/vmnet8/nat.conf` instead.)
 - **Display → uncheck "Automatically adjust user interface size"**, and set a
   fixed resolution.
+
+During Windows setup, **make a local account with a password** — refuse the
+Microsoft account, and skip the PIN if it lets you. This is not a preference:
+Windows Hello takes over the logon path, and the autologon below cannot drive
+it. A plain local account with a plain password is the one shape that logs
+itself in unattended.
 
 After Windows is up, **Virtual Machine → Install VMware Tools** for the
 display driver and the clipboard.
