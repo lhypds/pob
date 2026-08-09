@@ -219,6 +219,17 @@ func (s *Storage) SaveMacro(sessionID string) {
 	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.psl"), []byte(s.macro()), 0o644)
 }
 
+// SaveCompiledMacro writes the macro as the session left it to
+// logs/<session>/macro.txt — every slot filled with what psl answered, and the
+// ones never asked about written out as <instruction>.
+//
+// macro.psl beside it is the macro as it was written; this is the program that
+// actually ran, whole and in one piece rather than a slot at a time under
+// slots/. A run that was stopped partway leaves what it had compiled by then.
+func (s *Storage) SaveCompiledMacro(sessionID, source string) {
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.txt"), []byte(source), 0o644)
+}
+
 // SaveMacroSlot writes one :: … :: that psl filled during a macro session, under
 // logs/<session>/slots/<n>/. The directories are numbered in the order the slots
 // were filled, and slot.json carries the statement and the line of macro.psl

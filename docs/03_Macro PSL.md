@@ -180,7 +180,8 @@ A macro with no slot never runs psl at all, and needs nothing installed. A macro
 psl to be found — Pob checks over the whole macro before the first statement runs rather than
 partway through, and puts up **psl needed** instead of moving the cursor. Every fill is kept under
 `logs/<session>/slots/<n>/` with the screenshot it was answered from and what psl said while filling
-it (see [Logs](05_Logs.md)); `pob --session <id>` lists them.
+it (see [Logs](05_Logs.md)); `pob --session <id>` lists them. The whole macro as it ended up — every
+slot filled, in one file — is kept beside them as `logs/<session>/macro.txt`.
 
 
 Calls

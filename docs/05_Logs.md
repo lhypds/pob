@@ -21,6 +21,7 @@ Structure
               +--- <session>/                    one replay of macro.psl.
                    +--- session.json              session details, start time and end time.
                    +--- macro.psl                 the macro as it stood when this session ran.
+                   +--- macro.txt                 the same macro compiled: every `:: … ::` replaced by what psl filled it with, and the ones never asked about written out as `<instruction>`.
                    +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
                         +--- <n>/
                              +--- slot.json       the instruction, the statement and the line of macro.psl it came from, what was filled in, and which model filled it.

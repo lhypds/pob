@@ -162,6 +162,10 @@ func (r *Runner) runMacro(ctx context.Context) {
 	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
 
+	// The macro with every answer in it, kept beside the one that was written:
+	// what the replay actually ran, rather than what it was asked to.
+	r.store.SaveCompiledMacro(sessionID, run.source)
+
 	r.store.SaveSessionStartEndTimes(sessionID, macroStart, time.Now())
 	applog.Logf("[%s] Macro session times saved", sessionID)
 	applog.Log("Macro execution complete")
