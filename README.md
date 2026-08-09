@@ -72,4 +72,4 @@ Documentation
 | [Web UI](docs/12_Web%20UI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
-| [Windows VM](docs/VM.md) | Running and driving the Windows shell in a VM, from a Mac |
+| [Windows VM](docs/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |

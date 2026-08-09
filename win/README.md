@@ -105,9 +105,9 @@ Fusion guest is the equivalent, and it is scriptable:
 ./win/vm_deploy.sh   # build arm64, start the VM headless, install, restart Pob
 ```
 
-[VM.md](../docs/VM.md) has the guest setup that matters — autologon, no screen
-lock, and why the app has to be started by the Task Scheduler rather than over
-SSH.
+[Windows VM](../docs/15_VM.md) has the guest setup that matters — autologon, no
+screen lock, and why the app has to be started by the Task Scheduler rather
+than over SSH.
 
 
 Source layout
