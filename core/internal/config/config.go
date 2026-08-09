@@ -35,7 +35,7 @@ type Config struct {
 var defaults = map[string]any{
 	"openai_api_key":      "",
 	"base_url":            "https://api.openai.com/v1",
-	"model":               "gpt-4o",
+	"model":               "gpt-5.6",
 	"max_steps":           12,
 	"max_resumes":         5,
 	"max_steplogs":        10,
@@ -295,7 +295,7 @@ func (c *Config) APIKey() string {
 }
 
 func (c *Config) BaseURL() string  { return c.str("base_url", "https://api.openai.com/v1") }
-func (c *Config) Model() string    { return c.str("model", "gpt-4o") }
+func (c *Config) Model() string    { return c.str("model", "gpt-5.6") }
 func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(string); return v }
 
 // ServerEnabled reports whether the Pob server should run. It is on by
