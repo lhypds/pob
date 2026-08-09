@@ -10,6 +10,9 @@
 #   ./build.sh --os macos
 #   ./build.sh --os linux-x11
 #   ./build.sh --os win [args…]     # remaining args forwarded to the script
+#
+# Example:
+#   LINUX_ARCH=arm64 ./build.sh --os linux-x11  # build the Linux shell for ARM64
 
 set -euo pipefail
 
