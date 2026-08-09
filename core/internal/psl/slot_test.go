@@ -69,60 +69,35 @@ func TestBothFormsAreTheSameSlot(t *testing.T) {
 		if !HasSlot(pair[0]) || !HasSlot(pair[1]) {
 			t.Errorf("%q / %q — one of them is not a slot", pair[0], pair[1])
 		}
-		// And both are handed to psl as the same thing.
-		if Prepare(pair[0]) != Prepare(pair[1]) {
-			t.Errorf("Prepare(%q) = %q, Prepare(%q) = %q — want them identical",
-				pair[0], Prepare(pair[0]), pair[1], Prepare(pair[1]))
-		}
 	}
 }
 
-// psl reads the markers more strictly than Pob does: it wants them spaced out.
-// Everything it would fill, Pob sees too — the other way round is what Prepare
-// exists to fix.
-func TestTheCompilerIsStricter(t *testing.T) {
+// Pob and psl read the markers by the same rule. Which slot gets filled is
+// decided by writing the others out of the file, so a slot Pob does not see is
+// one it cannot write out — and psl would fill that one instead.
+func TestPobAndTheCompilerReadTheSameMarkers(t *testing.T) {
 	for _, tt := range []struct {
-		text     string
-		pob      bool
-		compiler bool
+		text string
+		slot bool
 	}{
-		{`typeText(:: what to say ::)`, true, true},
-		{`typeText(::what to say::)`, true, false},
-		{`move(:: the x offset::, 40)`, true, false},
-		{`typeText("std::cout")`, false, false},
-		{`click()`, false, false},
+		{`typeText(:: what to say ::)`, true},
+		{`typeText(::what to say::)`, true},
+		{`move(:: the x offset::, 40)`, true},
+		{`move(::…::, 40)`, true},
+		{`typeText("std::cout")`, false},
+		{`click()`, false},
 	} {
-		if got := HasSlot(tt.text); got != tt.pob {
-			t.Errorf("HasSlot(%q) = %v, want %v", tt.text, got, tt.pob)
+		if got := HasSlot(tt.text); got != tt.slot {
+			t.Errorf("HasSlot(%q) = %v, want %v", tt.text, got, tt.slot)
 		}
-		if got := CompilerHasSlot(tt.text); got != tt.compiler {
-			t.Errorf("CompilerHasSlot(%q) = %v, want %v", tt.text, got, tt.compiler)
-		}
-	}
-}
-
-// Prepare hands psl exactly one slot: the first, spaced out so it is filled,
-// and the rest closed up so they are not.
-func TestPrepare(t *testing.T) {
-	tests := []struct{ text, want string }{
-		{`click()`, `click()`},
-		{`move(::the x offset::, 40)`, `move(:: the x offset ::, 40)`},
-		{`move(:: the x offset ::, 40)`, `move(:: the x offset ::, 40)`},
-		{`move(::a::, ::b::)`, `move(:: a ::, ::b::)`},
-		{`move(:: a ::, :: b ::)`, `move(:: a ::, ::b::)`},
-		{`typeText("Hi ::the name::")`, `typeText("Hi :: the name ::")`},
-	}
-	for _, tt := range tests {
-		got := Prepare(tt.text)
-		if got != tt.want {
-			t.Errorf("Prepare(%q) = %q, want %q", tt.text, got, tt.want)
+		if got := CompilerHasSlot(tt.text); got != tt.slot {
+			t.Errorf("CompilerHasSlot(%q) = %v, want %v", tt.text, got, tt.slot)
 		}
 	}
 }
 
-// Whatever it is handed, Prepare leaves the compiler exactly one slot to fill
-// and Neutralize leaves it none.
-func TestPrepareAndNeutralizeAgainstTheCompiler(t *testing.T) {
+// Whatever it is handed, Neutralize leaves psl nothing to fill.
+func TestNeutralizeAgainstTheCompiler(t *testing.T) {
 	for _, text := range []string{
 		`move(::a::, ::b::)`,
 		`move(:: a ::, :: b ::)`,
@@ -131,22 +106,52 @@ func TestPrepareAndNeutralizeAgainstTheCompiler(t *testing.T) {
 		`:: alone ::`,
 		`click()`,
 	} {
-		prepared := Prepare(text)
-		if HasSlot(text) {
-			slot, found := findSlot(prepared, 0, true)
-			if !found {
-				t.Errorf("Prepare(%q) = %q, which psl would not fill at all", text, prepared)
-				continue
-			}
-			if _, more := findSlot(prepared, slot.End, true); more {
-				t.Errorf("Prepare(%q) = %q, which leaves psl more than one slot", text, prepared)
-			}
-		} else if CompilerHasSlot(prepared) {
-			t.Errorf("Prepare(%q) = %q, which psl would fill though Pob sees no slot", text, prepared)
-		}
-
 		if got := Neutralize(text); CompilerHasSlot(got) {
 			t.Errorf("Neutralize(%q) = %q, which psl would still fill", text, got)
+		}
+	}
+}
+
+// A written-out line has to stay on its own line. A `::` with nothing to close
+// it is still an opening once the lines are joined into a file, and the live
+// slot below would close it — psl would answer the span between them.
+func TestNeutralizedTextCannotReachTheLiveSlot(t *testing.T) {
+	for _, text := range []string{
+		`typeText("a :: b")`,
+		`typeText(":: ::")`,
+		`typeText("a ::: b")`,
+		`move(::a::, ::b::)`,
+		`typeText("std::cout")`,
+		`click()`,
+	} {
+		neutralized := Neutralize(text)
+		file := neutralized + "\nclick()\n" + `if (:: the live one ::) {`
+
+		slot, found := FindCompilerSlot(file, 0)
+		if !found {
+			t.Errorf("Neutralize(%q) = %q — psl finds no slot in the file at all", text, neutralized)
+			continue
+		}
+		if slot.Instruction != "the live one" {
+			t.Errorf("Neutralize(%q) = %q — psl would fill %q, want the live slot",
+				text, neutralized, slot.Instruction)
+		}
+	}
+}
+
+// What was asked stays readable once the slot is written out: the file psl
+// sees is also the context the model reads the live slot in.
+func TestNeutralizeKeepsTheInstruction(t *testing.T) {
+	tests := []struct{ text, want string }{
+		{`typeText(:: what to say ::)`, `typeText(<what to say>)`},
+		{`typeText(::what to say::)`, `typeText(<what to say>)`},
+		{`move(::a::, ::b::)`, `move(<a>, <b>)`},
+		{`typeText("std::cout")`, `typeText("std::cout")`},
+		{`click()`, `click()`},
+	}
+	for _, tt := range tests {
+		if got := Neutralize(tt.text); got != tt.want {
+			t.Errorf("Neutralize(%q) = %q, want %q", tt.text, got, tt.want)
 		}
 	}
 }

@@ -99,7 +99,11 @@ type Result struct {
 // resolvedLine is what psl prints when it has filled a slot:
 //
 //	psl: <file> resolved with <model> — <instruction>
-var resolvedLine = regexp.MustCompile(`resolved with ([^\s]+) — (.*)`)
+//	psl: <file> resolved with <model> (35 tokens: 31 in, 4 out) — <instruction>
+//
+// The token count is there whenever the model reported one, so it is optional
+// here rather than assumed either way.
+var resolvedLine = regexp.MustCompile(`resolved with (\S+)(?: \([^)]*\))? — (.*)`)
 
 // Fill runs psl once over the source and returns it with the first slot
 // replaced by what the model answered.

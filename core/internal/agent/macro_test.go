@@ -320,55 +320,115 @@ if (:: something is true ::) {
 	}
 }
 
-// The file psl is shown is the whole macro with one live slot in it: the
-// statement being filled. Every other slot is closed up, including the ones in
-// blocks this replay skipped — psl fills the first slot it finds, and those
-// would otherwise be it.
-func TestSourceForLeavesOneLiveSlot(t *testing.T) {
+// psl is handed the macro itself: no preamble, nothing rewritten, the file as
+// it was typed.
+func TestPSLIsHandedTheMacroItself(t *testing.T) {
+	macro := `click()
+move(:: the x offset ::, 40)
+typeText(:: what to say ::)`
+	run := &macroRun{source: macro}
+
+	if run.source != macro {
+		t.Errorf("the file for psl is %q, want the macro as written", run.source)
+	}
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q, want the first statement's slot", slot.Instruction)
+	}
+	if line, ok := liveSlotLine(run.source); !ok || line != 1 {
+		t.Errorf("psl would fill a slot on line %d, want line 2", line+1)
+	}
+}
+
+// The answer goes into the macro, so the next run is handed a file whose first
+// remaining slot is the next statement's. That is what keeps psl — which fills
+// the first slot and no other — on the statement the replay is waiting on.
+func TestAnswersAreCarriedForward(t *testing.T) {
+	run := &macroRun{source: "move(:: the x offset ::, 40)\ntypeText(:: what to say ::)"}
+
+	run.record(1, "move(-120, 40)")
+
+	if want := "move(-120, 40)\ntypeText(:: what to say ::)"; run.source != want {
+		t.Errorf("the file for the next run is %q, want %q", run.source, want)
+	}
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "what to say" {
+		t.Errorf("psl would fill %q, want the next statement's slot", slot.Instruction)
+	}
+}
+
+// A statement with two slots is filled one run at a time: the second is left in
+// the file, and is the first remaining slot once the first has its answer.
+func TestBothSlotsOfAStatementAreAskedInTurn(t *testing.T) {
+	run := &macroRun{source: "move(::the x offset::, ::the y offset::)"}
+
+	slot, _ := psl.FindCompilerSlot(run.source, 0)
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q, want the statement's first slot", slot.Instruction)
+	}
+
+	run.record(1, "move(-120, ::the y offset::)")
+
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("the second slot is no longer in the file")
+	}
+	if slot.Instruction != "the y offset" {
+		t.Errorf("psl would fill %q, want the statement's second slot", slot.Instruction)
+	}
+}
+
+// A block that did not run is a block whose slots are never asked about. Left in
+// the file they would be what psl fills next, in place of the statement under
+// them — answered from the wrong screenshot, for a statement that is not going
+// to run.
+func TestASkippedBlocksSlotsAreSpent(t *testing.T) {
 	macro := `if (:: a dialog is open ::) {
+	typeText(:: what to say ::)
+}
+move(:: the x offset ::, 40)`
+	nodes := parseMacro(macro)
+	run := &macroRun{source: macro}
+
+	run.spendBlock(nodes[0].body)
+	run.spend(nodes[0].line)
+
+	if !strings.Contains(run.source, "<a dialog is open>") || !strings.Contains(run.source, "<what to say>") {
+		t.Errorf("the skipped block still holds a slot: %q", run.source)
+	}
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q, want the statement under the block", slot.Instruction)
+	}
+}
+
+// A line no statement came out of is a line that will never run, and its slot is
+// spent before the first psl run rather than filled in place of a statement that
+// does — here, the body of an if whose header Pob could not read.
+func TestUncoveredLinesAreSpent(t *testing.T) {
+	macro := `if :: a dialog is open :: {
 	typeText(:: what to say ::)
 }
 move(:: the x offset ::, 40)`
 	run := &macroRun{source: macro}
 
-	source, line := run.sourceFor(4, `move(:: the x offset ::, 40)`)
+	run.spendUncovered(parseMacro(macro))
 
-	slot, found := psl.FindCompilerSlot(source, 0)
+	slot, found := psl.FindCompilerSlot(run.source, 0)
 	if !found {
 		t.Fatal("no slot psl would fill in the file handed to it")
 	}
 	if slot.Instruction != "the x offset" {
-		t.Errorf("psl would fill %q, want the slot on the statement being run", slot.Instruction)
-	}
-	if _, more := psl.FindCompilerSlot(source, slot.End); more {
-		t.Error("more than one slot psl would fill in the file handed to it")
-	}
-
-	lines := strings.Split(source, "\n")
-	if line < 0 || line >= len(lines) {
-		t.Fatalf("target line %d is outside the file", line)
-	}
-	if lines[line] != `move(:: the x offset ::, 40)` {
-		t.Errorf("target line is %q, want the statement being run", lines[line])
-	}
-	if !strings.Contains(source, "::a dialog is open::") {
-		t.Error("the skipped block's slot was not closed up")
-	}
-}
-
-// The header psl reads for the conventions is not part of the macro, and
-// whatever examples it carries must not be slots psl would fill — it fills the
-// first one it finds, and the header comes first.
-func TestPSLHeaderIsNotFilled(t *testing.T) {
-	run := &macroRun{source: "click()\nmove(::the x offset::, 40)"}
-	source, _ := run.sourceFor(2, `move(::the x offset::, 40)`)
-
-	slot, found := psl.FindCompilerSlot(source, 0)
-	if !found {
-		t.Fatal("no slot psl would fill")
-	}
-	if slot.Instruction != "the x offset" {
-		t.Errorf("psl would fill %q — something in the header got there first", slot.Instruction)
+		t.Errorf("psl would fill %q, want the one statement that runs", slot.Instruction)
 	}
 }
 

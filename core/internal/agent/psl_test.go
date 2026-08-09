@@ -14,6 +14,11 @@ import (
 // file with whatever the test last wrote to answer.txt, and prints the progress
 // line the real psl prints. Written in sh and awk so the test needs nothing
 // installed beyond what a shell already has.
+//
+// It reads the markers as psl does, spaces or no spaces. A stub that wanted
+// them spaced out would pass over every header example and every written-out
+// slot and land on the statement by luck rather than by construction — which is
+// the one thing these tests are here to check.
 func stubCompiler(t *testing.T) (psl.Compiler, func(answer string)) {
 	t.Helper()
 	dir := t.TempDir()
@@ -24,13 +29,13 @@ func stubCompiler(t *testing.T) (psl.Compiler, func(answer string)) {
 file="$1"
 answer=$(cat ` + answerFile + `)
 awk -v ans="$answer" '{
-  if (!done && match($0, /:: [^:]+ ::/)) {
+  if (!done && match($0, /::[^:]+::/)) {
     $0 = substr($0, 1, RSTART-1) ans substr($0, RSTART+RLENGTH)
     done = 1
   }
   print
 }' "$file" > "$file.new" && mv "$file.new" "$file"
-echo "psl: macro.psl resolved with stub-model — the slot" >&2
+echo "psl: macro.psl resolved with stub-model (35 tokens: 31 in, 4 out) — the slot" >&2
 `
 	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -43,9 +48,10 @@ echo "psl: macro.psl resolved with stub-model — the slot" >&2
 	return psl.Compiler{Binary: stub, Dir: dir}, answer
 }
 
-// The whole way through: Pob builds the file psl is shown, psl fills the one
-// live slot in it, and Pob reads the statement back out ready to execute.
-func TestFillingAStatementThroughTheCompiler(t *testing.T) {
+// The whole way through, statement by statement: psl is handed the macro, fills
+// the first slot left in it, and Pob reads the statement back out ready to
+// execute and puts the answer into the file the next run is handed.
+func TestFillingAMacroThroughTheCompiler(t *testing.T) {
 	compiler, answer := stubCompiler(t)
 
 	macro := `click()
@@ -57,17 +63,23 @@ if (:: a save dialog is on screen ::) {
 	run := &macroRun{sessionID: "test", source: macro}
 
 	tests := []struct {
-		line             int
-		statement, given string
-		want             string
+		line        int
+		given, want string
 	}{
-		{2, `move(:: the x offset to the Save button ::, 40)`, "-120", `move(-120, 40)`},
-		{3, `typeText(:: what to say ::)`, `"Hello"`, `typeText("Hello")`},
-		{4, `if (:: a save dialog is on screen ::) {`, "true", `if (true) {`},
+		{2, "-120", `move(-120, 40)`},
+		{3, `"Hello"`, `typeText("Hello")`},
+		{4, "true", `if (true) {`},
 	}
 	for _, tt := range tests {
 		answer(tt.given)
-		source, target := run.sourceFor(tt.line, tt.statement)
+		source := run.source
+		target := tt.line - 1
+
+		// Whatever else is in the macro, the slot psl reaches for is this
+		// statement's — the ones above it have their answers in them by now.
+		if live, ok := liveSlotLine(source); !ok || live != target {
+			t.Fatalf("line %d: psl would fill a slot on line %d", tt.line, live+1)
+		}
 
 		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
 		if err != nil {
@@ -83,6 +95,41 @@ if (:: a save dialog is on screen ::) {
 		if result.Model != "stub-model" {
 			t.Errorf("line %d: model = %q, want it read out of psl's progress line", tt.line, result.Model)
 		}
+		run.record(tt.line, got)
+	}
+
+	if psl.HasSlot(run.source) {
+		t.Errorf("the macro still holds a slot: %q", run.source)
+	}
+}
+
+// A statement with two slots goes through the compiler twice, and the second
+// run is asked about a statement that already carries the first answer.
+func TestFillingTwoSlotsInOneStatement(t *testing.T) {
+	compiler, answer := stubCompiler(t)
+
+	run := &macroRun{sessionID: "test", source: "click()\nmove(:: the x offset ::, :: the y offset ::)"}
+
+	for _, given := range []string{"-120", "40"} {
+		if !psl.HasSlot(run.line(2)) {
+			t.Fatalf("nothing left to fill in %q", run.line(2))
+		}
+		answer(given)
+		source := run.source
+
+		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
+		if err != nil {
+			t.Fatalf("%q: %v", run.line(2), err)
+		}
+		filled, ok := extractLine(source, result.Source, 1)
+		if !ok {
+			t.Fatalf("%q: could not read the filled statement back", run.line(2))
+		}
+		run.record(2, filled)
+	}
+
+	if want := "move(-120, 40)"; strings.TrimSpace(run.line(2)) != want {
+		t.Errorf("filled to %q, want %q", run.line(2), want)
 	}
 }
 
@@ -133,9 +180,9 @@ func TestBothSlotFormsFillTheSame(t *testing.T) {
 		"click()\nmove(:: the x offset ::, 40)",
 	} {
 		run := &macroRun{sessionID: "test", source: macro}
-		statement := strings.Split(macro, "\n")[1]
+		statement := run.line(2)
+		source, target := run.source, 1
 
-		source, target := run.sourceFor(2, statement)
 		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
 		if err != nil {
 			t.Fatalf("%q: %v", statement, err)

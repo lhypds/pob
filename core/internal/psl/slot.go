@@ -15,22 +15,24 @@ import (
 // Marker opens and closes a slot.
 const Marker = "::"
 
-// Two rules for the same markers, and the difference between them is the whole
-// of what this file is for.
+// Pob and psl read the markers by one and the same rule, and that they do is
+// what this file is written to keep true.
 //
-// psl is a language that lives inside files written in other languages, so it
-// only reads `::` as a delimiter where it cannot be that language's own syntax:
-// the opening `::` must be followed by whitespace and the closing one preceded
-// by it, and neither may be glued to an identifier. That is what keeps C++'s
-// std::cout from being a slot.
+// The rule: `::` delimits a slot wherever it cannot be the surrounding
+// language's own syntax. Scope resolution — C++'s std::cout, Rust's Foo::Bar,
+// PHP's self::method — always glues `::` to an identifier, so the opening `::`
+// may not be glued to one on its left, nor the closing `::` to one on its
+// right. The spaces inside are optional: `::x::` and `:: x ::` are the same
+// slot.
 //
-// A macro is not another language — it is PSL all the way down — so Pob is
-// easier to write in: `::x::` and `:: x ::` are the same slot, and the spaces
-// are yours to leave out. The identifier guards stay, since they are what keeps
-// a `::` in text being typed from being read as a question.
-//
-// Every slot psl would fill is therefore a slot Pob sees, but not the other way
-// round. Prepare is what closes that gap when a macro is handed over.
+// The macro goes over to psl whole and as written, and psl fills the first slot
+// in it. Which slot that is, Pob has to know exactly: it replays the file top to
+// bottom, puts each answer back into it, and writes out the slots of statements
+// that will never run — so that the first slot left is always the one the replay
+// is waiting on. A slot Pob reads differently from psl is a slot it counts wrong
+// somewhere in that. The two rules being the same rule is therefore not a
+// tidiness, it is the whole mechanism: what reads `::` here is written against
+// psl's own slot package, and a change there is a change to make here.
 
 // Slot is one `:: instruction ::` found in a macro.
 type Slot struct {
@@ -39,77 +41,21 @@ type Slot struct {
 	Instruction string // what is written between the markers, trimmed
 }
 
-// FindSlot returns the first slot at or after `from`, by Pob's rule: the
-// markers may be closed up or spaced out.
-func FindSlot(src string, from int) (Slot, bool) { return findSlot(src, from, false) }
-
-// HasSlot reports whether the text holds a slot Pob would have filled.
-func HasSlot(src string) bool {
-	_, found := FindSlot(src, 0)
-	return found
-}
-
-// FindCompilerSlot returns the first slot psl itself would fill — the stricter
-// rule, and the one that decides what a run of the compiler actually does.
-// Prepare and Neutralize are written so that exactly one slot in a file passes
-// it.
-func FindCompilerSlot(src string, from int) (Slot, bool) { return findSlot(src, from, true) }
-
-// CompilerHasSlot reports whether psl would find anything to fill here.
-func CompilerHasSlot(src string) bool {
-	_, found := FindCompilerSlot(src, 0)
-	return found
-}
-
-// Prepare writes a statement as the compiler has to see it: the first slot
-// spaced out into the form psl fills, and every slot after it closed up so psl
-// passes over it. Together with Neutralize on every other line, that leaves the
-// slot the replay is waiting on as the only one psl will touch.
-func Prepare(src string) string {
-	slot, found := FindSlot(src, 0)
-	if !found {
-		return Neutralize(src)
-	}
-	return src[:slot.Start] +
-		Marker + " " + slot.Instruction + " " + Marker +
-		Neutralize(src[slot.End:])
-}
-
-// Neutralize closes up every slot in the text — `:: x ::` becomes `::x::` —
-// which psl passes over, since the markers are then glued to the instruction on
-// both sides. Pob still reads it as a slot; this is about what the compiler
-// does, not what a macro means.
-func Neutralize(src string) string {
-	var b strings.Builder
-	rest := src
-	for {
-		slot, found := FindSlot(rest, 0)
-		if !found {
-			b.WriteString(rest)
-			return b.String()
-		}
-		b.WriteString(rest[:slot.Start])
-		b.WriteString(Marker + slot.Instruction + Marker)
-		rest = rest[slot.End:]
-	}
-}
-
-func findSlot(src string, from int, strict bool) (Slot, bool) {
+// FindSlot returns the first slot at or after `from`.
+func FindSlot(src string, from int) (Slot, bool) {
 	for i := from; i+1 < len(src); i++ {
-		if src[i] != ':' || src[i+1] != ':' {
+		if !opensSlot(src, i) {
 			continue
 		}
-		if !opensSlot(src, i, strict) {
-			continue
-		}
-		end, ok := findClose(src, i+2, strict)
+		end, ok := findClose(src, i+2)
 		if !ok {
 			continue
 		}
 		instruction := strings.TrimSpace(src[i+2 : end])
 		if instruction == "" {
-			// Nothing to ask. psl calls an empty slot an error rather than
-			// passing over it, so it is skipped here before it gets that far.
+			// Nothing to ask. psl stops with an error on an empty slot rather
+			// than passing over it, so one written in a macro is skipped here
+			// and taken apart by Neutralize before the file goes anywhere.
 			i = end + 1
 			continue
 		}
@@ -118,16 +64,72 @@ func findSlot(src string, from int, strict bool) (Slot, bool) {
 	return Slot{}, false
 }
 
+// HasSlot reports whether the text holds a slot.
+func HasSlot(src string) bool {
+	_, found := FindSlot(src, 0)
+	return found
+}
+
+// FindCompilerSlot returns the first slot psl itself would fill. It is FindSlot
+// — the two read the markers by the same rule — and kept under its own name
+// because it asks a different question: not what the macro says, but what the
+// compiler will do with the file it is handed. It is the one place to change
+// if psl's rule ever moves away from Pob's.
+func FindCompilerSlot(src string, from int) (Slot, bool) { return FindSlot(src, from) }
+
+// CompilerHasSlot reports whether psl would find anything to fill here.
+func CompilerHasSlot(src string) bool {
+	_, found := FindCompilerSlot(src, 0)
+	return found
+}
+
+// dormantOpen and dormantClose wrap a slot Pob has written out of the macro.
+// They are deliberately not `::`: psl reads `::` exactly as Pob does, so a slot
+// left in any form Pob would recognise is a slot psl would fill.
+const dormantOpen, dormantClose = "<", ">"
+
+// Neutralize writes every slot out of the text — `:: x ::` becomes `<x>` —
+// leaving nothing psl would fill while the instruction stays there to be read.
+// It is how Pob says a statement is not going to be asked about: the body of a
+// block that did not run, a line it could not read.
+//
+// Every `::` goes, not only the ones that pair up. A marker with nothing to
+// close it on its own line — `typeText("a :: b")` types a `::`, it does not ask
+// anything — is still an opening as far as the file is concerned, and the next
+// live slot below it would close it: psl would fill the span from the typed text
+// down to the statement the replay was actually waiting on. A neutralized line
+// is one that will never run, so a colon fewer in it costs nothing.
+func Neutralize(src string) string {
+	for {
+		if slot, found := FindSlot(src, 0); found {
+			src = src[:slot.Start] + dormantOpen + slot.Instruction + dormantClose + src[slot.End:]
+			continue
+		}
+		if i, found := findOpening(src, 0); found {
+			src = src[:i] + ":" + src[i+len(Marker):]
+			continue
+		}
+		return src
+	}
+}
+
+// findOpening returns the offset of the first `::` that could open a slot,
+// whether or not anything closes it.
+func findOpening(src string, from int) (int, bool) {
+	for i := from; i+1 < len(src); i++ {
+		if opensSlot(src, i) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 // opensSlot reports whether the "::" at i can start a slot. Glued to an
 // identifier on its left it never can — that is `std::cout`, or a `::` in the
-// middle of a word being typed. Under the compiler's rule it must also be
-// followed by whitespace.
-func opensSlot(src string, i int, strict bool) bool {
-	if strict {
-		next, size := utf8.DecodeRuneInString(src[i+2:])
-		if size == 0 || !unicode.IsSpace(next) {
-			return false
-		}
+// middle of a word being typed.
+func opensSlot(src string, i int) bool {
+	if src[i] != ':' || i+1 >= len(src) || src[i+1] != ':' {
+		return false
 	}
 	prev, size := utf8.DecodeLastRuneInString(src[:i])
 	if size == 0 {
@@ -137,16 +139,12 @@ func opensSlot(src string, i int, strict bool) bool {
 }
 
 // findClose returns the offset of the "::" that closes a slot opened at from.
-func findClose(src string, from int, strict bool) (int, bool) {
+// A "::" that runs straight into an identifier is scope resolution written
+// inside the instruction, not the end of it.
+func findClose(src string, from int) (int, bool) {
 	for i := from; i+1 < len(src); i++ {
 		if src[i] != ':' || src[i+1] != ':' {
 			continue
-		}
-		if strict {
-			prev, size := utf8.DecodeLastRuneInString(src[:i])
-			if size == 0 || !unicode.IsSpace(prev) {
-				continue
-			}
 		}
 		next, size := utf8.DecodeRuneInString(src[i+2:])
 		if size != 0 && isIdentRune(next) {

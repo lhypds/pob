@@ -34,12 +34,92 @@ type macroNode struct {
 }
 
 // macroRun carries the state of one replay: the session it writes under, the
-// macro as it was written — which is what psl is shown every time — and how many
-// slots have been filled so far, since the count names their log directories.
+// macro as it now stands, and how many slots have been filled so far, since the
+// count names their log directories.
+//
+// source is the file itself, and psl is handed it whole and unaltered — no
+// preamble, nothing rewritten, the macro as it was typed. That works because
+// psl fills the first slot in the file and Pob replays the file top to bottom:
+// the two agree on which slot is next as long as the file carries its answers
+// forward, which is what record does after every run. A statement the replay is
+// finished with and did not fill — a skipped block, a run that failed — is spent
+// instead, since a slot left on it would be the one psl reaches for next.
 type macroRun struct {
 	sessionID string
 	source    string
 	slots     int
+}
+
+// line returns the macro's line as it now stands, 1-based, or "" past the end.
+func (run *macroRun) line(n int) string {
+	lines := strings.Split(run.source, "\n")
+	if n < 1 || n > len(lines) {
+		return ""
+	}
+	return lines[n-1]
+}
+
+// record writes a filled statement back into the macro, so the next run is
+// handed a file with this answer already in it.
+//
+// An answer of several lines is folded onto one. Every statement is found by
+// its line number, and a file that gained a line would put every statement
+// under it at the wrong one — while an answer that ran to several lines does
+// not read as a statement anyway, and is on its way to being logged and
+// skipped.
+func (run *macroRun) record(n int, filled string) {
+	lines := strings.Split(run.source, "\n")
+	if n < 1 || n > len(lines) {
+		return
+	}
+	lines[n-1] = strings.ReplaceAll(filled, "\n", " ")
+	run.source = strings.Join(lines, "\n")
+}
+
+// spend writes the slots on a line out of the macro — `:: x ::` becomes `<x>` —
+// leaving the instruction there to be read but nothing psl would fill.
+//
+// It is what Pob says about a statement it is done with and did not fill: the
+// body of a block whose condition did not hold, a statement whose own fill
+// failed, a line that never parsed. psl fills the first slot in the file, so a
+// slot left behind on one of those is a slot answered in place of the statement
+// the replay is actually waiting on — with the wrong screenshot, in the wrong
+// place, for a statement that is not going to run.
+func (run *macroRun) spend(n int) {
+	if line := run.line(n); psl.HasSlot(line) {
+		run.record(n, psl.Neutralize(line))
+	}
+}
+
+// spendBlock spends a block of statements that will not run, and the blocks
+// inside it.
+func (run *macroRun) spendBlock(nodes []macroNode) {
+	for _, node := range nodes {
+		run.spend(node.line)
+		run.spendBlock(node.body)
+	}
+}
+
+// spendUncovered spends every line no statement came out of. A line Pob could
+// not read is a line it will never run — and one holding a slot, such as the
+// body of an if whose header was malformed, would otherwise be filled in place
+// of a statement that does run.
+func (run *macroRun) spendUncovered(nodes []macroNode) {
+	covered := map[int]bool{}
+	var walk func([]macroNode)
+	walk = func(nodes []macroNode) {
+		for _, node := range nodes {
+			covered[node.line] = true
+			walk(node.body)
+		}
+	}
+	walk(nodes)
+
+	for n := 1; n <= strings.Count(run.source, "\n")+1; n++ {
+		if !covered[n] {
+			run.spend(n)
+		}
+	}
 }
 
 // runMacro replays macro.psl statement by statement.
@@ -79,6 +159,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	applog.Logf("[%s] Macro session started", sessionID)
 
 	run := &macroRun{sessionID: sessionID, source: source}
+	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
 
 	r.store.SaveSessionStartEndTimes(sessionID, macroStart, time.Now())
@@ -105,13 +186,20 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		if node.isIf {
 			if r.evalMacroCondition(ctx, run, node) {
 				r.runMacroNodes(ctx, run, node.body)
+			} else {
+				// Nothing in it runs, so nothing in it is asked about.
+				run.spendBlock(node.body)
 			}
+			run.spend(node.line)
 			continue
 		}
 
 		if name, args, ok := r.resolveMacroAction(ctx, run, node); ok {
 			r.runMacroAction(ctx, run.sessionID, name, args)
 		}
+		// A no-op when the statement filled: what it spends is the slot of one
+		// that did not, which the replay is nonetheless done with.
+		run.spend(node.line)
 
 		if delayMs := r.cfg.MacroDefaultDelay(); delayMs > 0 {
 			sleepCtx(ctx, time.Duration(delayMs)*time.Millisecond)
@@ -190,12 +278,10 @@ func conditionHolds(expr string) (holds, read bool) {
 // fillStatement has psl fill every slot in one statement, one run each, and
 // returns the statement as it then reads.
 //
-// psl fills the first slot it finds in a file, so what it is shown each time is
-// the whole macro with every other slot closed up — including the ones in
-// blocks this replay skipped, which are still in the text and would otherwise
-// be the slot it went for.
+// The statement is taken from the macro as it now stands rather than as it was
+// written, since a slot filled a moment ago is already in there.
 func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNode) (string, bool) {
-	statement := node.raw
+	statement := run.line(node.line)
 	for psl.HasSlot(statement) {
 		if ctx.Err() != nil {
 			return "", false
@@ -210,12 +296,12 @@ func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNod
 		}
 		statement = filled
 	}
-	applog.Logf("[%s] Macro line %d: %s -> %s", run.sessionID, node.line, node.raw, statement)
+	applog.Logf("[%s] Macro line %d: %s -> %s", run.sessionID, node.line, node.raw, strings.TrimSpace(statement))
 	return statement, true
 }
 
-// fillOneSlot runs psl once and returns the statement with its first slot
-// filled.
+// fillOneSlot runs psl once over the macro and returns the statement with its
+// first slot filled.
 func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode, statement string) (string, bool) {
 	run.slots++
 	seq := run.slots
@@ -223,6 +309,20 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	slot, found := psl.FindSlot(statement, 0)
 	if !found {
 		return statement, true
+	}
+
+	// psl fills the first slot in the file, and the file is handed over whole,
+	// so the first slot in it has to be this statement's. Checked here rather
+	// than found out afterwards: a statement that comes back untouched says only
+	// that something else was answered, not what.
+	source := run.source
+	targetLine := node.line - 1
+	if live, found := liveSlotLine(source); !found || live != targetLine {
+		applog.Logf("[%s] Macro slot (%s) — psl would fill a slot on line %d, not this statement on line %d; not running it",
+			run.sessionID, slot.Instruction, live+1, node.line)
+		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false,
+			"the first slot in the macro is not this statement's", nil)
+		return "", false
 	}
 
 	shot, err := r.br.CaptureScreenshot(true, nil)
@@ -233,7 +333,6 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
-	source, targetLine := run.sourceFor(node.line, statement)
 	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot})
 	if err != nil {
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
@@ -248,65 +347,30 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		return "", false
 	}
 
-	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, filled,
+	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, strings.TrimSpace(filled),
 		result.Model, result.Duration.Round(time.Millisecond))
 	r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
+
+	// The answer goes into the macro, which is what the next run is handed: with
+	// this slot no longer in the file, the first one left is the next statement's
+	// — or the second slot of this one, if it has two.
+	run.record(node.line, filled)
 	return filled, true
 }
 
-// pslHeader sits above the macro in the file psl is shown, and is not part of
-// the macro: it is the conventions a value has to be written in, which the
-// vocabulary alone does not say. Pob reads back only the macro under it.
-//
-// It carries no live slot of its own — every :: below is closed up — so the slot
-// psl finds is always the one in the macro.
-const pslHeader = `This is a Pob macro: a Prompt Script Language program that drives the mouse and
-keyboard of the machine the attached screenshot was taken on. Each line is one
-statement — move(dx, dy), drag(dx, dy), scroll(dx, dy), click(), rightClick(),
-doubleClick(), typeText("..."), keyPress("..."), sleep(ms), resetCursor(),
-take_screenshot() — or an if block: if (<condition>) { ... }.
+// psl is handed the macro and nothing else — no preamble of Pob's own, no
+// statement rewritten, the file as it was typed, with the screenshot alongside
+// it as the slot's image. What a value has to look like is what the statement
+// around the slot already says, and psl's own prompting is what says the rest.
 
-Fill the slot with the text that belongs where the marker is, so that the line
-still reads as a statement. What that has to be follows from where the marker
-sits:
-
-  move(::…::, 40)          a bare number, like -120
-  typeText(::…::)          a quoted string, like "Hello"
-  typeText("Hi ::…::")     bare text, the quotes are already there, like Bob
-  if (::…::)               true or false, and nothing else
-
-Coordinates are screenshot pixels: origin top-left, x increases to the right, y
-increases downwards. move and drag are relative to where the cursor is now — the
-arrow visible in the screenshot — so answer with the offset from it, not with a
-position on the screen.
-
-Go only by the screenshot and the macro below. If the screenshot does not show
-enough to answer, give the value that does the least: 0 for a number, "" for a
-string, false for a condition.
-
------ the macro -----
-`
-
-// sourceFor builds the file psl is shown for one statement: the header, then
-// the macro as it was written with the statement in question put back as it
-// now stands and every other slot closed up. It returns the file and the
-// 0-based index of the line the answer will land on.
-func (run *macroRun) sourceFor(line int, statement string) (string, int) {
-	lines := strings.Split(run.source, "\n")
-	for i := range lines {
-		if i == line-1 {
-			// Spaced out into the form psl fills; every other slot on the line,
-			// and on every other line, closed up so psl passes over it.
-			lines[i] = psl.Prepare(statement)
-			continue
-		}
-		lines[i] = psl.Neutralize(lines[i])
+// liveSlotLine returns the 0-based line of the slot psl would fill in the file
+// it is handed.
+func liveSlotLine(source string) (int, bool) {
+	slot, found := psl.FindCompilerSlot(source, 0)
+	if !found {
+		return 0, false
 	}
-	// The header is closed up too. It carries examples of the markers, and
-	// leaving it to be written carefully enough never to hold a live one is a
-	// rule someone would break by editing prose.
-	header := psl.Neutralize(pslHeader)
-	return header + strings.Join(lines, "\n"), strings.Count(header, "\n") + line - 1
+	return strings.Count(source[:slot.Start], "\n"), true
 }
 
 // extractLine reads the filled statement back out of the file psl rewrote.

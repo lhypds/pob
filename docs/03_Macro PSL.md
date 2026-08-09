@@ -92,9 +92,10 @@ be closed up and the other not. What the markers may not do is touch a letter or
 outside: `typeText("std::cout")` types `std::cout`, and `typeText("a::b::c")` types `a::b::c`. That
 is what tells a slot from a `::` in the text being typed.
 
-(psl itself is stricter — it reads only the spaced form, because a PSL file is usually written in
-some other language that has its own use for `::`. A macro is PSL all the way down, so Pob is easier
-about it, and writes the slot out in full before handing the file over.)
+(This is psl's own rule, read the same way on both sides. It has to be: psl fills the first slot in
+the file it is handed and no other, so Pob picks which one by writing every other slot out of the
+copy it hands over — and a slot Pob did not recognise is one it would leave in, for psl to answer
+instead.)
 
 The instruction between the markers is a question for the model rather than something Pob carries
 out itself. It goes **anywhere in a statement** — a whole argument, part of one, the condition of an
@@ -110,9 +111,13 @@ if (:: a save dialog is on screen ::) {
 ```
 
 When the replay reaches the statement, Pob takes a screenshot and runs the psl compiler over the
-macro, with that screenshot attached and this one slot live. psl asks a model, writes the answer in
-where the markers were, and hands the file back; Pob reads the statement out of it, parses it as PSL
-and executes it. Everything outside the markers is written down and means exactly what it says.
+macro — the file itself, whole and unaltered, with that screenshot as the slot's image and nothing
+else. psl asks a model, writes the answer in where the markers were, and hands the file back; Pob
+reads the statement out of it, parses it as PSL and executes it. Everything outside the markers is
+written down and means exactly what it says.
+
+Nothing is prepended and no statement is rewritten on the way over. What a slot has to come back as
+is what the statement around it already says, and how a slot is filled at all is psl's own business.
 
 That is the *prompt* in Prompt Script Language, and the whole of what separates it from a scripting
 language. A call is a macro doing what it was told. A slot is a macro asking about a screen nobody
@@ -161,8 +166,17 @@ typeText(:: gpt-5.6> a short reply to the message on screen ::)
 
 Each statement's slots are filled left to right, one psl run each, and each one is asked with the
 earlier answers already in place — so the second slot of `move(:: … ::, :: … ::)` is asked about a
-statement that already reads `move(-120, :: … ::)`. The rest of the macro goes along with its own
-slots closed up, so the one psl fills is always the one the replay is waiting on.
+statement that already reads `move(-120, :: … ::)`. That is how psl and Pob stay on the same slot at
+all: psl fills the first slot in the file it is given, Pob replays the file top to bottom, and every
+answer goes back into the file before the next run, so the first slot left is always the one the
+replay is waiting on.
+
+Two kinds of statement would break that step, and both are settled by writing their slots out of the
+file as `<instruction>` — there to be read, not to be answered. One is a statement that will never
+run: the body of an `if` whose condition did not hold, or a line Pob could not read in the first
+place. The other is a statement whose own fill failed, which the replay is finished with either way.
+Neither is ever asked about, and a slot left on one of them would be answered in place of the
+statement below it, from a screenshot taken for something else.
 
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
 psl to be found — Pob checks over the whole macro before the first statement runs rather than
