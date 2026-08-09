@@ -20,10 +20,18 @@ This folder holds:
 
   - An X11 session (Xorg). Under Wayland the app runs through XWayland but
     cannot see or drive native Wayland windows — log in to an Xorg session.
+
   - A running compositor, or the overlay cannot be transparent. Most desktops
     have one; on Raspberry Pi OS: sudo apt install xcompmgr && xcompmgr &
+    
   - GTK 3 at runtime, preinstalled on mainstream desktops:
     sudo apt install libgtk-3-0 libjson-glib-1.0-0 libxtst6
+    
+  - A text editor and a file manager, for the toolbar buttons that open your
+    settings and the logs folder. Most desktops already have both; a bare X
+    session or a container may have neither, and the buttons then say so on
+    screen. Any one of each will do — the lightest pair is:
+    sudo apt install mousepad pcmanfm
 
 Try it here first if you like — ./pob starts the app from this folder.
 

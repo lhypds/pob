@@ -20,6 +20,7 @@ Requirements
 
 - A real X11 session (Xorg). On Wayland the app runs under XWayland but
   cannot see or control native Wayland windows — use an Xorg session.
+
 - A running compositor (GNOME/KDE/Xfce defaults are fine); without one the
   overlay cannot be transparent. On Raspberry Pi OS (PIXEL/openbox has no
   compositor by default):
@@ -34,6 +35,30 @@ Requirements
   The app self-diagnoses: when transparency can't work, the content area
   shows what is missing (compositor / ARGB visual), and `app.log` records
   `Window realized: visual depth=…, composited=…`.
+
+- A text editor and a file manager. The toolbar buttons that open
+  `settings.json`, `instruction.txt`, `macro.txt` and `app.log` hand the file
+  to an editor; the Logs button hands `logs/` to a file manager. Mainstream
+  desktops ship both, but a bare X session, a container or a trimmed-down
+  install can have neither — the content area then says `Cannot open it — no
+  text editor / file manager on this machine` and `app.log` records the same.
+  `xdg-open` and `gio open` are tried first, then these, by name:
+
+  ```
+  editors:       gnome-text-editor gedit kate kwrite mousepad xed pluma leafpad
+  file managers: nautilus dolphin thunar nemo caja pcmanfm
+  ```
+
+  One of each is enough — the lightest pair is
+  `sudo apt install mousepad pcmanfm`. Note that `xdg-open` being present
+  proves nothing: with no association registered for the file type it exits
+  without opening anything, which is why the list behind it exists.
+  `editor` in `settings.json` can instead name `vscode` (`code`), `zed`
+  (`zed`), `sublime_text` (`subl`) or `vim` — `vim` needs a terminal, taken
+  from the `terminal` setting (`gnome-terminal`, `konsole`, `xterm`,
+  `x-terminal-emulator`). A configured editor that is not installed falls
+  back to the list above rather than leaving the button dead.
+  
 - Build dependencies:
 
 ```
@@ -59,7 +84,9 @@ cd Pob
 
 `pob` starts the bundled `pob-core` automatically. Runtime dependencies are
 just the GTK 3 libraries, preinstalled on mainstream desktops
-(`sudo apt install libgtk-3-0 libjson-glib-1.0-0 libxtst6` if missing).
+(`sudo apt install libgtk-3-0 libjson-glib-1.0-0 libxtst6` if missing) — plus
+the editor and file manager the toolbar's file buttons need, see
+[Requirements](#requirements).
 
 To keep it somewhere permanent and get the `pob` command in the terminal,
 install it instead of running it in place:
