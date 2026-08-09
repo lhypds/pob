@@ -102,7 +102,7 @@ see what is running, `pob launch` to start the app. See
 [CLI](../docs/07_CLI.md).
 
 On first run the working files (`settings.json`, `macro.psl`, `logs/`,
-`app.log`) are created in `~/.pob/` —
+`app.log`, `llm.log`) are created in `~/.pob/` —
 set `openai_api_key` in `settings.json` there.
 
 

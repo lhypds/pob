@@ -22,6 +22,8 @@ the rest are left where they are to be copied across by hand.
 | `base_url` | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API (e.g. `https://api.anthropic.com/v1` for Claude) |
 | `openai_api_key` | — | API key for the model provider |
 | `model` | `gpt-5.6` | Model name (e.g. `claude-sonnet-4-5`, `gemini-2.5-flash`) |
+| `price_input_per_1m` | `0` | What this machine is charged for prompt tokens, in USD per million, used only for the money line in [`llm.log`](05_Logs.md). `0` means unpriced: the call is still logged, with its token counts, and no cost is worked out |
+| `price_output_per_1m` | `0` | The same for completion tokens. A provider that reports its own cost is believed over both of these |
 | `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
@@ -91,7 +93,7 @@ Pointed at Gemini, through its OpenAI-compatible endpoint:
 See also
 --------
 
-- [Logs](05_Logs.md) — where the per-instance copy lives
+- [Logs](05_Logs.md) — where the per-instance copy lives, and the `llm.log` the prices above are for
 - [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the model a `::…::` slot is filled by
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control

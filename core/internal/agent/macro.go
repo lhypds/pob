@@ -279,7 +279,8 @@ func (r *Runner) fillSlot(run *macroRun, node macroNode, statement, prompt strin
 		}},
 	}
 
-	result := r.llm.Chat(messages, nil, macroSlotSchema)
+	purpose := "macro slot ::" + prompt + "::  (session " + run.sessionID + ", macro.psl line " + strconv.Itoa(node.line) + ")"
+	result := r.llm.Chat(purpose, messages, nil, macroSlotSchema)
 
 	// Copy before adding usage so the raw message stays as the API returned it.
 	responseToSave := map[string]any{"error": result.Error}

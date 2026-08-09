@@ -9,6 +9,7 @@ Structure
     +--- INSTANCE                                 names the instance directory below.
     +--- settings.json                            this machine's [settings](06_Settings.md), shared by every instance.
     +--- app.log                                  the app's own log, across instances.
+    +--- llm.log                                  one block per model call, across instances: what was asked, what came back, and what it cost.
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and where the shell last left the window (`window_x`, `window_y`, `window_width`, `window_height`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
@@ -53,11 +54,46 @@ which one to start — see [CLI](07_CLI.md).
 `<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`).  
 
 
-See also
---------
+llm.log
+-------
+
+Every model call Pob makes is one block in `~/.pob/llm.log`, written whether it succeeded or not.
+There is one place in the code they all go through, so this is the whole of what the app spends —
+across instances, since the account being billed is the machine's rather than one instance's.
+
+```
+[2026-08-10T14:23:01Z] macro slot ::the x offset to the Save button::  (session 1752712400, macro.psl line 4)
+  endpoint   https://api.openai.com/v1/chat/completions
+  model      gpt-5.6
+  request    2 messages, 1 image, json_schema, 234.7 KB
+  duration   2.413s
+  status     ok
+  usage      1870 tokens = 1843 prompt (512 cached) + 27 completion (8 reasoning)
+  cost       $0.002574 estimated — in 1843 × $1.25/M + out 27 × $10/M
+  response   {"value":"-120","reason":"The Save button sits 120px left of the cursor."}
+```
+
+A call that failed says so and carries what the provider said instead of the usage — including one
+that never left the machine, like a request made with no `openai_api_key`:
+
+```
+  status     failed
+  error      HTTP 429: {"error":{"message":"Rate limit reached for gpt-5.6"}}
+```
+
+`cost` is the one line that needs setting up. A provider that reports what it charged is believed
+outright — that number is the one on the bill. Otherwise Pob works it out from
+`price_input_per_1m` and `price_output_per_1m` in [settings.json](06_Settings.md), which is why the
+line says *estimated*: it prices prompt and completion tokens flat, and does not know what your
+account pays for a cached token. With neither, the line names the two settings and the token counts
+are logged anyway — a bill is worked out from those either way.
+
+What the file does not hold is the messages. A request carries screenshots, and a base64 PNG per
+entry would make it unopenable within a day; the full conversation, images stripped, is in the
+session's own `slots/<n>/messages.json`, which the purpose line names the session and line for.
 
 - [UI](02_UI.md) — the toolbar buttons that open this tree
 - [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
 - [Control API](11_Control%20API.md) — what `instance.json` advertises while it runs
-- [Settings](06_Settings.md) — the `settings.json` kept at the root, shared by every instance
+- [Settings](06_Settings.md) — the `settings.json` kept at the root, shared by every instance, and the prices `llm.log` works the money out from
 - [Macro PSL](03_Macro%20PSL.md) — the `macro.psl` a session replays

@@ -80,9 +80,11 @@ Everything is under ~/.pob:
 
     settings.json           your API key, model and options (this machine's)
     INSTANCE                which instance directory is the current one
+    app.log                 what the app did
+    llm.log                 every model call: tokens, duration and cost
     <instance>/
         macro.psl           recorded or hand-written actions
-        logs/               sessions, conditions, screenshots
+        logs/               sessions, AI slots, screenshots
 
 Uninstalling never touches ~/.pob.
 

@@ -36,6 +36,8 @@ var defaults = map[string]any{
 	"base_url":            "https://api.openai.com/v1",
 	"openai_api_key":      "",
 	"model":               "gpt-5.6",
+	"price_input_per_1m":  0,
+	"price_output_per_1m": 0,
 	"macro_default_delay": 1000,
 	"editor":              "system",
 	"terminal":            "system",
@@ -389,6 +391,19 @@ func (c *Config) MCPHost() string {
 }
 
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
+
+// InputPricePer1M and OutputPricePer1M are what this machine is charged for the
+// model it is set to, in USD per million tokens, and they are only ever used to
+// work out the money line in llm.log. There is no default that could be right —
+// the price depends on the model, the provider and the account — so zero means
+// nobody has said, and the log reports the tokens without pricing them.
+func (c *Config) InputPricePer1M() float64 {
+	return c.floatVal("price_input_per_1m", 0, 0, 1_000_000)
+}
+
+func (c *Config) OutputPricePer1M() float64 {
+	return c.floatVal("price_output_per_1m", 0, 0, 1_000_000)
+}
 
 func (c *Config) Macro() string {
 	data, err := os.ReadFile(c.macroFile())

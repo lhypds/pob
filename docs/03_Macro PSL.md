@@ -147,7 +147,8 @@ statement that already reads `move(-120, ::…::)`.
 A macro with no slot never calls the model at all and runs with nothing configured. A macro that has
 one needs an `openai_api_key`, and Pob checks for it over the whole macro before the first statement
 runs rather than partway through. Every fill is kept under `logs/<session>/slots/<n>/` with the
-screenshot it was answered from (see [Logs](05_Logs.md)); `pob --session <id>` lists them.
+screenshot it was answered from (see [Logs](05_Logs.md)); `pob --session <id>` lists them, and
+`~/.pob/llm.log` has the model call behind each one — tokens, duration and what it cost.
 
 
 Calls
