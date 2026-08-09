@@ -56,6 +56,34 @@ func (c Compiler) Describe() string {
 	return path
 }
 
+// promptFlag is what psl calls the briefing on the API a file is written
+// against, and what its help lists the flag under.
+const promptFlag = "--prompt"
+
+// SupportsPrompt reports whether the psl on this machine takes that flag, read
+// out of its own help.
+//
+// It is asked rather than assumed because a psl older than the flag exits on an
+// option it does not know: passing it regardless would turn every slot on that
+// machine into a failed fill, and what the briefing buys is a better answer, not
+// the run itself. An old psl fills the way it always did.
+func (c Compiler) SupportsPrompt() bool {
+	binary, err := c.resolve()
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "--help")
+	cmd.Dir = c.Dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), promptFlag)
+}
+
 func (c Compiler) resolve() (string, error) {
 	binary := c.Binary
 	if binary == "" {
@@ -80,6 +108,12 @@ type Request struct {
 	// Image is the PNG handed to the model as the slot's visual context — for
 	// Pob, the screen as it is at the moment the statement is reached.
 	Image []byte
+	// Prompt is psl's --prompt: a briefing on the API the file is written
+	// against, added to the system prompt for this run. It says what the code
+	// around the slot has to fit, never what to fill the slot with. psl resolves
+	// one slot per run and the briefing describes the whole file, so it goes
+	// over on every run rather than once.
+	Prompt string
 }
 
 // Result is what one run of psl did.
@@ -139,6 +173,12 @@ func (c Compiler) Fill(ctx context.Context, req Request) (*Result, error) {
 			return nil, err
 		}
 		args = append(args, "--image", imagePath)
+	}
+	if req.Prompt != "" {
+		// Passed as the text itself. psl reads the value as a file when it names
+		// one, and a briefing on a vocabulary is not the name of a file sitting
+		// next to it.
+		args = append(args, promptFlag, req.Prompt)
 	}
 
 	timeout := c.Timeout

@@ -48,6 +48,11 @@ type macroRun struct {
 	sessionID string
 	source    string
 	slots     int
+
+	// prompt is the briefing that goes over beside the file on every fill, and
+	// is empty when this psl is older than the flag that takes it — settled once
+	// for the run rather than asked about at each slot.
+	prompt string
 }
 
 // line returns the macro's line as it now stands, 1-based, or "" past the end.
@@ -127,16 +132,28 @@ func (r *Runner) runMacro(ctx context.Context) {
 	source := r.cfg.Macro()
 	nodes := parseMacro(source)
 
+	hasSlots := hasMacroSlot(nodes)
+
 	// Checked before anything moves: a macro whose slots cannot be filled is one
 	// Pob cannot run as written, and finding that out halfway through would
 	// leave the statements above the slot already played.
-	if hasMacroSlot(nodes) && !r.psl.Available() {
+	if hasSlots && !r.psl.Available() {
 		message := "macro.psl has a :: … :: slot, and Pob fills those by running the psl compiler. " +
 			"psl was not found — install it (see https://github.com/pob/psl), or set \"psl\" in " +
 			"settings.json to the path of the executable, and run the macro again."
 		applog.Logf("Macro not run: %s", message)
 		r.br.ShowAlert("psl needed", message)
 		return
+	}
+
+	// What the vocabulary buys is a better answer rather than the run itself, so
+	// a psl too old to be told it goes on filling the way it always did — from
+	// the statement and the screenshot — with a line in the log saying what it
+	// was not given.
+	prompt := macroPrompt
+	if hasSlots && !r.psl.SupportsPrompt() {
+		prompt = ""
+		applog.Log("Macro: this psl does not take --prompt, so the slots are filled without a description of the macro vocabulary — update psl to have it sent")
 	}
 
 	if _, err := r.br.ResetCursor(); err != nil {
@@ -158,7 +175,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	macroStart := time.Now()
 	applog.Logf("[%s] Macro session started", sessionID)
 
-	run := &macroRun{sessionID: sessionID, source: source}
+	run := &macroRun{sessionID: sessionID, source: source, prompt: prompt}
 	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
 
@@ -337,7 +354,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
-	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot})
+	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot, Prompt: run.prompt})
 	if err != nil {
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
@@ -362,10 +379,12 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	return filled, true
 }
 
-// psl is handed the macro and nothing else — no preamble of Pob's own, no
-// statement rewritten, the file as it was typed, with the screenshot alongside
-// it as the slot's image. What a value has to look like is what the statement
-// around the slot already says, and psl's own prompting is what says the rest.
+// Nothing of Pob's is written into the macro: no preamble, no statement
+// rewritten, the file as it was typed. What travels beside it is the screenshot,
+// as the slot's image, and macroPrompt, as psl's --prompt — what the calls in
+// the file are and what their arguments mean, which is what psl takes a briefing
+// on an API for. What a value has to look like is still what the statement
+// around the slot says, and psl's own prompting is what says the rest.
 
 // liveSlotLine returns the 0-based line of the slot psl would fill in the file
 // it is handed.

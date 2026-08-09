@@ -111,13 +111,21 @@ if (:: a save dialog is on screen ::) {
 ```
 
 When the replay reaches the statement, Pob takes a screenshot and runs the psl compiler over the
-macro — the file itself, whole and unaltered, with that screenshot as the slot's image and nothing
-else. psl asks a model, writes the answer in where the markers were, and hands the file back; Pob
-reads the statement out of it, parses it as PSL and executes it. Everything outside the markers is
-written down and means exactly what it says.
+macro — the file itself, whole and unaltered, with that screenshot as the slot's image. psl asks a
+model, writes the answer in where the markers were, and hands the file back; Pob reads the statement
+out of it, parses it as PSL and executes it. Everything outside the markers is written down and
+means exactly what it says.
 
-Nothing is prepended and no statement is rewritten on the way over. What a slot has to come back as
-is what the statement around it already says, and how a slot is filled at all is psl's own business.
+Nothing is prepended to the file and no statement is rewritten on the way over. What does travel
+beside it is a description of the vocabulary — the calls below, what their arguments mean, and that
+an offset is measured from the cursor rather than from the corner of the screen — handed to psl as
+its `--prompt`, which is the flag a compiler takes a briefing on an API for. It says what the calls
+are and never what to write: what a value has to come back as is what the statement around it
+already says, and how a slot is filled at all is psl's own business.
+
+A psl older than that flag fills the macro all the same, from the statement and the screenshot and
+nothing else. Pob asks the one on the machine what it takes before sending anything, and notes in
+the log when a run goes without.
 
 That is the *prompt* in Prompt Script Language, and the whole of what separates it from a scripting
 language. A call is a macro doing what it was told. A slot is a macro asking about a screen nobody
@@ -191,6 +199,9 @@ A call is `name(argument, argument)` — the name, then arguments in parentheses
 the closing one. Names are case-sensitive, spelled as below. These are also the tools the AI calls
 and the actions the [MCP](08_MCP.md) server exposes: one vocabulary, whoever is driving. Any
 argument can be an AI slot instead of a value, or hold one inside it.
+
+This table is also what Pob describes to psl on every fill — a model asked for part of a statement
+is told what the statement is a call to.
 
 | Statement | Arguments | What it does |
 |-----------|-----------|--------------|
