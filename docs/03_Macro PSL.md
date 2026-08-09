@@ -69,12 +69,43 @@ statements around it stand. A macro is often half-recorded and half-typed, and o
 middle of it is a line to fix, not a reason to refuse the other forty.
 
 There are two kinds of statement: a **call**, which does something to the machine, and an **if
-block**, which asks the AI whether to run the statements inside it.
+block**, which asks the AI whether to run the statements inside it. What it asks is written as an
+**AI slot** — the piece of a statement that is a prompt rather than a value.
 
-`::` … `::` is an **AI slot**: a prompt that stands where a value would, and is replaced by what the
-AI answers when the line is reached. Everything outside the markers is written down and means
-exactly what it says. In the condition of an `if`, the answer that replaces the slot is true or
-false.
+
+AI slot
+-------
+
+An AI slot is a prompt written where a value would go, wrapped in `::` on both sides:
+
+```
+::instruction::
+```
+
+The instruction between the markers is a question for the model rather than something Pob carries
+out itself. When the replay reaches the statement holding it, Pob takes a screenshot, asks the
+[model](06_Settings.md) that instruction against that picture, and the answer stands where the slot
+was written — the statement then says what the AI answered. Everything outside the markers is
+written down and means exactly what it says.
+
+That is the *prompt* in Prompt Script Language, and the whole of what separates it from a scripting
+language. A call is a macro doing what it was told. A slot is a macro asking about a screen nobody
+could describe to it in advance, at the moment it is looking at that screen.
+
+Write an instruction a screenshot can settle — "a chat window is open", "the file list is empty",
+"the window focus on a wechat user". The model is given the instruction and the picture and nothing
+else: it has no memory of the statements that ran before, so an instruction about what the macro has
+already done is one it cannot see. Whitespace around the instruction is trimmed, so `::a::` and
+`:: a ::` are the same slot; an empty one is not a slot at all, and the statement holding it is
+malformed.
+
+Every slot is one model call, made as the replay reaches it — so a macro with no slot never calls
+the model at all, and runs with nothing configured. A macro that has one needs an
+`openai_api_key`, and Pob checks for it before the first statement runs rather than partway through.
+
+Today a slot goes in one place: the condition of an `if`, below, where the answer that replaces it
+is true or false. The `if` is written so the parentheses can hold whatever else comes later, but the
+slot is the only expression there is so far.
 
 
 Calls
@@ -111,10 +142,9 @@ if blocks
 ---------
 
 A macro plays the same actions every time, which is the point of one — until the screen it plays
-against is not always the same screen. `if` is where the AI comes into a macro. Its condition goes
-in parentheses, and what fills them is an AI slot: when the replay reaches the line Pob takes a
-screenshot and asks the [model](06_Settings.md) the prompt inside the slot. The answer — true or
-false — is what the condition then is, and the block runs or is skipped on it.
+against is not always the same screen. `if` is where the AI comes into a macro: its condition is an
+AI slot, and the true or false that comes back is what the condition then is. The block runs when it
+holds, and is skipped when it does not.
 
 ```
 if (::a save dialog is on screen::) {
@@ -128,23 +158,15 @@ the line, and a `}` on a line of its own closes the block. Inside is ordinary PS
 another `if`, nested as deep as the macro needs. Lines after the `}` run either way; there is no
 `else`.
 
-An AI slot is the only expression the parentheses take so far, so `if (::…::)` is the whole of the
-form today — the parentheses are what will hold anything else that comes.
-
 Write the keyword lowercase. `IF` is read too, and so is `If`: a block Pob failed to recognise would
 run its body unguarded, which is the one thing the condition was written to prevent.
 
-Write a condition a screenshot can settle — "a chat window is open", "the file list is empty". The
-model is given the condition and the picture and nothing else: it has no memory of the statements
-that ran before, so a condition about what the macro has already done is one it cannot see.
-
-Each `if` is one model call, made as the replay reaches it — a condition inside a block that gets
-skipped costs nothing, and a macro with no `if` never calls the model at all and runs with nothing
-configured. A macro that does use one needs the settings that model call is made with:
-`openai_api_key`, and the `base_url` and `model` that already have working defaults (see
-[Settings](06_Settings.md)). Without them Execute puts up **Settings needed** and the macro does
-not run at all, before the cursor has moved — finding out halfway through would leave everything
-above the `if` already played.
+A condition inside a block that gets skipped is never reached, so it is never judged and costs
+nothing. The check for the settings that judging needs runs the other way round — over the whole
+macro, before the first statement: with a slot anywhere in it and no `openai_api_key`, Execute puts
+up **Settings needed** and the macro does not run at all, before the cursor has moved. Finding out
+halfway through would leave everything above the `if` already played. (`base_url` and `model` have
+working defaults, so the key is what a fresh machine is missing — see [Settings](06_Settings.md).)
 
 Each judgement is kept under `logs/<session>/conditions/<n>/`, with the screenshot it was judged
 from (see [Logs](05_Logs.md)), and `pob --session <id>` lists them.
