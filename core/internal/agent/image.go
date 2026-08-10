@@ -5,10 +5,10 @@ package agent
 // A vision model reads a screenshot as a grid of patches, so what it spends on
 // one is set by the picture's pixels rather than its bytes: re-encoding the
 // same grid smaller — PNG to JPEG — changes the transfer and nothing the model
-// does. Fewer pixels is the only thing that makes it cheaper, and it is a trade
-// rather than a saving, since the coordinate a slot is usually asked for is
-// read off the pixels that were thrown away. That is why image_scale is 1 until
-// someone sets it: see config.ImageScale.
+// does. Fewer pixels is the only thing that makes it cheaper, and it is a trade,
+// since the coordinate a slot is usually asked for is read off the pixels that
+// were thrown away. Where the trade stops being worth taking is measured in
+// config.DefaultImageScale.
 //
 // Pob shrinks the picture here rather than asking the shell for a smaller one.
 // The shells do take a maxWidth — it is what the view page's frames use — but

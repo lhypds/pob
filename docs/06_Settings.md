@@ -20,7 +20,7 @@ the rest are left where they are to be copied across by hand.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
-| `image_scale` | `1` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `1` the picture as taken, `0.5` half as wide and half as tall — a quarter of the pixels, and roughly a quarter of the image tokens it spends reading them (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way |
+| `image_scale` | `0.5` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `0.5` half as wide and half as tall — a quarter of the pixels, and roughly a third of the input tokens — and `1` the picture as taken (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way. Raise it for slots that ask about something smaller than an icon. It applies to filling a slot and nothing else — an [MCP](08_MCP.md) client's `take_screenshot` gets the picture as taken |
 | `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
@@ -50,7 +50,7 @@ Example:
 ```json
 {
   "psl": "psl",
-  "image_scale": 1,
+  "image_scale": 0.5,
   "macro_default_delay": 1000,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
@@ -101,6 +101,48 @@ from a 1736×1384 screenshot took 15.1s, and 6.1s from the same screenshot at
 `0.5` — the answer was 8 tokens either way, so almost all of it was the picture.
 Measure on your own model rather than taking that number: it is a statement about
 one vision encoder on one machine.
+
+What shrinking costs is not the precision you would expect. Asked for the centre
+of ten small controls in that window — four scattered, and six of them adjacent
+glyphs in one row along the bottom edge, about 47px apart — one frontier vision
+model answered like this. 300 answers, two screenshots, three runs a scale, every
+error in full-resolution pixels after Pob grew the answer back:
+
+| scale | input tokens | median error | p90 error | wrong control | wall clock |
+|-------|--------------|--------------|-----------|---------------|------------|
+| `1` | 2991 | 1.0px | 1.4px | none | 4.1s |
+| `0.5` | 1018 | 0.0px | 2.2px | none | 4.3s |
+| `0.4` | 754 | 1.1px | 2.5px | none | 5.0s |
+| `0.35` | 643 | 1.7px | 3.6px | none | 7.5s |
+| `0.3` | 544 | 2.3px | 44.7px | 7 of 60 | 22.2s |
+| `0.25` | 463 | 3.6px | 48.0px | 8 of 60 | 24.0s |
+
+Two or three pixels of error is the same click, so precision is not what decides
+this. What decides it is the jump in the p90 column: below `0.35` the model stops
+being imprecise about the right control and starts naming the one beside it. At
+`0.3` that row of icons is 14px apart in the picture it is shown, and 7 answers in
+60 pointed at a neighbour — a wrong click, not a coarse one.
+
+So the number to reason about is how far apart the things you click are, in the
+picture the model sees. It held together at 16px of separation and broke at 14px,
+which makes the rule roughly:
+
+    scale ≥ 15px ÷ (spacing between adjacent controls, in screenshot pixels)
+
+`0.35` clears that for this window and clears it by nothing at all — a denser
+toolbar, 32px between icons instead of 47px, would be inside the cliff at `0.35`
+and wants `0.5`. That is why the default is `0.5` and not the cheapest scale that
+happened to survive here.
+
+The wall-clock column says the same thing from the other side: below `0.5` the
+answer gets *slower*, because a model given an ambiguous picture spends longer on
+it. `0.35` is 37% fewer tokens for 74% more waiting. `0.5` is the last scale that
+is free on both counts — a third of the tokens of the whole picture, at the same
+speed, with nothing misread.
+
+Raise it to `1` for a slot that asks about something finer than a control: a
+character in a line of text, which side of a hairline border. That is asking about
+the pixels `0.5` threw away.
 
 The second bill is the one to check first, because it can be far larger and no
 picture size touches it. A model that reasons before answering spends thousands

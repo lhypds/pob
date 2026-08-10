@@ -327,10 +327,16 @@ func TestRecordedWindowFrameWinsOverTheSettingsCopy(t *testing.T) {
 	}
 }
 
-// image_scale is the picture as taken unless someone asks for less of it, and
-// a hand-edited file asking for more, or for none, is clamped rather than
-// refused — a 0 would send the model nothing to read.
-func TestImageScaleIsWholeByDefaultAndClamped(t *testing.T) {
+// image_scale is half the picture unless someone asks for more of it, and a
+// hand-edited file asking for more than the whole picture, or for none of it, is
+// clamped rather than refused — a 0 would send the model nothing to read.
+func TestImageScaleIsHalfByDefaultAndClamped(t *testing.T) {
+	// Pinned to the number rather than the constant: the default is a measured
+	// choice — see DefaultImageScale — and moving it is a decision to make
+	// deliberately, with the measurement redone, not a constant to nudge.
+	if DefaultImageScale != 0.5 {
+		t.Errorf("DefaultImageScale = %v, want 0.5", DefaultImageScale)
+	}
 	root := t.TempDir()
 	if got := New(root, "pb-aaaa").ImageScale(); got != DefaultImageScale {
 		t.Errorf("ImageScale() = %v on a fresh machine, want %v", got, DefaultImageScale)

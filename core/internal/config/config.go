@@ -315,11 +315,29 @@ func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(stri
 // holds no API key of its own.
 func (c *Config) PSLBinary() string { return c.str("psl", psl.DefaultBinary) }
 
-// DefaultImageScale hands the model the screenshot at the size it was taken,
-// and MinImageScale is as small as it can be asked to go — a tenth across is
-// a hundredth of the pixels, past which nothing is legible anyway.
+// DefaultImageScale halves the screenshot, and MinImageScale is as small as it
+// can be asked to go — a tenth across is a hundredth of the pixels, past which
+// nothing is legible anyway.
+//
+// A half rather than the whole picture because the whole one is not measurably
+// better at the job, and a half is a third of the tokens: over 300 answers from
+// one frontier vision model, asked for the centre of ten small controls in a
+// 1736×1384 window, the median error was 1.0px at 1 and 0.0px at 0.5, and it
+// read the half-size picture for 1018 input tokens instead of 2991.
+//
+// A half rather than less because of what breaks, which is not precision. Six of
+// those controls were adjacent glyphs in one row, 47px apart. Down to 0.35 — 16px
+// apart in the picture the model is shown — every answer named the right one, a
+// few pixels off. At 0.3, 14px apart, 7 answers in 60 named the glyph beside it:
+// a wrong click rather than a coarse one. Roughly, a scale has to keep 15px
+// between the things a macro clicks, so 0.35 clears this window by nothing and a
+// denser toolbar would not clear it at all.
+//
+// Going lower is also slower, which is the same fact from the other side: a
+// model given an ambiguous picture spends longer on it. 4.3s a slot at 0.5, 7.5s
+// at 0.35, 22.2s at 0.3. So 0.5 is the last scale free of both costs.
 const (
-	DefaultImageScale = 1.0
+	DefaultImageScale = 0.5
 	MinImageScale     = 0.1
 )
 
@@ -328,17 +346,18 @@ const (
 // tall — a quarter of the pixels, and roughly a quarter of the image tokens a
 // vision model spends reading it.
 //
-// It costs accuracy, so it is 1 unless someone says otherwise: what a slot is
-// usually asked for is where something on the screen is, and a smaller picture
-// is a coarser answer to that.
-//
 // What it buys is the vision encoder, which has to run over every patch before
 // the answer's first token is written — on one local 8B model, 15.1s of a slot
-// at 1 and 6.1s of the same slot at 0.5. It buys nothing off the other half of
-// a slot, the answer being written a token at a time, and that half can be the
-// larger by far: a model that reasons first spends minutes on a slot that wants
-// the word true, and no picture size touches it. So the token counts in the
-// slot's log are what say whether this setting is the one to reach for.
+// at 1 and 6.1s of the same slot at DefaultImageScale. It buys nothing off the
+// other half of a slot, the answer being written a token at a time, and that
+// half can be the larger by far: a model that reasons first spends minutes on a
+// slot that wants the word true, and no picture size touches it. So the token
+// counts in the slot's log are what say whether this setting is the one to
+// reach for.
+//
+// Raising it back to 1 is for a slot that asks about something smaller than the
+// icons the default was measured on — a character in a line of text, a hairline
+// border. What it costs is in DefaultImageScale.
 //
 // Pob undoes the shrinking on the answer, so a macro is written in screen
 // pixels whatever this is set to. See rescaleFilled.
