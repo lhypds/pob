@@ -53,9 +53,53 @@ done again — the actions land in the instance's `macro.psl`, a
 [macro](docs/03_Macro%20PSL.md) you can then open and edit. Anywhere the macro
 should read the screen instead of repeating a value, write a `:: … ::` in its
 place and the AI fills it in as the macro runs — a coordinate, a piece of text,
-a true or false. Those are filled by [psl](https://github.com/pob/psl), the
+a true or false. Those are filled by [psl](https://github.com/lhypds/psl), the
 Prompt Script Language compiler, so install that and give it an API key first.
 Or drive the machine yourself from a phone, a terminal, or another computer.
+
+
+Macro PSL
+---------
+
+A macro is a sequence of actions Pob plays back, and each instance keeps one —
+`macro.psl`, in its `~/.pob/<instance>/` directory. It is written in **Prompt
+Script Language**, PSL: one statement per line, run top to bottom, small enough
+that a recording is readable and readable enough that the recording is worth
+editing afterwards.
+
+There are three kinds of statement. A **call** does something to the machine —
+`move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep`. An **if
+block** guards the statements inside it with a condition. A **loop block** runs
+them again and again, up to a count. Any of the three can hold an **AI slot**: a
+prompt written where a value would go, `:: … ::`, filled in from a screenshot as
+the replay reaches it.
+
+```
+move(398, 915)
+click()
+if (:: a chat window is open ::) {
+    loop (:: another unread message in the list ::, 10) {
+        move(:: the x offset to the message box ::, 738)
+        click()
+        typeText(:: a short reply to the message on screen ::)
+        keyPress("return")
+    }
+}
+```
+
+That is what separates PSL from a scripting language that only ever does what it
+is told: a call is a macro repeating what it was given, and a slot is a macro
+asking about a screen nobody could describe to it in advance, at the moment it is
+looking at that screen.
+
+The slots are filled by [psl](https://github.com/lhypds/psl), the Prompt Script
+Language compiler — its own project, and where the models and the API keys live.
+Pob holds none of its own. A macro with no slot in it never runs psl and needs
+nothing installed; a macro that has one puts up **psl needed** before the cursor
+moves if psl cannot be found.
+
+See [Macro PSL](docs/03_Macro%20PSL.md) for every statement, what a slot has to
+come back as, and what happens to a line that cannot be read.
 
 
 Documentation
