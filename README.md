@@ -76,6 +76,7 @@ three can hold an **AI slot**: a prompt written where a value would go,
 `:: … ::`, filled in from a screenshot as the replay reaches it.
 
 ```
+// Reply to every unread message, then sign out.
 move(398, 915)
 click()
 if (:: a chat window is open ::) {
@@ -88,6 +89,10 @@ if (:: a chat window is open ::) {
 }
 call("../sign-out.psl")
 ```
+
+Comments are C's — `//` to the end of the line, `/* … */` across as many as it
+takes — and are taken out of the line rather than out of the file, so a
+statement is still found at the line number it was written on.
 
 That is what separates PSL from a scripting language that only ever does what it
 is told: a call is a macro repeating what it was given, and a slot is a macro

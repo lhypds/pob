@@ -93,7 +93,14 @@ type macroRun struct {
 }
 
 // newMacroRun starts a replay over the macro as it was written.
+//
+// The one thing not as it was written is the markers inside its comments, which
+// are taken apart before anything else happens: psl fills the first slot in the
+// file, and a comment is the one part of a file that is never waiting on an
+// answer. It is done here so that written carries it too — otherwise a loop
+// would put a comment's markers back into the file on every pass.
 func newMacroRun(sessionID, path, source, prompt string) *macroRun {
+	source = neutralizeComments(source)
 	return &macroRun{
 		sessionID: sessionID,
 		source:    source,
@@ -452,7 +459,9 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 		return "", nil, false
 	}
 
-	name, args, ok := readMacroStatement(strings.TrimSpace(filled))
+	// The comment on the end of the statement came back with it, and a statement
+	// is read the same way whether it was written out or filled in.
+	name, args, ok := readMacroStatement(strings.TrimSpace(stripLine(filled)))
 	if !ok {
 		applog.Logf("[%s] Macro %s: filled to %q, which does not read as a statement — skipping", run.sessionID, run.where(node.line), filled)
 		return "", nil, false
@@ -505,6 +514,7 @@ func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node mac
 // as a header hands back nothing, which is not one of the two words and so is
 // not a verdict.
 func readCondition(node macroNode, header string) string {
+	header = strings.TrimSpace(stripLine(header))
 	if node.isLoop {
 		condition, _, _ := parseLoopHeader(header)
 		return condition
@@ -933,8 +943,11 @@ const macroCallKeyword = "call"
 //
 // A statement holding a slot is kept as it was written and read again once psl
 // has filled it: what it says is not known until then.
+//
+// The comments come out first and the lines stay where they are, so a statement
+// is still found at the line number it was written on — see comment.go.
 func parseMacro(text string) []macroNode {
-	nodes, _ := parseMacroBlock(strings.Split(text, "\n"), 0, 0)
+	nodes, _ := parseMacroBlock(codeLines(text), 0, 0)
 	return nodes
 }
 
@@ -1257,7 +1270,9 @@ func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) boo
 		if err != nil {
 			continue
 		}
-		text := string(data)
+		// The comments go first, so a statement someone commented out rather than
+		// deleted is not what says psl is needed.
+		text := neutralizeComments(string(data))
 		if psl.HasSlot(text) {
 			return true
 		}
@@ -1273,7 +1288,7 @@ func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) boo
 // without logging — a file the replay may never reach.
 func parseCallLines(text string) []macroNode {
 	var nodes []macroNode
-	for _, line := range strings.Split(text, "\n") {
+	for _, line := range codeLines(text) {
 		name, args, ok := parseMacroLine(strings.TrimSpace(line))
 		if ok && name == macroCallKeyword {
 			nodes = append(nodes, macroNode{action: name, args: args})

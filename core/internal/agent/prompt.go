@@ -22,7 +22,9 @@ runs what it holds when the condition holds, loop (count) { } runs it that many
 times, and loop (condition, count) { } runs it while the condition holds, count
 being the most passes it may make. Numbers are written plainly (398, -615, 0.5),
 strings in double quotes with a backslash escaping the character after it. stop
-is the one statement written without parentheses.
+is the one statement written without parentheses. Comments are C's — // to the
+end of the line, /* … */ across lines — and are notes to read rather than
+statements that run.
 
 The whole vocabulary:
 
