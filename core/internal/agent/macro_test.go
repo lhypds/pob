@@ -14,8 +14,8 @@ import (
 func nodeSummary(nodes []macroNode, indent string) []string {
 	var out []string
 	for _, n := range nodes {
-		if n.isIf {
-			out = append(out, indent+"if ("+n.condition+")")
+		if n.isIf || n.isLoop {
+			out = append(out, indent+macroBlockLabel(n))
 			out = append(out, nodeSummary(n.body, indent+"  ")...)
 			continue
 		}
@@ -183,6 +183,208 @@ func TestParseMacroIfPrefixIsNotKeyword(t *testing.T) {
 	checkParse(t, `IFrame(1, 2)`, []string{"IFrame(1, 2)"})
 }
 
+// A loop with nothing but a count runs its body exactly that many times, and
+// asks nothing.
+func TestParseMacroLoopBlock(t *testing.T) {
+	checkParse(t, `click()
+loop (3) {
+	keyPress("down")
+	click()
+}
+drag(-775, -615)`, []string{
+		"click()",
+		"loop (3)",
+		`  keyPress(down)`,
+		"  click()",
+		"drag(-775, -615)",
+	})
+}
+
+// A loop with a condition in front of the count runs while the condition holds,
+// and the count is the most passes it may make.
+func TestParseMacroLoopWithCondition(t *testing.T) {
+	checkParse(t, `loop (:: the window is still open ::, 5) {
+	move(:: the x offset to the Close button ::, 0)
+	click()
+}`, []string{
+		"loop (:: the window is still open ::, 5)",
+		"  unfilled: move(:: the x offset to the Close button ::, 0)",
+		"  click()",
+	})
+}
+
+// An instruction is a sentence written for a model, and a comma in it is part of
+// what is being asked rather than the one that separates it from the count.
+func TestParseMacroLoopConditionHoldingAComma(t *testing.T) {
+	checkParse(t, `loop (:: the list is still loading, not empty ::, 4) {
+	click()
+}`, []string{
+		"loop (:: the list is still loading, not empty ::, 4)",
+		"  click()",
+	})
+}
+
+// A loop written without a condition is a loop whose condition always holds:
+// `loop (3)` and `loop (true, 3)` are one and the same loop. The count is what
+// ends both, the body of both is the same body, and neither asks anything on the
+// way — the one that has a condition is read without a model, and the one that
+// has none has nothing to read.
+func TestALoopWithoutAConditionIsALoopWhoseConditionHolds(t *testing.T) {
+	body := "\tkeyPress(\"down\")\n\tclick()\n}"
+	counted := parseMacro("loop (3) {\n" + body)
+	written := parseMacro("loop (true, 3) {\n" + body)
+
+	if len(counted) != 1 || len(written) != 1 {
+		t.Fatalf("parsed %d and %d statements, want one loop each", len(counted), len(written))
+	}
+	if counted[0].count != 3 || written[0].count != 3 {
+		t.Errorf("counts are %d and %d, want 3 passes at most either way", counted[0].count, written[0].count)
+	}
+	if counted[0].condition != "" {
+		t.Errorf("loop (3) parsed the condition %q, want none — nothing is checked before a pass", counted[0].condition)
+	}
+	if holds, read := conditionHolds(written[0].condition); !holds || !read {
+		t.Errorf("conditionHolds(%q) = (%v, %v), want it read as true", written[0].condition, holds, read)
+	}
+	if hasMacroSlot(counted) || hasMacroSlot(written) {
+		t.Error("one of them would send Pob to psl, and neither has anything to ask")
+	}
+
+	got := strings.Join(nodeSummary(counted[0].body, ""), "\n")
+	want := strings.Join(nodeSummary(written[0].body, ""), "\n")
+	if got != want {
+		t.Errorf("the bodies differ:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestParseMacroLoopKeywordCase(t *testing.T) {
+	for _, keyword := range []string{"loop", "LOOP", "Loop"} {
+		checkParse(t, keyword+` (2) {
+	click()
+}`, []string{
+			"loop (2)",
+			"  click()",
+		})
+	}
+}
+
+// Blocks nest either way round, as deep as the macro needs.
+func TestParseMacroNestedLoop(t *testing.T) {
+	checkParse(t, `loop (:: another unread message ::, 10) {
+	if (:: the message is a question ::) {
+		loop (2) {
+			keyPress("return")
+		}
+	}
+	click()
+}`, []string{
+		"loop (:: another unread message ::, 10)",
+		"  if (:: the message is a question ::)",
+		"    loop (2)",
+		`      keyPress(return)`,
+		"  click()",
+	})
+}
+
+// A malformed loop header still opens a block, and the block is dropped: a body
+// written to run until something is true must not run once, unbounded.
+func TestParseMacroMalformedLoopDropsBlock(t *testing.T) {
+	for _, header := range []string{
+		"loop (:: the window is still open ::, 5)",  // no {
+		"loop (:: the window is still open ::, 5 {", // no )
+		"loop :: the window is still open ::, 5 {",  // no parentheses
+		"loop (:: how many times ::) {",             // the count is written out, never asked
+		"loop (:: still open ::, :: how many ::) {",
+		"loop (twice) {",
+		"loop (2.5) {",
+		"loop (0) {",
+		"loop (-1) {",
+		"loop (the window is still open, 5) {", // neither a slot nor true/false
+		"loop (, 5) {",
+		"loop () {",
+		"loop {",
+		"loop",
+	} {
+		checkParse(t, header+`
+	click()
+}
+move(1, 2)`, []string{
+			"move(1, 2)",
+		})
+	}
+}
+
+func TestParseMacroLoopPrefixIsNotKeyword(t *testing.T) {
+	checkParse(t, `loopback(1, 2)`, []string{"loopback(1, 2)"})
+	checkParse(t, `loops(3)`, []string{"loops(3)"})
+}
+
+func TestParseLoopHeader(t *testing.T) {
+	tests := []struct {
+		line      string
+		condition string
+		count     int
+		isLoop    bool
+	}{
+		{"loop (3) {", "", 3, true},
+		{"loop(3){", "", 3, true},
+		{"loop  (  3  )  {", "", 3, true},
+		{"loop\t(3) {", "", 3, true},
+		{"LOOP (3) {", "", 3, true},
+		{"loop (1) {", "", 1, true},
+		{"loop (:: the window is still open ::, 5) {", ":: the window is still open ::", 5, true},
+		{"loop (::the window is still open::,5) {", "::the window is still open::", 5, true},
+		{"loop (:: still loading, not empty ::, 5) {", ":: still loading, not empty ::", 5, true},
+		{"loop (:: a { brace in the condition ::, 5) {", ":: a { brace in the condition ::", 5, true},
+		{"loop (true, 5) {", "true", 5, true},
+		{"loop (FALSE, 5) {", "FALSE", 5, true},
+		{"loop (:: no closing brace ::, 5)", "", 0, true},
+		{"loop :: no parentheses ::, 5 {", "", 0, true},
+		{"loop (:: how many times ::) {", "", 0, true},
+		{"loop (:: ::, 5) {", "", 0, true},
+		{"loop (no slot, 5) {", "", 0, true},
+		{"loop (, 5) {", "", 0, true},
+		{"loop (5, :: the window is still open ::) {", "", 0, true},
+		{"loop (0) {", "", 0, true},
+		{"loop (-2) {", "", 0, true},
+		{"loop (2.5) {", "", 0, true},
+		{"loop () {", "", 0, true},
+		{"loop {", "", 0, true},
+		{"loop", "", 0, true},
+		{"click()", "", 0, false},
+		{"loopback(1, 2)", "", 0, false},
+		{"loops(3)", "", 0, false},
+	}
+	for _, tt := range tests {
+		condition, count, isLoop := parseLoopHeader(tt.line)
+		if isLoop != tt.isLoop || condition != tt.condition || count != tt.count {
+			t.Errorf("parseLoopHeader(%q) = (%q, %d, %v), want (%q, %d, %v)",
+				tt.line, condition, count, isLoop, tt.condition, tt.count, tt.isLoop)
+		}
+	}
+}
+
+// The count is the last thing in the header, so the comma that separates it from
+// the condition is the last one written outside a slot.
+func TestLastArgumentComma(t *testing.T) {
+	tests := []struct {
+		expr string
+		want int
+	}{
+		{"3", -1},
+		{":: the window is still open ::", -1},
+		{":: a, b, c ::", -1},
+		{"true, 5", 4},
+		{":: the window is still open ::, 5", 30},
+		{":: a, b ::, 5", 10},
+	}
+	for _, tt := range tests {
+		if got := lastArgumentComma(tt.expr); got != tt.want {
+			t.Errorf("lastArgumentComma(%q) = %d, want %d", tt.expr, got, tt.want)
+		}
+	}
+}
+
 func TestParseIfHeader(t *testing.T) {
 	tests := []struct {
 		line      string
@@ -266,6 +468,9 @@ func TestHasMacroSlot(t *testing.T) {
 		{"an argument", "move(:: the x offset ::, 40)", true},
 		{"inside a string", `typeText("Hi :: the name ::")`, true},
 		{"nested in a block", "if (true) {\n\tif (:: a dialog is open ::) {\n\t\tclick()\n\t}\n}", true},
+		{"a loop counted out is not a slot", "loop (3) {\n\tclick()\n}", false},
+		{"a loop condition", "loop (:: another unread message ::, 5) {\n\tclick()\n}", true},
+		{"nested in a loop", "loop (3) {\n\ttypeText(:: what to say ::)\n}", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -317,6 +522,17 @@ if (:: something is true ::) {
 }`)
 	if got := countMacroNodes(nodes); got != 5 {
 		t.Errorf("countMacroNodes = %d, want 5", got)
+	}
+}
+
+// A loop is the size it is written, not the length of the run it turns into.
+func TestCountMacroNodesCountsALoopOnce(t *testing.T) {
+	nodes := parseMacro(`loop (10) {
+	click()
+	move(1, 2)
+}`)
+	if got := countMacroNodes(nodes); got != 3 {
+		t.Errorf("countMacroNodes = %d, want 3", got)
 	}
 }
 
@@ -408,6 +624,97 @@ move(:: the x offset ::, 40)`
 	}
 	if slot.Instruction != "the x offset" {
 		t.Errorf("psl would fill %q, want the statement under the block", slot.Instruction)
+	}
+}
+
+// Every pass of a loop puts its statements back the way they were written, so
+// their slots are asked again from the screen as it now is rather than answered
+// once and repeated. The slot psl reaches for is the header's again — the block
+// the replay is standing on is the topmost thing in the file still holding one.
+func TestALoopAsksItsSlotsAgainOnTheNextPass(t *testing.T) {
+	macro := `click()
+loop (:: the window is still open ::, 3) {
+	move(:: the x offset to the Close button ::, 0)
+	click()
+}
+typeText(:: what to say ::)`
+	nodes := parseMacro(macro)
+	loop := nodes[1]
+	run := newMacroRun("test", macro, "")
+
+	// The first pass: the condition answered, then the statement under it.
+	run.record(loop.line, "loop (true, 3) {")
+	run.record(loop.body[0].line, "move(-120, 0)")
+
+	run.restore(loop.line)
+	run.restoreBlock(loop.body)
+
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("the restored macro holds nothing psl would fill")
+	}
+	if slot.Instruction != "the window is still open" {
+		t.Errorf("psl would fill %q, want the loop's condition asked again", slot.Instruction)
+	}
+	if !strings.Contains(run.source, ":: the x offset to the Close button ::") {
+		t.Errorf("the body was not put back for the next pass: %q", run.source)
+	}
+	if got, want := strings.Count(run.source, "\n"), strings.Count(macro, "\n"); got != want {
+		t.Errorf("restoring left %d newlines, want %d — every statement is found by its line number", got, want)
+	}
+}
+
+// However a loop ends, what it put back and did not run is spent. Left live it
+// is what psl fills next, in place of the statement under the block — answered
+// from the wrong screenshot, for a pass that is not going to happen.
+func TestALoopSpendsThePassItSetUpAndDidNotRun(t *testing.T) {
+	macro := `loop (:: another unread message ::, 3) {
+	typeText(:: a short reply ::)
+}
+move(:: the x offset to Send ::, 0)`
+	nodes := parseMacro(macro)
+	run := newMacroRun("test", macro, "")
+
+	// A pass was set up and the condition then read false, so the body never ran.
+	run.record(nodes[0].line, "loop (false, 3) {")
+	run.spendBlock(nodes[0].body)
+	run.spend(nodes[0].line)
+
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "the x offset to Send" {
+		t.Errorf("psl would fill %q, want the statement under the block", slot.Instruction)
+	}
+}
+
+// A block that never ran is one whose statements were never asked about, and a
+// loop puts back only what it is about to replay: everything above the header is
+// filled or spent by then, and everything below is as it was.
+func TestALoopRestoresOnlyItsOwnStatements(t *testing.T) {
+	macro := `if (:: a dialog is open ::) {
+	typeText(:: what to say ::)
+}
+loop (2) {
+	move(:: the x offset ::, 0)
+}`
+	nodes := parseMacro(macro)
+	run := newMacroRun("test", macro, "")
+
+	// The if did not hold, so its block is spent and its header is answered.
+	run.spendBlock(nodes[0].body)
+	run.record(nodes[0].line, "if (false) {")
+
+	run.restore(nodes[1].line)
+	run.restoreBlock(nodes[1].body)
+
+	if strings.Contains(run.source, ":: what to say ::") {
+		t.Errorf("the loop put back a statement that is not its own: %q", run.source)
+	}
+	slot, _ := psl.FindCompilerSlot(run.source, 0)
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q, want the statement the loop is about to replay", slot.Instruction)
 	}
 }
 

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -12,23 +13,29 @@ import (
 	"pob/core/internal/psl"
 )
 
-// macroNode is one statement of a macro: either an action call, or an if block
-// whose body only runs when its condition holds.
+// macroNode is one statement of a macro: an action call, an if block whose body
+// only runs when its condition holds, or a loop block whose body runs again and
+// again.
 type macroNode struct {
 	// raw is the statement as written, with any :: … :: slot still in it. It is
 	// the line psl fills, and what is parsed once it has been.
 	raw string
 
-	action string   // action call name; empty on an if block or an unfilled statement
+	action string   // action call name; empty on a block or an unfilled statement
 	args   []string // action arguments
 
 	// slots says the statement holds at least one :: … :: and so cannot be read
 	// until the replay reaches it — action and args are empty until then.
 	slots bool
 
-	isIf      bool        // if only
-	condition string      // if only — the parenthesised expression, slots unfilled
-	body      []macroNode // if only — what runs when the condition holds
+	isIf   bool // if only
+	isLoop bool // loop only
+
+	// condition is the parenthesised expression, slots unfilled: an if always has
+	// one, a loop only when it was written with one.
+	condition string
+	count     int         // loop only — the most passes it may make
+	body      []macroNode // if and loop — the statements the block holds
 
 	line int // 1-based line in macro.psl, for logs and for finding the line back
 }
@@ -49,10 +56,25 @@ type macroRun struct {
 	source    string
 	slots     int
 
+	// written is the macro as it was written, kept line by line: what a loop puts
+	// back before a pass, so that the statements it is about to replay ask their
+	// slots again instead of repeating the answers of the pass before.
+	written []string
+
 	// prompt is the briefing that goes over beside the file on every fill, and
 	// is empty when this psl is older than the flag that takes it — settled once
 	// for the run rather than asked about at each slot.
 	prompt string
+}
+
+// newMacroRun starts a replay over the macro as it was written.
+func newMacroRun(sessionID, source, prompt string) *macroRun {
+	return &macroRun{
+		sessionID: sessionID,
+		source:    source,
+		written:   strings.Split(source, "\n"),
+		prompt:    prompt,
+	}
 }
 
 // line returns the macro's line as it now stands, 1-based, or "" past the end.
@@ -102,6 +124,32 @@ func (run *macroRun) spendBlock(nodes []macroNode) {
 	for _, node := range nodes {
 		run.spend(node.line)
 		run.spendBlock(node.body)
+	}
+}
+
+// restore puts a line back the way the macro was written, slots and all. It is
+// the one thing that ever writes a slot into the file rather than out of it, and
+// only a loop does it.
+//
+// A slot filled on the last pass holds an answer read off the screen as it was
+// then, and asking again is the whole point of a pass: the offset to a button
+// that has moved, a condition that has to be able to turn false. What goes back
+// is the one line that was there, so every statement is still found at the line
+// number it was parsed at.
+func (run *macroRun) restore(n int) {
+	lines := strings.Split(run.source, "\n")
+	if n < 1 || n > len(lines) || n > len(run.written) {
+		return
+	}
+	lines[n-1] = run.written[n-1]
+	run.source = strings.Join(lines, "\n")
+}
+
+// restoreBlock restores a block of statements, and the blocks inside it.
+func (run *macroRun) restoreBlock(nodes []macroNode) {
+	for _, node := range nodes {
+		run.restore(node.line)
+		run.restoreBlock(node.body)
 	}
 }
 
@@ -175,7 +223,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	macroStart := time.Now()
 	applog.Logf("[%s] Macro session started", sessionID)
 
-	run := &macroRun{sessionID: sessionID, source: source, prompt: prompt}
+	run := newMacroRun(sessionID, source, prompt)
 	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
 
@@ -215,6 +263,11 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 			continue
 		}
 
+		if node.isLoop {
+			r.runMacroLoop(ctx, run, node)
+			continue
+		}
+
 		if name, args, ok := r.resolveMacroAction(ctx, run, node); ok {
 			r.runMacroAction(ctx, run.sessionID, name, args)
 		}
@@ -226,6 +279,58 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 			sleepCtx(ctx, time.Duration(delayMs)*time.Millisecond)
 		}
 	}
+}
+
+// runMacroLoop replays a loop's body, up to the count in its header and no
+// further.
+//
+// A loop written with a condition checks it before every pass, the first one
+// included, and ends the moment it does not hold: the count is the bound on a
+// loop that could otherwise not end, not the number of passes to make. A loop
+// written without one makes exactly that many passes.
+//
+// Every pass after the first puts the loop's statements back the way they were
+// written before it starts. That is what makes a pass a pass rather than a
+// replay of the first one's answers: the screen the slots are about is the
+// screen the pass before them changed, and a condition answered once could never
+// turn false.
+//
+// Restoring is safe in the one way it has to be. psl fills the first slot in the
+// file, and what goes back into it is the header of the block the replay is
+// standing on and the statements under that header — everything above is filled
+// or spent and everything below is untouched — so the first slot left is still
+// the one the replay is waiting on.
+func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode) {
+	label := macroBlockLabel(node)
+	passes := 0
+
+	for passes < node.count {
+		if ctx.Err() != nil {
+			break
+		}
+		if passes > 0 {
+			run.restore(node.line)
+			run.restoreBlock(node.body)
+		}
+		// No condition is a condition that always holds, so `loop (3)` and
+		// `loop (true, 3)` are one and the same loop.
+		if node.condition != "" && !r.evalMacroCondition(ctx, run, node) {
+			break
+		}
+		passes++
+		applog.Logf("[%s] Macro %s — pass %d of %d", run.sessionID, label, passes, node.count)
+		r.runMacroNodes(ctx, run, node.body)
+	}
+
+	if passes == node.count && node.condition != "" {
+		applog.Logf("[%s] Macro %s — %d passes, the count the loop was given", run.sessionID, label, passes)
+	}
+
+	// However it ended, the loop is done being asked about. A pass that was
+	// restored and then not run holds its slots again, and left there they are
+	// what psl would fill next — in place of the statement under the block.
+	run.spendBlock(node.body)
+	run.spend(node.line)
 }
 
 // resolveMacroAction fills the statement's slots, if it has any, and reads the
@@ -249,35 +354,70 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 	return name, args, true
 }
 
-// evalMacroCondition works out whether an if block's condition holds. The
-// condition is ordinary PSL text: a :: … :: slot psl fills with true or false,
-// or one of those two written out by hand.
+// evalMacroCondition works out whether a block's condition holds — an if's, or
+// the one a loop checks before each pass. The condition is ordinary PSL text: a
+// :: … :: slot psl fills with true or false, or one of those two written out by
+// hand.
 //
 // Anything that goes wrong — psl failing, an answer that is not true or false —
-// reads as false: the block stays unexecuted rather than running on a guess.
+// reads as false: the block stays unexecuted, or the loop ends, rather than
+// running on a guess.
 func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) bool {
+	label := macroBlockLabel(node)
+	// What a condition that does not hold means for the block it heads.
+	no := "skipping block"
+	if node.isLoop {
+		no = "the loop ends here"
+	}
+
 	expr := node.condition
 	if psl.HasSlot(expr) {
 		filled, ok := r.fillStatement(ctx, run, node)
 		if !ok {
-			applog.Logf("[%s] Macro if (%s) — slot unfilled, skipping block", run.sessionID, expr)
+			applog.Logf("[%s] Macro %s — slot unfilled, %s", run.sessionID, label, no)
 			return false
 		}
 		// The whole header line comes back, so the condition is read out of it
 		// again rather than assumed to be what replaced the slot.
-		expr, _ = parseIfHeader(strings.TrimSpace(filled))
+		expr = readCondition(node, strings.TrimSpace(filled))
 	}
 
 	holds, read := conditionHolds(expr)
 	switch {
 	case !read:
-		applog.Logf("[%s] Macro if (%s) -> %q is not true or false — skipping block", run.sessionID, node.condition, expr)
+		applog.Logf("[%s] Macro %s -> %q is not true or false — %s", run.sessionID, label, expr, no)
 	case holds:
-		applog.Logf("[%s] Macro if (%s) -> TRUE", run.sessionID, node.condition)
+		applog.Logf("[%s] Macro %s -> TRUE", run.sessionID, label)
 	default:
-		applog.Logf("[%s] Macro if (%s) -> FALSE — skipping block", run.sessionID, node.condition)
+		applog.Logf("[%s] Macro %s -> FALSE — %s", run.sessionID, label, no)
 	}
 	return holds
+}
+
+// readCondition reads the condition back out of a filled-in header line, by the
+// same parse that read it out of the written one. A header that no longer reads
+// as a header hands back nothing, which is not one of the two words and so is
+// not a verdict.
+func readCondition(node macroNode, header string) string {
+	if node.isLoop {
+		condition, _, _ := parseLoopHeader(header)
+		return condition
+	}
+	condition, _ := parseIfHeader(header)
+	return condition
+}
+
+// macroBlockLabel names a block in the log the way it is written, so a line
+// about a condition says which block it was the condition of.
+func macroBlockLabel(node macroNode) string {
+	switch {
+	case node.isLoop && node.condition == "":
+		return fmt.Sprintf("loop (%d)", node.count)
+	case node.isLoop:
+		return fmt.Sprintf("loop (%s, %d)", node.condition, node.count)
+	default:
+		return fmt.Sprintf("if (%s)", node.condition)
+	}
 }
 
 // conditionHolds reads a filled-in condition. The second return says it was one
@@ -564,6 +704,12 @@ func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, arg
 // the one thing a condition was written to prevent.
 const macroIfKeyword = "if"
 
+// macroLoopKeyword opens a block that runs again and again: `loop (<count>) {`,
+// or `loop (<condition>, <count>) {`, closed the same way. Matched whatever its
+// case for the same reason as `if` — a header that went unrecognised would leave
+// the body of the block to run once, unbounded and unguarded.
+const macroLoopKeyword = "loop"
+
 // parseMacro turns macro.psl into the statements to execute. Lines it cannot
 // read are logged and dropped, the way a bad action line always has been — a
 // macro runs as far as it makes sense rather than not at all.
@@ -611,6 +757,20 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 			continue
 		}
 
+		if condition, count, isLoop := parseLoopHeader(trimmed); isLoop {
+			// Read either way, like the if: a header Pob cannot read takes its
+			// block with it, rather than leaving the body to run once when what was
+			// written asks for it to run until something is true.
+			var body []macroNode
+			body, i = parseMacroBlock(lines, i, depth+1)
+			if count < 1 {
+				applog.Logf("Macro line %d: loop wants a count in parentheses — loop (3) { or loop (:: … ::, 3) { — skipping its block", lineNo)
+				continue
+			}
+			nodes = append(nodes, macroNode{isLoop: true, condition: condition, count: count, body: body, line: lineNo, raw: trimmed})
+			continue
+		}
+
 		if psl.HasSlot(trimmed) {
 			// What it says depends on what psl answers, so it is read when the
 			// replay gets to it rather than now.
@@ -627,7 +787,7 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 	}
 
 	if depth > 0 {
-		applog.Log("Macro: if block left open — the end of the macro closes it")
+		applog.Log("Macro: block left open — the end of the macro closes it")
 	}
 	return nodes, i
 }
@@ -638,7 +798,7 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 // — a line that starts with the keyword opens one whether or not the rest of it
 // is well formed, and an empty condition is what says it was not.
 func parseIfHeader(line string) (string, bool) {
-	rest, isIf := cutIfKeyword(line)
+	rest, isIf := cutKeyword(line, macroIfKeyword)
 	if !isIf {
 		return "", false
 	}
@@ -667,16 +827,84 @@ func isBoolLiteral(expr string) bool {
 	return read
 }
 
-// cutIfKeyword returns what follows the `if` keyword, and whether the line
-// opened with it. The keyword ends at the space, the `(`, the `::` or the `{`
-// after it, so `iframe(1, 2)` is the call it looks like rather than a block —
-// while `if::x::` keeps being read as the block it was meant to be, and dropped
-// as the malformed one it is.
-func cutIfKeyword(line string) (string, bool) {
-	if len(line) < len(macroIfKeyword) || !strings.EqualFold(line[:len(macroIfKeyword)], macroIfKeyword) {
+// parseLoopHeader reads `loop (<count>) {` and `loop (<condition>, <count>) {`.
+//
+// It returns the condition — PSL text, the same an `if` takes, and empty when the
+// loop was written without one — and the count, which is the most passes the
+// loop may make. The last return says the line opens a block at all; a count of
+// zero on a line that did is what says the header could not be read.
+func parseLoopHeader(line string) (condition string, count int, isLoop bool) {
+	rest, isLoop := cutKeyword(line, macroLoopKeyword)
+	if !isLoop {
+		return "", 0, false
+	}
+	expr, ok := strings.CutSuffix(strings.TrimSpace(rest), "{")
+	if !ok {
+		return "", 0, true
+	}
+	expr, ok = cutParens(strings.TrimSpace(expr))
+	if !ok {
+		return "", 0, true
+	}
+
+	times := expr
+	if i := lastArgumentComma(expr); i >= 0 {
+		condition, times = strings.TrimSpace(expr[:i]), strings.TrimSpace(expr[i+1:])
+		// A condition is either asked or written out — the two an if takes, read
+		// here by the same rule. Anything else is neither, and the block goes with
+		// it rather than running unguarded.
+		if condition == "" || (!psl.HasSlot(condition) && !isBoolLiteral(condition)) {
+			return "", 0, true
+		}
+	}
+
+	// The count is written out rather than asked. It is the bound on a loop that
+	// could otherwise not end, and a bound the model picks fresh on every pass is
+	// not a bound.
+	n, err := strconv.Atoi(times)
+	if err != nil || n < 1 {
+		return "", 0, true
+	}
+	return condition, n, true
+}
+
+// lastArgumentComma returns the offset of the comma between a loop's condition
+// and its count, or -1 when the header holds no such comma.
+//
+// It is the last one written outside a :: … :: slot. An instruction is a
+// sentence for a model to read and may well have a comma in it —
+// `loop (:: the list is still loading, not empty ::, 5)` — while the count is
+// one number at the end, so the comma that separates them is the last one the
+// header has of its own.
+func lastArgumentComma(expr string) int {
+	last, i := -1, 0
+	for i <= len(expr) {
+		slot, found := psl.FindSlot(expr, i)
+		end := len(expr)
+		if found {
+			end = slot.Start
+		}
+		if j := strings.LastIndexByte(expr[i:end], ','); j >= 0 {
+			last = i + j
+		}
+		if !found {
+			break
+		}
+		i = slot.End
+	}
+	return last
+}
+
+// cutKeyword returns what follows a block keyword, and whether the line opened
+// with it. The keyword ends at the space, the `(`, the `::` or the `{` after it,
+// so `iframe(1, 2)` is the call it looks like rather than a block — while
+// `if::x::` keeps being read as the block it was meant to be, and dropped as the
+// malformed one it is.
+func cutKeyword(line, keyword string) (string, bool) {
+	if len(line) < len(keyword) || !strings.EqualFold(line[:len(keyword)], keyword) {
 		return "", false
 	}
-	rest := line[len(macroIfKeyword):]
+	rest := line[len(keyword):]
 	if rest == "" {
 		// The keyword alone: malformed, and still a block — see parseIfHeader.
 		return "", true
@@ -758,8 +986,10 @@ func hasMacroSlot(nodes []macroNode) bool {
 	return false
 }
 
-// countMacroNodes counts every statement, an if and the statements inside it
-// alike — what the log line reports as the size of the macro.
+// countMacroNodes counts every statement, a block header and the statements
+// inside it alike — what the log line reports as the size of the macro. A loop
+// counts once however many passes it goes on to make: this is the size of the
+// macro, not the length of the run.
 func countMacroNodes(nodes []macroNode) int {
 	n := len(nodes)
 	for _, node := range nodes {

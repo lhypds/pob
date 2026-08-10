@@ -17,9 +17,11 @@ package agent
 // model has no reason to use, and one it invents is a line Pob logs and skips.
 const macroPrompt = `This file is a Pob macro: one statement per line, replayed top to bottom to
 drive the screen shown in the image. A statement is a call — name(argument,
-argument) — or an if (condition) { block } closed by a } on a line of its own.
-Numbers are written plainly (398, -615, 0.5), strings in double quotes with a
-backslash escaping the character after it.
+argument) — or a block, closed by a } on a line of its own: if (condition) { }
+runs what it holds when the condition holds, loop (count) { } runs it that many
+times, and loop (condition, count) { } runs it while the condition holds, count
+being the most passes it may make. Numbers are written plainly (398, -615, 0.5),
+strings in double quotes with a backslash escaping the character after it.
 
 The whole vocabulary:
 
@@ -42,4 +44,7 @@ visible in the image — so a slot in one of them is answered with the distance
 from the cursor to the target, positive or negative, and never with the target's
 own coordinates.
 
-An if condition is answered with true or false and nothing else.`
+An if or loop condition is answered with true or false and nothing else. A loop
+asks its condition again before every pass, over a fresh image, and the answer
+is about the screen as that image shows it — nothing in the file says which pass
+is being asked about, and nothing has to.`

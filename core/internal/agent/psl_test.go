@@ -158,6 +158,102 @@ func TestFilledConditionReadsBack(t *testing.T) {
 	}
 }
 
+// A filled loop header is read back the same way an if's is, so the pass runs on
+// what the compiler answered — and the count the loop was written with is still
+// there afterwards, since nothing was asked about it.
+func TestFilledLoopConditionReadsBack(t *testing.T) {
+	for _, tt := range []struct {
+		filled string
+		count  int
+		holds  bool
+		read   bool
+	}{
+		{`loop (true, 5) {`, 5, true, true},
+		{`loop (false, 5) {`, 5, false, true},
+		{`loop ("true", 5) {`, 5, true, true},
+		{`loop (probably, 5) {`, 0, false, false},
+	} {
+		condition, count, isLoop := parseLoopHeader(tt.filled)
+		if !isLoop {
+			t.Errorf("%q did not read as a loop header", tt.filled)
+			continue
+		}
+		if count != tt.count {
+			t.Errorf("%q -> count %d, want %d", tt.filled, count, tt.count)
+		}
+		holds, read := conditionHolds(condition)
+		if holds != tt.holds || read != tt.read {
+			t.Errorf("%q -> (%v, %v), want (%v, %v)", tt.filled, holds, read, tt.holds, tt.read)
+		}
+	}
+}
+
+// The whole way through a loop: the condition is answered, the pass runs, and
+// the statements go back the way they were written so the next pass asks its own
+// questions rather than repeating the last pass's answers.
+func TestFillingALoopThroughTheCompiler(t *testing.T) {
+	compiler, answer := stubCompiler(t)
+
+	macro := `loop (:: the window is still open ::, 3) {
+	move(:: the x offset to the Close button ::, 0)
+	click()
+}`
+	nodes := parseMacro(macro)
+	loop := nodes[0]
+	run := newMacroRun("test", macro, "")
+
+	fill := func(line int) string {
+		t.Helper()
+		source := run.source
+		if live, ok := liveSlotLine(source); !ok || live != line-1 {
+			t.Fatalf("psl would fill a slot on line %d, want line %d", live+1, line)
+		}
+		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
+		if err != nil {
+			t.Fatalf("line %d: %v", line, err)
+		}
+		filled, ok := extractLine(source, result.Source, line-1)
+		if !ok {
+			t.Fatalf("line %d: could not read the filled statement back", line)
+		}
+		run.record(line, filled)
+		return strings.TrimSpace(filled)
+	}
+
+	offsets := []string{"-120", "-260"}
+	for pass, offset := range offsets {
+		if pass > 0 {
+			run.restore(loop.line)
+			run.restoreBlock(loop.body)
+		}
+
+		answer("true")
+		if got, want := fill(loop.line), "loop (true, 3) {"; got != want {
+			t.Fatalf("pass %d: the header filled to %q, want %q", pass+1, got, want)
+		}
+
+		answer(offset)
+		if got, want := fill(loop.body[0].line), "move("+offset+", 0)"; got != want {
+			t.Errorf("pass %d: the statement filled to %q, want %q", pass+1, got, want)
+		}
+	}
+
+	// The pass that ends it: the condition is asked once more, and the body is
+	// not.
+	run.restore(loop.line)
+	run.restoreBlock(loop.body)
+	answer("false")
+	if got, want := fill(loop.line), "loop (false, 3) {"; got != want {
+		t.Errorf("the closing check filled to %q, want %q", got, want)
+	}
+	run.spendBlock(loop.body)
+	run.spend(loop.line)
+
+	if psl.HasSlot(run.source) {
+		t.Errorf("the finished loop still holds a slot: %q", run.source)
+	}
+}
+
 // psl exits 0 having done nothing when it finds no slot. For Pob that is a
 // failure: the statement it was called for still holds the slot.
 func TestCompilerLeavingTheSlotUnfilledIsAnError(t *testing.T) {

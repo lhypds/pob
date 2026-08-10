@@ -72,10 +72,10 @@ A line that cannot be read does not stop the run — it is written to the log an
 statements around it stand. A macro is often half-recorded and half-typed, and one bad line in the
 middle of it is a line to fix, not a reason to refuse the other forty.
 
-There are two kinds of statement: a **call**, which does something to the machine, and an **if
-block**, which guards the statements inside it with a condition. Either one can hold an **AI
-slot** — a piece of a statement that is a prompt rather than a value, filled in as the replay
-reaches it.
+There are three kinds of statement: a **call**, which does something to the machine, an **if
+block**, which guards the statements inside it with a condition, and a **loop block**, which runs
+the statements inside it again and again. Any of them can hold an **AI slot** — a piece of a
+statement that is a prompt rather than a value, filled in as the replay reaches it.
 
 
 AI slot
@@ -99,7 +99,7 @@ instead.)
 
 The instruction between the markers is a question for the model rather than something Pob carries
 out itself. It goes **anywhere in a statement** — a whole argument, part of one, the condition of an
-`if`:
+`if` or of a `loop`:
 
 ```
 move(:: the x offset to the Save button ::, 0)
@@ -107,6 +107,9 @@ typeText(:: what to reply to this message ::)
 typeText("Hi :: the name at the top of the chat ::, thanks!")
 if (:: a save dialog is on screen ::) {
     keyPress("return")
+}
+loop (:: another unread message in the list ::, 10) {
+    typeText(:: a short reply to the message on screen ::)
 }
 ```
 
@@ -143,6 +146,7 @@ leave a statement that reads as PSL:
 | `typeText(:: … ::)` | a quoted string — `"Hello"` |
 | `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
 | `if (:: … ::)` | `true` or `false` |
+| `loop (:: … ::, 5)` | `true` or `false` |
 
 Coordinates come back as screenshot pixels, and `move` and `drag` are relative to where the cursor
 is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
@@ -191,6 +195,12 @@ run: the body of an `if` whose condition did not hold, or a line Pob could not r
 place. The other is a statement whose own fill failed, which the replay is finished with either way.
 Neither is ever asked about, and a slot left on one of them would be answered in place of the
 statement below it, from a screenshot taken for something else.
+
+A `loop` is the one thing that puts a slot back into the file, which is the same step run backwards
+and holds for the same reason. What it puts back is its own header and the statements under it —
+everything above them is filled or written out by the time a pass begins, and everything below is
+still as it was written — so the first slot left in the file is again the one the replay is waiting
+on.
 
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
 psl to be found — Pob checks over the whole macro before the first statement runs rather than
@@ -250,8 +260,8 @@ if (:: a save dialog is on screen ::) {
 
 The keyword is `if`, the condition is the parenthesised expression between it and the `{` that ends
 the line, and a `}` on a line of its own closes the block. Inside is ordinary PSL — including
-another `if`, nested as deep as the macro needs. Lines after the `}` run either way; there is no
-`else`.
+another `if` or a `loop`, nested as deep as the macro needs. Lines after the `}` run either way;
+there is no `else`.
 
 The condition is either an AI slot, which is the usual way and the one above, or `true` / `false`
 written out — which asks nothing and costs nothing, and is how a block is parked without deleting
@@ -272,6 +282,71 @@ Recording never writes an `if`, or any other slot. They are the part you write b
 that is otherwise recorded.
 
 
+loop blocks
+-----------
+
+An `if` runs a block once or not at all. A `loop` runs it again and again:
+
+```
+loop (3) {
+    keyPress("down")
+    click()
+}
+```
+
+The keyword is `loop`, the parentheses hold a count, and a `}` on a line of its own closes the
+block — the same shape as an `if`, and lowercase for the same reason, though `LOOP` and `Loop` are
+read too. That block runs three times.
+
+The count is written out as a whole number rather than asked. It is the bound on a loop that could
+otherwise not end, and a bound the model picks fresh on every pass is not a bound.
+
+A loop that should stop when the screen says so takes a condition in front of the count:
+
+```
+loop (:: the window is still open ::, 5) {
+    move(:: the x offset to the Close button ::, 0)
+    click()
+}
+```
+
+The condition is checked before every pass, the first one included, and the loop ends the moment it
+does not hold. The count is the most passes it may make — five here — so that block runs until the
+window is closed, or five times, whichever comes first. It is the condition an `if` takes, read the
+same way: a slot, or `true` / `false` written out. A comma inside a slot is part of the instruction,
+so `loop (:: still loading, not empty ::, 4)` asks what it looks like it asks; the count is what
+follows the last comma the header has of its own.
+
+A condition written out asks nothing and costs nothing, the same as an `if`'s, which makes the two
+ends of the language meet: `loop (3)` and `loop (true, 3)` are one and the same loop — a loop
+written without a condition is a loop whose condition always holds, and the count is what ends
+either of them. `loop (false, 3)` is the other end of that, and is how a loop is parked without
+deleting it: the check fails before the first pass and the body never runs.
+
+Inside is ordinary PSL, including another `loop` or an `if`, nested as deep as the macro needs.
+
+Asked again on every pass
+
+Every pass puts the loop's statements back the way they were written, so the slots in them are
+asked again from the screen as it is at that moment. That is the whole point of the pair: `:: the x
+offset to the Close button ::` is a different number once the first dialog is gone, and a condition
+that could only be answered once would never turn false.
+
+Each of those is a psl run of its own and is kept as its own numbered directory under
+`logs/<session>/slots/`, so five passes over one slot leave five of them, in the order they were
+filled (see [Logs](05_Logs.md)). The compiled `macro.txt` is one file and therefore holds the
+answers of the pass that ran last.
+
+The model is shown the macro and a screenshot and nothing else, so it does not know which pass it is
+being asked about — a slot that would have to count them is one it cannot answer. Write instructions
+about what is on the screen now: "the window is still open", "there is another unread message", "the
+list is still loading".
+
+A loop is one statement in the macro however many passes it makes, and Execute's count of what it is
+about to run says so. What the log says is the passes: one line as each begins, and one for the
+verdict that ended it.
+
+
 When something is wrong
 -----------------------
 
@@ -289,7 +364,11 @@ The one thing that is never done is running statements a broken `if` was written
 | An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | Its whole block is dropped, and the drop is logged |
 | An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
 | An `if` whose `}` is missing | The end of the macro closes it |
-| A `}` with no `if` above it | Logged and skipped |
+| A `loop` missing its parentheses or the `{`, or whose count is not a whole number of 1 or more — `loop (:: how many ::)`, `loop (2.5)`, `loop (0)` | Its whole block is dropped, and the drop is logged |
+| A `loop` whose condition is neither a slot nor `true`/`false` | Its whole block is dropped, and the drop is logged |
+| A `loop` whose condition fills to something other than `true` or `false` | Reads as false: the loop ends there, with what it filled to in the log |
+| A `loop` whose `}` is missing | The end of the macro closes it |
+| A `}` with no `if` or `loop` above it | Logged and skipped |
 | Markers touching a letter or digit outside them — `std::cout` | Not a slot; it stays in the statement as written |
 | A slot in a macro, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
 
@@ -307,7 +386,9 @@ macro addresses — what the screenshots show, what the clicks go through — is
 
 Between one call and the next Pob waits `macro_default_delay` milliseconds, one second by default
 (see [Settings](06_Settings.md)). A UI that needs longer gets an explicit `sleep()`. Judging an `if`
-adds no delay of its own — the model call is the wait.
+adds no delay of its own — the model call is the wait — and neither does going round a `loop`: the
+gap between one pass and the next is the delay after the last statement of the pass, as it would be
+anywhere else.
 
 Stop halts the run between statements, and during a `sleep()` rather than after it. A run that
 reaches the end fires `stop_hook`, if one is set; a stopped run does not.

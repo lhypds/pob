@@ -50,7 +50,7 @@ clean sheet of work rather than a machine to set up again.
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
-`<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`).  
+`<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`) — a `loop` asks the slots inside it once per pass, and each of those is one of these.  
 
 
 See also
