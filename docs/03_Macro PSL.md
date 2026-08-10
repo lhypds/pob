@@ -6,7 +6,7 @@ A macro is a sequence of actions Pob plays back — recorded from what you do, o
 Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — PSL — is
 what that file is written in. This page is both: the macro, and the language it is a macro in.
 
-PSL is not Pob's own. It is a language with a compiler of its own — [psl](https://github.com/pob/psl)
+PSL is not Pob's own. It is a language with a compiler of its own — [psl](https://github.com/lhypds/psl)
 — and Pob is one program that happens to write in it. The `:: … ::` slots below are filled by running
 that compiler, which is where the models and the API keys live. Pob holds none of its own.
 
