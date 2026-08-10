@@ -23,7 +23,7 @@ It allows AI to:
 The same bridge works for people, not only for AI: every instance runs a
 server, so there is a web page you can open on your phone, and a desktop app
 with a full-size keyboard and a trackpad — see [Pob Server](docs/09_Server.md),
-[Web UI](docs/12_Web UI.md) and [Pob Keyboard](docs/13_Keyboard.md).
+[Web UI](docs/12_Web%20UI.md) and [Pob Keyboard](docs/13_Keyboard.md).
 
 
 Getting started
