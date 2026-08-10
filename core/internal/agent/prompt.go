@@ -50,6 +50,13 @@ visible in the image — so a slot in one of them is answered with the distance
 from the cursor to the target, positive or negative, and never with the target's
 own coordinates.
 
+How much of a statement a slot stands for is what is written around it. A slot
+that is one argument of several is answered with that argument alone, and one
+written where the whole argument list goes is answered with the whole list,
+commas and all: move(40, <instruction>) wants one number, and
+move(<instruction>) wants both, written -120, 40. Either way the answer has to
+leave a line that reads as one of the statements above.
+
 An if or loop condition is answered with true or false and nothing else. A loop
 asks its condition again before every pass, over a fresh image, and the answer
 is about the screen as that image shows it — nothing in the file says which pass

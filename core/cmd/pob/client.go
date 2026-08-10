@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"pob/core/internal/agent"
 	"pob/core/internal/storage"
 )
 
@@ -207,6 +209,40 @@ func cmdMacro(inst *Instance) {
 		fmt.Printf("Session:  %s\n", session)
 		fmt.Printf("Logs:     %s\n", filepath.Join(inst.LogsDir, session))
 	}
+}
+
+// cmdMacroCheck reads the instance's macro.psl and prints everything wrong with
+// it and with the files it calls — the check Execute runs before the cursor
+// moves, said in the terminal instead of in a dialog.
+//
+// It reads the file and talks to nothing, which is what makes it the macro
+// command that works with Pob closed. A macro is checked while it is being
+// written, and a hand-edited file is checked before it is ever loaded.
+//
+// The exit status is what a script goes by: 0 when there is nothing to fix, 1
+// when there is, which is the same answer Execute acts on.
+func cmdMacroCheck(inst *Instance) {
+	path := filepath.Join(inst.Dir, "macro.psl")
+	problems, err := agent.CheckMacroFile(path)
+	if err != nil {
+		fail("cannot read %s: %v", path, err)
+	}
+	if len(problems) == 0 {
+		fmt.Printf("%s: nothing to fix.\n", path)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s\n", path, problemCount(len(problems)))
+	for _, p := range problems {
+		fmt.Fprintf(os.Stderr, "  %s\n", p)
+	}
+	os.Exit(1)
+}
+
+func problemCount(n int) string {
+	if n == 1 {
+		return "1 problem"
+	}
+	return fmt.Sprintf("%d problems", n)
 }
 
 // waitForSession polls /status for a moment to catch the session ID the

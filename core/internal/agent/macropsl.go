@@ -277,8 +277,26 @@ func (run *macroRun) spendUncovered(nodes []macroNode) {
 func (r *Runner) runMacro(ctx context.Context) {
 	path := r.cfg.MacroFile()
 	source := r.cfg.Macro()
-	nodes := parseMacro(source)
 
+	// The grammar first, since it is about the file rather than about the
+	// machine: a macro Pob cannot read is one to fix before asking whether the
+	// thing that fills its slots is installed. It is also before the parse,
+	// which logs what it could not read as it goes — a macro that gets past here
+	// has nothing for it to say.
+	if problems := checkMacroSource(source, path); len(problems) > 0 {
+		applog.Logf("Macro not run: %d problem(s) in %s", len(problems), filepath.Base(path))
+		for _, p := range problems {
+			applog.Logf("Macro %s", p)
+		}
+		lead := fmt.Sprintf("%s was not run — %d problems to fix first:", filepath.Base(path), len(problems))
+		if len(problems) == 1 {
+			lead = fmt.Sprintf("%s was not run — one problem to fix first:", filepath.Base(path))
+		}
+		r.br.ShowAlert(macroProblemsTitle, macroProblemsMessage(problems, lead))
+		return
+	}
+
+	nodes := parseMacro(source)
 	hasSlots := macroNeedsPSL(nodes, filepath.Dir(path), map[string]bool{path: true})
 
 	// Checked before anything moves: a macro whose slots cannot be filled is one
@@ -947,15 +965,37 @@ const macroCallKeyword = "call"
 // The comments come out first and the lines stay where they are, so a statement
 // is still found at the line number it was written on — see comment.go.
 func parseMacro(text string) []macroNode {
-	nodes, _ := parseMacroBlock(codeLines(text), 0, 0)
+	nodes, probs := parseMacroProblems(text)
+	for _, p := range probs {
+		applog.Logf("Macro %s", p)
+	}
 	return nodes
+}
+
+// parseMacroProblems reads a file and hands back both what it says and
+// everything the reading found wrong with it.
+//
+// The two come out of the one pass on purpose. What the check refuses to run has
+// to be what the replay would have skipped, and a second reading written beside
+// this one would drift from it the first time either changed — see macrocheck.go.
+func parseMacroProblems(text string) ([]macroNode, []macroProblem) {
+	var probs []macroProblem
+	nodes, _ := parseMacroBlock(codeLines(text), 0, 0, 0, &probs)
+	return nodes, probs
 }
 
 // parseMacroBlock reads statements from lines[i:] until the `}` that closes the
 // block, or the end of the file at depth 0. It returns the statements and the
 // index just past the block.
-func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
+//
+// opened is the line the block's header is on, which is what an unclosed block
+// is reported against — the `{` is the half of it that was written, and the line
+// to go back to.
+func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem) ([]macroNode, int) {
 	var nodes []macroNode
+	problem := func(line int, format string, a ...any) {
+		*probs = append(*probs, problemf(line, format, a...))
+	}
 
 	for i < len(lines) {
 		lineNo := i + 1
@@ -968,7 +1008,7 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 
 		if trimmed == "}" {
 			if depth == 0 {
-				applog.Logf("Macro line %d: } without a matching if", lineNo)
+				problem(lineNo, "} closes a block that was never opened")
 				continue
 			}
 			return nodes, i
@@ -978,9 +1018,15 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 			// The block is read either way, so that what a broken if was written
 			// to guard is dropped with it rather than left to run unguarded.
 			var body []macroNode
-			body, i = parseMacroBlock(lines, i, depth+1)
+			body, i = parseMacroBlock(lines, i, depth+1, lineNo, probs)
 			if condition == "" {
-				applog.Logf("Macro line %d: if wants a condition in parentheses — if (:: … ::) { — skipping its block", lineNo)
+				problem(lineNo, "if wants a condition in parentheses and a { at the end of the line — if (:: … ::) { — so its whole block is dropped")
+				// The statements inside it are dropped with it and so are never
+				// run, but they are still statements someone wrote and will still
+				// be there once the header is fixed. Everything wrong with a macro
+				// goes up at once or the fix takes as many rounds as it has
+				// mistakes.
+				*probs = append(*probs, checkStatements(body)...)
 				continue
 			}
 			nodes = append(nodes, macroNode{isIf: true, condition: condition, body: body, line: lineNo, raw: trimmed})
@@ -992,9 +1038,11 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 			// block with it, rather than leaving the body to run once when what was
 			// written asks for it to run until something is true.
 			var body []macroNode
-			body, i = parseMacroBlock(lines, i, depth+1)
+			body, i = parseMacroBlock(lines, i, depth+1, lineNo, probs)
 			if count < 1 {
-				applog.Logf("Macro line %d: loop wants a count in parentheses — loop (3) { or loop (:: … ::, 3) { — skipping its block", lineNo)
+				problem(lineNo, "loop wants a whole count of 1 or more in parentheses and a { at the end of the line — loop (3) { or loop (:: … ::, 3) { — so its whole block is dropped")
+				// Checked though it is dropped, for the same reason an if's body is.
+				*probs = append(*probs, checkStatements(body)...)
 				continue
 			}
 			nodes = append(nodes, macroNode{isLoop: true, condition: condition, count: count, body: body, line: lineNo, raw: trimmed})
@@ -1010,14 +1058,18 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 
 		name, args, ok := readMacroStatement(trimmed)
 		if !ok {
-			applog.Logf("Macro: skipping line: %s", trimmed)
+			// Why it is not one is checkStatement's to say: it reads the line
+			// against the vocabulary, which is more than the parse knows about.
+			if p, bad := checkStatement(trimmed, lineNo); bad {
+				*probs = append(*probs, p)
+			}
 			continue
 		}
 		nodes = append(nodes, macroNode{raw: trimmed, action: name, args: args, line: lineNo})
 	}
 
 	if depth > 0 {
-		applog.Log("Macro: block left open — the end of the macro closes it")
+		problem(opened, "the block opened here is never closed by a } of its own — the end of the file closes it")
 	}
 	return nodes, i
 }

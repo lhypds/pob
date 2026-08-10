@@ -360,7 +360,7 @@ struct InstanceContentView: View {
             Button(action: { instance.settings.openMacroFile() }) {
                 Image(systemName: "wand.and.rays")
             }
-            .help("PSL")
+            .help("Macro PSL")
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {

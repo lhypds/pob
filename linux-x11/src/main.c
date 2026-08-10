@@ -744,7 +744,7 @@ static void build_headerbar(void) {
     GtkWidget *settings_btn = icon_button(ICONS_SETTINGS, "Settings");
     GtkWidget *logs_btn = icon_button(ICONS_LOGS, "Logs");
     GtkWidget *applog_btn = build_applog_button();
-    GtkWidget *macro_btn = icon_button(ICONS_MACRO, "PSL");
+    GtkWidget *macro_btn = icon_button(ICONS_MACRO, "Macro PSL");
     g_state.record_btn = icon_button(ICONS_RECORD, "Record Macro");
     g_state.play_btn = icon_button(ICONS_PLAY, "Execute");
     g_state.target_btn = icon_button(ICONS_TARGET, "Target");

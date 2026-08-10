@@ -39,8 +39,9 @@ Execute, `pob macro` and the [Control API](11_Control%20API.md) all run it the s
 macro.psl
 ---------
 
-Each instance has one macro, `macro.psl`, in its `~/.pob/<instance>/` directory. The PSL button
-(🪄) in the toolbar opens it in your editor; Execute (▶) replays it; Reset (↻) empties it.
+Each instance has one macro, `macro.psl`, in its `~/.pob/<instance>/` directory. The Macro PSL
+button (🪄) in the toolbar opens it in your editor; Execute (▶) checks it and replays it; Reset (↻)
+empties it.
 
 Use the record button (⏺) to write it instead of typing it — actions are appended to `macro.psl` as
 they happen. Starting a recording while `macro.psl` still holds statements asks what to do with them
@@ -68,9 +69,13 @@ Structure
 One statement per line, run top to bottom. Blank lines are nothing at all, and so is a line that is
 only a comment. There is no line continuation: a line is a whole statement or it is not one.
 
-A line that cannot be read does not stop the run — it is written to the log and skipped, and the
-statements around it stand. A macro is often half-recorded and half-typed, and one bad line in the
-middle of it is a line to fix, not a reason to refuse the other forty.
+A line that cannot be read is found before the run rather than during it. Pob checks the whole
+macro — and every file it `call`s — when Execute is pressed, and puts up **Macro problems** with
+the line numbers instead of moving the cursor. A macro is often half-recorded and half-typed, and
+what a bad line in the middle of one costs is not the thirty-nine statements around it but the
+half of them that would have played before anyone noticed. See
+[When something is wrong](#when-something-is-wrong), and `pob macro --check` to read a macro
+without running it.
 
 There are three kinds of statement: a **call**, which does something to the machine or to the run,
 an **if block**, which guards the statements inside it with a condition, and a **loop block**, which
@@ -194,10 +199,22 @@ leave a statement that reads as PSL:
 | Written | What the slot has to come back as |
 |---------|-----------------------------------|
 | `move(:: … ::, 40)` | a bare number — `-120` |
+| `move(:: … ::)` | both numbers, commas and all — `-120, 40` |
 | `typeText(:: … ::)` | a quoted string — `"Hello"` |
 | `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
 | `if (:: … ::)` | `true` or `false` |
 | `loop (:: … ::, 5)` | `true` or `false` |
+
+How much of a statement a slot stands for is what is written around it, which is the second and third
+rows above. A slot that is one argument of several is answered with that argument;
+`move(:: the profile icon ::)` is written where the whole argument list goes and is answered with
+the whole list. That is the shorter thing to write when both numbers are the same question — the
+offset to a thing on screen is one question and not two, and asking it once means one psl run
+instead of two, off one screenshot instead of two.
+
+What a slot cannot do is take arguments away. `move(:: the x offset ::, 40, 60)` is three arguments
+before anything is filled and at least three after, and `move` takes two — so that one is refused
+before the run, while `move(:: the profile icon ::)` is not.
 
 Coordinates come back as screenshot pixels, and `move` and `drag` are relative to where the cursor
 is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
@@ -212,9 +229,11 @@ are distances across the picture: `move`, `drag` and `take_screenshot`. `sleep` 
 `scroll` is a wheel delta, so neither is touched.
 
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to
-and skipped, like any other line that cannot be read. Nothing is retried: the macro goes on to the
-next statement. A psl run that fails outright — no model configured, no answer — leaves the statement
-unfilled and therefore unrun, the same way.
+and skipped. Nothing is retried: the macro goes on to the next statement. A psl run that fails
+outright — no model configured, no answer — leaves the statement unfilled and therefore unrun, the
+same way. These are the mistakes the check before the run cannot catch, since what a slot fills to
+is not written down until it is filled — which is why the replay goes on reading forgivingly while
+the check does not.
 
 Writing one
 
@@ -224,8 +243,9 @@ nothing else: it has no memory of what the statements before it actually did, so
 turns on that is one it cannot answer.
 
 Whitespace around the instruction is trimmed, so `::a::`, `:: a ::` and `::  a  ::` all ask the same
-thing. A pair of markers with nothing between them asks nothing and is not a slot. What the model answers is a
-value and never more program: a `::` in the answer is text, not another slot to fill.
+thing. A pair of markers with nothing between them asks nothing and is not a slot. What the model
+answers is values and never more program — one of them or a list of them, whichever the slot was
+written to stand for — and a `::` in the answer is text, not another slot to fill.
 
 A slot can name the model it wants, which is psl's own syntax passed straight through:
 
@@ -464,9 +484,10 @@ place the work happens: recorded once, kept in one file, and called from each of
 needs it.
 
 A file that calls itself, or a ring of files that comes back round to one already running, is a
-replay with no end in it. Pob refuses that call rather than making it, and says so in the log; the
-statements around it still run. Eight files deep is as far as `call` goes, which is the bound on the
-other shape of the same mistake — a chain where every file is a new one.
+replay with no end in it. Eight files deep is as far as `call` goes, which is the bound on the other
+shape of the same mistake — a chain where every file is a new one. The check walks the calls before
+the run and reports both, along with a path naming a file that is not there; the replay refuses
+them again if it somehow meets one, since a path that was itself a slot is only known at the call.
 
 Each file is its own program as far as psl is concerned. It is the file handed over on a fill, and
 the line numbers a slot comes back to are its own — so the log names the file in front of the line
@@ -486,36 +507,76 @@ not copied into the session; what the run made of it is in the log and in the sl
 When something is wrong
 -----------------------
 
-Nothing here stops the run. PSL is read as far as it makes sense and what is left of it is
-played, because the alternative — refusing a forty-line macro over line thirty-one — helps nobody.
-The one thing that is never done is running statements a broken `if` was written to guard.
+A macro is read twice: once before it runs, and once as it runs.
+
+The first reading is the check. It goes over the whole macro and every file it `call`s before the
+cursor moves, and what it finds stops the run: **Macro problems** goes up instead, listing each
+line and what to fix on it. Nothing is played until it comes back with nothing.
+
+That reading is the strict one because the quiet mistakes are the expensive ones. `move(1)` is a
+call whose numbers cannot be read, so the cursor stays where it was — and the `click()` under it
+then lands wherever the statement before happened to leave it. A run that plays thirty-nine of
+forty statements and mentions the fortieth in a log nobody has open is worse than a run that does
+not start.
+
+| Written | What the check says |
+|---------|--------------------|
+| A line that is not a call — no parentheses, nothing after the `)` | `"halt" is not a statement — a call is name(argument, argument)` |
+| A name that is not one of the statements above | `there is no statement called "clik"`, and which one it was nearly, since names are case-sensitive |
+| A call written with the wrong number of arguments — `move(1)`, `click(1, 2)`, `typeText("a", "b")`, `call()` | `move takes 2 arguments, and 1 was written`. Counted before the fill, so a slot standing for a whole argument list is counted as the list it may come back as — `move(:: the profile icon ::)` is not one of these, and `move(:: … ::, 40, 60)` is |
+| A call whose numbers are not numbers — `scroll(a, b)` | `scroll wants numbers, and its first argument is "a"` |
+| An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | The header, and that its whole block is dropped |
+| A `loop` missing its parentheses or the `{`, or whose count is not a whole number of 1 or more — `loop (:: how many ::)`, `loop (2.5)`, `loop (0)` | The header, and that its whole block is dropped |
+| A `loop` whose condition is neither a slot nor `true`/`false` | The same |
+| An `if` or `loop` whose `}` is missing | The line the block was opened on, and that the end of the file closes it |
+| A `}` with no `if` or `loop` above it | `} closes a block that was never opened` |
+| A `/*` nothing closes | The line it opened on, and that the comment runs to the end of the file |
+| A `*/` with no `/*` above it | Not a comment: it stays in the line, which is then not a statement |
+| A statement and a comment that closes mid-line, leaving two statements on it — `click() /* why */ move(1, 2)` | One line, which is not one statement — read as a call with arguments nobody wrote |
+| `stop` mis-spelled or mis-cased — `STOP`, `halt` | `"STOP" is not a statement — stop is spelled lowercase` |
+| A `call` naming a file that is not there, or cannot be read | The path it worked out, and that there is no such file |
+| A `call` reaching a file that is already running, directly or round a ring | That it is a replay with no end in it |
+| A `call` nine files deep | How deep it is, and that eight is as far as `call` goes |
+| A slot in a macro, or in a file it calls, with psl not installed | The one thing checked separately: **psl needed** goes up instead, since it is fixed by installing something rather than by editing the file |
+
+Everything in a called file is checked too, and named by the file it is in: `sign-in.psl line 4`.
+A statement inside a block the check is dropping is checked all the same — it will still be there
+once the header is fixed, and a macro is worth fixing in one pass rather than as many as it has
+mistakes.
+
+The second reading is the replay, and it is the forgiving one — it has to be, because what is left
+is what could not be known before the fill. A statement that goes wrong here is logged and skipped
+and the ones around it still run:
 
 | Written | What happens |
 |---------|--------------|
-| A line that is not a call — no parentheses, nothing after the `)` | Logged and skipped |
-| A name that is not one of the statements above | Logged and skipped |
-| A call whose numbers cannot be read — `move(1)`, `scroll(a, b)` | Does nothing, and says nothing |
 | A statement that does not read as PSL once its slots are filled | Logged with what it was filled to, and skipped |
 | A slot psl cannot fill — no model configured, no answer, no screenshot | The statement is skipped, with the reason in the log; a condition then reads as false, so its block is skipped |
-| An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | Its whole block is dropped, and the drop is logged |
 | An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
-| An `if` whose `}` is missing | The end of the macro closes it |
-| A `loop` missing its parentheses or the `{`, or whose count is not a whole number of 1 or more — `loop (:: how many ::)`, `loop (2.5)`, `loop (0)` | Its whole block is dropped, and the drop is logged |
-| A `loop` whose condition is neither a slot nor `true`/`false` | Its whole block is dropped, and the drop is logged |
 | A `loop` whose condition fills to something other than `true` or `false` | Reads as false: the loop ends there, with what it filled to in the log |
-| A `loop` whose `}` is missing | The end of the macro closes it |
-| A `}` with no `if` or `loop` above it | Logged and skipped |
-| A `/*` nothing closes | The comment runs to the end of the file, and nothing under it runs |
-| A `*/` with no `/*` above it | Not a comment: it stays in the line, which is then a line that cannot be read |
-| A statement and a comment that closes mid-line, leaving two statements on it — `click() /* why */ move(1, 2)` | One line, which is not one statement: logged and skipped |
+| A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
+
+Two things are not mistakes at all, and neither reading has anything to say about them:
+
+| Written | What it means |
+|---------|---------------|
 | Markers touching a letter or digit outside them — `std::cout` | Not a slot; it stays in the statement as written |
 | A `:: … ::` in a comment | Not a question: written out as `<instruction>` before the file goes to psl, and never filled |
-| A slot in a macro, or in a file it calls, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
-| A `call` naming a file that is not there, or cannot be read | Logged and skipped; the statements around it still run |
-| A `call` with no path — `call()` | Logged and skipped |
-| A `call` reaching a file that is already running, directly or round a ring | Not made, and the refusal is logged. The statements around it still run |
-| A `call` nine files deep | Not made, and the depth is logged |
-| `stop` mis-spelled or mis-cased — `STOP`, `halt` | A line that cannot be read: logged and skipped, and the run carries on |
+
+Checking it without running it
+
+```
+pob macro --check
+```
+
+is the same reading Execute does, said in the terminal: it reads `macro.psl` and the files it calls,
+prints what is wrong with them and runs nothing. It talks to no one, so it is the one macro command
+that works with Pob closed — which is the point of it, since a hand-edited macro is worth checking
+before it is ever loaded. It exits `1` when there is anything to fix, so a commit hook can hold the
+line.
+
+Nothing else checks. Opening the macro with the Macro PSL button (🪄) opens it and does no more,
+and a macro is read when it is about to be played or when you ask.
 
 
 How it runs
@@ -543,7 +604,7 @@ reaches the end fires `stop_hook`, if one is set; a stopped run does not. A run 
 See also
 --------
 
-- [UI](02_UI.md) — the PSL, record and Execute buttons
+- [UI](02_UI.md) — the Macro PSL, record and Execute buttons
 - [Key names](04_Keys.md) — what `keyPress` accepts
 - [Settings](06_Settings.md) — `macro_default_delay`, `image_scale`, and where the `psl` executable is
 - [psl](https://github.com/pob/psl) — the compiler, its `.pslrc`, and the models it is pointed at

@@ -105,6 +105,13 @@ Pob holds none of its own. A macro with no slot in it never runs psl and needs
 nothing installed; a macro that has one puts up **psl needed** before the cursor
 moves if psl cannot be found.
 
+A macro is read before it is played. Pob checks the whole file, and every file it
+`call`s, when Execute is pressed, and a line it cannot read puts up **Macro
+problems** with the line numbers instead of moving the cursor — `move(1)` is the
+sort of thing that otherwise leaves the cursor where it was and the click under
+it somewhere nobody chose. `pob macro --check` is the same reading from the
+terminal, and works with Pob closed.
+
 See [Macro PSL](docs/03_Macro%20PSL.md) for every statement, what a slot has to
 come back as, and what happens to a line that cannot be read.
 

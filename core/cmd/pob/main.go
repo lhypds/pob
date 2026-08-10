@@ -14,6 +14,7 @@
 //	pob launch                       start the app (asks which, with several)
 //	pob --session Y                  show one session's details
 //	pob macro                        run macro.psl
+//	pob macro --check                read macro.psl and say what is wrong with it
 //	pob mcp start                    register the MCP server with the agent CLIs
 package main
 
@@ -51,6 +52,9 @@ Commands:
   status             Live status of the instance
   sessions           List the instance's sessions
   macro              Execute macro.psl (the toolbar Execute button)
+  macro --check      Read macro.psl and the files it calls, print what is wrong
+                     with them, and run nothing. Works with nothing running,
+                     and exits 1 when there is anything to fix
   stop               Stop the running session
   kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
@@ -67,6 +71,7 @@ Examples:
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
   pob macro                    # replay this instance's macro.psl
+  pob macro --check            # read it and print what is wrong with it
   pob --session 1752712400
   pob mcp start
 `
@@ -119,6 +124,14 @@ func main() {
 		showStatus(runningInstance(root))
 
 	case "macro":
+		// --check reads the file rather than driving the app, so it is the one
+		// macro command that works with nothing running — which is the point of
+		// it: a macro is checked while it is being written, and what is being
+		// written is usually not yet what is loaded.
+		if len(args) > 1 && args[1] == "--check" {
+			cmdMacroCheck(theInstance(root))
+			return
+		}
 		cmdMacro(runningInstance(root))
 
 	case "stop":

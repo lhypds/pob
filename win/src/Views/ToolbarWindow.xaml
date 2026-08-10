@@ -79,7 +79,7 @@
                         <TextBlock Text=".log" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
                     </StackPanel>
                 </Button>
-                <Button x:Name="MacroBtn" Style="{StaticResource ToolButton}" ToolTip="PSL" Click="OnMacroClicked">
+                <Button x:Name="MacroBtn" Style="{StaticResource ToolButton}" ToolTip="Macro PSL" Click="OnMacroClicked">
                     <!-- LightningBolt — closest MDL2 match to the macOS wand
                          (wand.and.rays); MDL2 has no wand glyph. -->
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE945;"/>
