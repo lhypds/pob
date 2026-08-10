@@ -20,7 +20,7 @@ the rest are left where they are to be copied across by hand.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
-| `image_scale` | `0.5` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `0.5` half as wide and half as tall — a quarter of the pixels, and roughly a third of the input tokens — and `1` the picture as taken (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way. Raise it for slots that ask about something smaller than an icon. It applies to filling a slot and nothing else — an [MCP](08_MCP.md) client's `take_screenshot` gets the picture as taken |
+| `image_scale` | `0.35` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `0.35` a bit over a third as wide and as tall — an eighth of the pixels, and about a fifth of the input tokens — and `1` the picture as taken (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way. **The default is set aggressively and has no margin in it — read the note below before trusting it on a dense UI.** It applies to filling a slot and nothing else: an [MCP](08_MCP.md) client's `take_screenshot` gets the picture as taken |
 | `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
@@ -50,7 +50,7 @@ Example:
 ```json
 {
   "psl": "psl",
-  "image_scale": 0.5,
+  "image_scale": 0.35,
   "macro_default_delay": 1000,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
@@ -96,11 +96,7 @@ worth knowing before reaching for it.
 The picture is charged by its pixels and not by its bytes. Re-encoding the same
 grid smaller — PNG to JPEG — changes what crosses the wire and nothing the model
 does; halving the scale quarters the patches, and that is the whole of what makes
-a picture cheaper. On one local 8B vision model, filling the same coordinate slot
-from a 1736×1384 screenshot took 15.1s, and 6.1s from the same screenshot at
-`0.5` — the answer was 8 tokens either way, so almost all of it was the picture.
-Measure on your own model rather than taking that number: it is a statement about
-one vision encoder on one machine.
+a picture cheaper.
 
 What shrinking costs is not the precision you would expect. Asked for the centre
 of ten small controls in that window — four scattered, and six of them adjacent
@@ -129,32 +125,37 @@ which makes the rule roughly:
 
     scale ≥ 15px ÷ (spacing between adjacent controls, in screenshot pixels)
 
-`0.35` clears that for this window and clears it by nothing at all — a denser
-toolbar, 32px between icons instead of 47px, would be inside the cliff at `0.35`
-and wants `0.5`. That is why the default is `0.5` and not the cheapest scale that
-happened to survive here.
+The default is `0.35`: the cheapest scale that misread nothing, taken on purpose
+rather than the safe one below it. A fifth of the whole picture's tokens for two
+pixels of error nobody clicks differently is worth having.
 
-The wall-clock column says the same thing from the other side: below `0.5` the
-answer gets *slower*, because a model given an ambiguous picture spends longer on
-it. `0.35` is 37% fewer tokens for 74% more waiting. `0.5` is the last scale that
-is free on both counts — a third of the tokens of the whole picture, at the same
-speed, with nothing misread.
+What that buys is worth knowing exactly, because `0.35` clears the rule above by
+a pixel or two and by nothing more. It is a statement about one window. Icons
+32px apart instead of 47px — a denser toolbar, a compact web UI — are inside the
+cliff at `0.35` and want `0.5` or more. If a macro starts clicking the control
+next to the one it was asked for, this setting is the first thing to raise, and
+the [session log](05_Logs.md) has the screenshot the answer was read off to
+confirm it with.
+
+The wall-clock column is the other half of the price, and it runs the wrong way:
+a model given a smaller picture answers it less readily, so `0.35` is 37% fewer
+tokens than `0.5` for 74% more waiting. Setting this to save time rather than
+tokens means going *up*, not down — `0.5` was the fastest scale measured.
 
 Raise it to `1` for a slot that asks about something finer than a control: a
-character in a line of text, which side of a hairline border. That is asking about
-the pixels `0.5` threw away.
+character in a line of text, which side of a hairline border. That is asking
+about the pixels `0.35` threw away.
 
-The second bill is the one to check first, because it can be far larger and no
-picture size touches it. A model that reasons before answering spends thousands
-of tokens on a slot that wants the word `true`, and on a local model that is
-minutes. If a slot takes a minute, read the token counts in
-[`logs/<session>/slots/<n>/psl.txt`](05_Logs.md) before shrinking anything: a
-large output is a model to change, not a picture to cut down.
+The second bill is worth checking before touching this setting at all, because it
+can be much the larger of the two and no picture size touches it. A model that
+reasons at length before answering spends thousands of tokens on a slot that
+wants the word `true` — enough to make the picture a rounding error. The counts
+are in [`logs/<session>/slots/<n>/psl.txt`](05_Logs.md), written as `N in, N out`:
+a large `out` is a model to change, not a picture to cut down.
 
-Shrinking is a trade and not a saving. The picture is where a coordinate comes
-from, and a coarser picture is a coarser answer — which is why this is `1` until
-someone sets it, and why what it is worth is a question about the model you are
-actually running.
+Every number above is one model reading one window, and the model is the half of
+that Pob does not own. Redoing the measurement is not hard: the same slot at two
+scales, and the `N in` count in the slot's log beside the answer it produced.
 
 
 See also

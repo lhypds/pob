@@ -315,29 +315,36 @@ func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(stri
 // holds no API key of its own.
 func (c *Config) PSLBinary() string { return c.str("psl", psl.DefaultBinary) }
 
-// DefaultImageScale halves the screenshot, and MinImageScale is as small as it
-// can be asked to go — a tenth across is a hundredth of the pixels, past which
-// nothing is legible anyway.
+// DefaultImageScale shows the model roughly a third of the screenshot's width,
+// and MinImageScale is as small as it can be asked to go — a tenth across is a
+// hundredth of the pixels, past which nothing is legible anyway.
 //
-// A half rather than the whole picture because the whole one is not measurably
-// better at the job, and a half is a third of the tokens: over 300 answers from
-// one frontier vision model, asked for the centre of ten small controls in a
-// 1736×1384 window, the median error was 1.0px at 1 and 0.0px at 0.5, and it
-// read the half-size picture for 1018 input tokens instead of 2991.
+// 0.35 is the cheapest scale that was measured not to misread anything, and it
+// is deliberately the aggressive choice rather than the safe one. What it buys:
+// over 300 answers from one frontier vision model, asked for the centre of ten
+// small controls in a 1736×1384 window, it read the picture for 643 input tokens
+// at 0.35 against 2991 at 1 — a fifth — and was off by a median of 1.7px rather
+// than 1.0px. Two pixels is the same click, so that is not a cost.
 //
-// A half rather than less because of what breaks, which is not precision. Six of
-// those controls were adjacent glyphs in one row, 47px apart. Down to 0.35 — 16px
-// apart in the picture the model is shown — every answer named the right one, a
-// few pixels off. At 0.3, 14px apart, 7 answers in 60 named the glyph beside it:
-// a wrong click rather than a coarse one. Roughly, a scale has to keep 15px
-// between the things a macro clicks, so 0.35 clears this window by nothing and a
-// denser toolbar would not clear it at all.
+// What it does cost, and what a reader of this constant should know before
+// trusting it:
 //
-// Going lower is also slower, which is the same fact from the other side: a
-// model given an ambiguous picture spends longer on it. 4.3s a slot at 0.5, 7.5s
-// at 0.35, 22.2s at 0.3. So 0.5 is the last scale free of both costs.
+// It has no margin. Precision is not what breaks; naming the wrong control is.
+// Six of those ten were adjacent glyphs in one row, 47px apart — 16px apart in
+// the picture the model sees at 0.35, where all 60 answers still named the right
+// one. At 0.3 they are 14px apart and 7 answers in 60 named the glyph beside it.
+// The rule that fits is that a scale has to leave about 15px between the things
+// a macro clicks, and 0.35 clears this window by a pixel or two. A denser
+// toolbar — 32px between icons rather than 47px — is inside the cliff here and
+// wants 0.5 or more. That makes this default a statement about one window, and
+// raising it the fix for a UI that does not look like it.
+//
+// It is slower, not faster. A model given a smaller picture answers it less
+// readily: 4.3s a slot at 0.5, 7.5s at 0.35, 22.2s at 0.3 on the same model. So
+// 0.35 trades 37% of the tokens of 0.5 for 74% more waiting, which is a bargain
+// only where the tokens are what matter.
 const (
-	DefaultImageScale = 0.5
+	DefaultImageScale = 0.35
 	MinImageScale     = 0.1
 )
 

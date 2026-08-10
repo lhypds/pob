@@ -148,10 +148,10 @@ Coordinates come back as screenshot pixels, and `move` and `drag` are relative t
 is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
 not a position on the screen.
 
-They are screenshot pixels whatever `image_scale` is set to (see [Settings](06_Settings.md)). A
-scale below `1` shows the model a smaller picture, and it answers in that picture's pixels; Pob
-grows the answer back before it goes into the macro, so a `move` filled from a half-size screenshot
-and one filled from a whole one write the same line. Only the part the model wrote is grown — a
+They are screenshot pixels whatever `image_scale` is set to (see [Settings](06_Settings.md)), and it
+is below `1` by default. So the model is shown a smaller picture than the screen and answers in that
+picture's pixels, and Pob grows the answer back before it goes into the macro: a `move` filled from a
+third-size screenshot and one filled from a whole one write the same line. Only the part the model wrote is grown — a
 number already in the statement was never in the model's coordinates — and only where the numbers
 are distances across the picture: `move`, `drag` and `take_screenshot`. `sleep` is milliseconds and
 `scroll` is a wheel delta, so neither is touched.
