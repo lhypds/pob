@@ -43,6 +43,18 @@ if [ -n "$MISSING" ]; then
     exit 1
 fi
 
+# ── clean old zips ───────────────────────────────────────────────────────────
+# A zip of another version is stale the moment this build starts, and release.sh
+# globs Pob-*.zip — one left behind looks like an asset of this release.
+for OLD in "$ROOT_DIR"/Pob-*.zip; do
+    [[ -e "$OLD" ]] || continue
+    OLD_VERSION="${OLD##*/}"; OLD_VERSION="${OLD_VERSION%.zip}"; OLD_VERSION="${OLD_VERSION#Pob-}"
+    if [[ "${OLD_VERSION%%-*}" != "$VERSION" ]]; then
+        echo "Removing old zip: ${OLD##*/}"
+        rm -f "$OLD"
+    fi
+done
+
 # ── build core (Go) ──────────────────────────────────────────────────────────
 echo "Building pob-core and pob CLI (Go)…"
 (cd "$ROOT_DIR/core" \

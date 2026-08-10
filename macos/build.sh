@@ -28,6 +28,19 @@ BINARY_SRC="$MACOS_DIR/.build/$CONFIG/$APP_NAME"
 CORE_BINARY="$ROOT_DIR/core/bin/pob-core"
 CLI_BINARY="$ROOT_DIR/core/bin/pob"
 
+# ── clean old zips ───────────────────────────────────────────────────────────
+# The macOS zip itself is made by release.sh, but a build here is still a build:
+# a zip of another version is stale the moment this one starts, and release.sh
+# globs Pob-*.zip — one left behind looks like an asset of this release.
+for OLD in "$ROOT_DIR"/Pob-*.zip; do
+    [[ -e "$OLD" ]] || continue
+    OLD_VERSION="${OLD##*/}"; OLD_VERSION="${OLD_VERSION%.zip}"; OLD_VERSION="${OLD_VERSION#Pob-}"
+    if [[ "${OLD_VERSION%%-*}" != "$VERSION" ]]; then
+        echo "Removing old zip: ${OLD##*/}"
+        rm -f "$OLD"
+    fi
+done
+
 # ── build core (Go) ──────────────────────────────────────────────────────────
 echo "Building pob-core and pob CLI (Go)…"
 (cd "$ROOT_DIR/core" \
