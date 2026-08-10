@@ -200,7 +200,7 @@ func TestFillingALoopThroughTheCompiler(t *testing.T) {
 }`
 	nodes := parseMacro(macro)
 	loop := nodes[0]
-	run := newMacroRun("test", macro, "")
+	run := newMacroRun("test", "macro.psl", macro, "")
 
 	fill := func(line int) string {
 		t.Helper()

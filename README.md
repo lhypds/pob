@@ -68,11 +68,12 @@ that a recording is readable and readable enough that the recording is worth
 editing afterwards.
 
 There are three kinds of statement. A **call** does something to the machine —
-`move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep`. An **if
-block** guards the statements inside it with a condition. A **loop block** runs
-them again and again, up to a count. Any of the three can hold an **AI slot**: a
-prompt written where a value would go, `:: … ::`, filled in from a screenshot as
-the replay reaches it.
+`move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep` — or something
+to the run itself: `stop` ends it where it stands, and `call` replays another PSL
+file before carrying on. An **if block** guards the statements inside it with a
+condition. A **loop block** runs them again and again, up to a count. Any of the
+three can hold an **AI slot**: a prompt written where a value would go,
+`:: … ::`, filled in from a screenshot as the replay reaches it.
 
 ```
 move(398, 915)
@@ -85,6 +86,7 @@ if (:: a chat window is open ::) {
         keyPress("return")
     }
 }
+call("../sign-out.psl")
 ```
 
 That is what separates PSL from a scripting language that only ever does what it

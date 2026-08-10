@@ -21,7 +21,8 @@ argument) — or a block, closed by a } on a line of its own: if (condition) { }
 runs what it holds when the condition holds, loop (count) { } runs it that many
 times, and loop (condition, count) { } runs it while the condition holds, count
 being the most passes it may make. Numbers are written plainly (398, -615, 0.5),
-strings in double quotes with a backslash escaping the character after it.
+strings in double quotes with a backslash escaping the character after it. stop
+is the one statement written without parentheses.
 
 The whole vocabulary:
 
@@ -37,6 +38,9 @@ The whole vocabulary:
   sleep(milliseconds)  pause
   resetCursor()        send the cursor back to the origin a replay starts from
   take_screenshot()    capture the screen; with x, y, w, h, crop to that region
+  stop                 end the replay here; nothing under it runs
+  call("other.psl")    replay another PSL file here, then carry on below it. The
+                       path is relative to the file the call is written in
 
 Coordinates are pixels in the image, origin top-left, x to the right, y down.
 move, drag and scroll are relative to where the cursor is now — the arrow

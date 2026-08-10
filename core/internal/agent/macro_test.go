@@ -200,6 +200,63 @@ drag(-775, -615)`, []string{
 	})
 }
 
+// stop is written without parentheses, which no other statement is, and stop()
+// is the same statement written the way the rest of the vocabulary is written.
+func TestParseMacroStop(t *testing.T) {
+	checkParse(t, `click()
+stop
+move(1, 2)`, []string{
+		"click()",
+		"stop()",
+		"move(1, 2)",
+	})
+	checkParse(t, "stop()", []string{"stop()"})
+	checkParse(t, "  stop  ", []string{"stop()"})
+}
+
+// A name is a name: only the two block keywords are read whatever their case,
+// and a mis-spelled stop is a line that cannot be read rather than one that
+// quietly ends the run.
+func TestParseMacroStopIsSpelledLowercase(t *testing.T) {
+	checkParse(t, "STOP\nclick()", []string{"click()"})
+	checkParse(t, "stopped(1)", []string{"stopped(1)"})
+}
+
+// A line of the macro and a line psl filled to the same text are the same
+// statement, stop's missing parentheses included — the two go through one
+// reader so that they cannot come apart.
+func TestReadMacroStatement(t *testing.T) {
+	tests := []struct {
+		line string
+		name string
+		ok   bool
+	}{
+		{"stop", "stop", true},
+		{"stop()", "stop", true},
+		{"STOP", "", false},
+		{"stop now", "", false},
+		{"sleep(500)", "sleep", true},
+		{`call("../shared.psl")`, "call", true},
+		{"click()", "click", true},
+	}
+	for _, tt := range tests {
+		name, _, ok := readMacroStatement(tt.line)
+		if ok != tt.ok || name != tt.name {
+			t.Errorf("readMacroStatement(%q) = (%q, %v), want (%q, %v)", tt.line, name, ok, tt.name, tt.ok)
+		}
+	}
+}
+
+// call is an ordinary call: it is what it does that is new, not how it is
+// written.
+func TestParseMacroCall(t *testing.T) {
+	checkParse(t, `call("../shared.psl")
+call("sub/other.psl")`, []string{
+		"call(../shared.psl)",
+		"call(sub/other.psl)",
+	})
+}
+
 // A loop with a condition in front of the count runs while the condition holds,
 // and the count is the most passes it may make.
 func TestParseMacroLoopWithCondition(t *testing.T) {
@@ -640,7 +697,7 @@ loop (:: the window is still open ::, 3) {
 typeText(:: what to say ::)`
 	nodes := parseMacro(macro)
 	loop := nodes[1]
-	run := newMacroRun("test", macro, "")
+	run := newMacroRun("test", "macro.psl", macro, "")
 
 	// The first pass: the condition answered, then the statement under it.
 	run.record(loop.line, "loop (true, 3) {")
@@ -673,7 +730,7 @@ func TestALoopSpendsThePassItSetUpAndDidNotRun(t *testing.T) {
 }
 move(:: the x offset to Send ::, 0)`
 	nodes := parseMacro(macro)
-	run := newMacroRun("test", macro, "")
+	run := newMacroRun("test", "macro.psl", macro, "")
 
 	// A pass was set up and the condition then read false, so the body never ran.
 	run.record(nodes[0].line, "loop (false, 3) {")
@@ -700,7 +757,7 @@ loop (2) {
 	move(:: the x offset ::, 0)
 }`
 	nodes := parseMacro(macro)
-	run := newMacroRun("test", macro, "")
+	run := newMacroRun("test", "macro.psl", macro, "")
 
 	// The if did not hold, so its block is spent and its header is answered.
 	run.spendBlock(nodes[0].body)

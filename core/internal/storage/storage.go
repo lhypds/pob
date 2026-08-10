@@ -232,18 +232,23 @@ func (s *Storage) SaveCompiledMacro(sessionID, source string) {
 
 // SaveMacroSlot writes one :: … :: that psl filled during a macro session, under
 // logs/<session>/slots/<n>/. The directories are numbered in the order the slots
-// were filled, and slot.json carries the statement and the line of macro.psl
-// each one came from — so a replay can be read back against the macro that was
-// written, which is not the same text once the slots are in it.
+// were filled, and slot.json carries the statement and the file and line each one
+// came from — so a replay can be read back against the macro that was written,
+// which is not the same text once the slots are in it.
+//
+// file is macro.psl unless a call() had the replay in another one by then, and
+// line is a line of that file: the numbers start again in each, so which file it
+// is has to be written down beside them.
 //
 // output is what psl said on its way to the answer, kept beside the screenshot
 // it was answered from. The conversation with the model is psl's and stays
 // there: Pob no longer builds one.
-func (s *Storage) SaveMacroSlot(sessionID string, seq, line int, statement, prompt, value, model string, filled bool, output string, screenshotPNG []byte) {
+func (s *Storage) SaveMacroSlot(sessionID string, seq int, file string, line int, statement, prompt, value, model string, filled bool, output string, screenshotPNG []byte) {
 	dir := filepath.Join(s.sessionDir(sessionID), "slots", fmt.Sprintf("%d", seq))
 	_ = os.MkdirAll(dir, 0o755)
 	writeJSON(filepath.Join(dir, "slot.json"), map[string]any{
 		"sequence":  seq,
+		"file":      file,
 		"line":      line,
 		"statement": statement,
 		"prompt":    prompt,

@@ -225,6 +225,7 @@ func printSlots(sessionDir string) {
 		statement, _ := slotJSON["statement"].(string)
 		value, _ := slotJSON["value"].(string)
 		model, _ := slotJSON["model"].(string)
+		file, _ := slotJSON["file"].(string)
 		wasFilled, _ := slotJSON["filled"].(bool)
 
 		filled := value
@@ -232,7 +233,14 @@ func printSlots(sessionDir string) {
 			filled = "— unfilled, statement skipped"
 		}
 		if line := intField(slotJSON, "line"); line > 0 {
-			fmt.Printf("  %d. [line %d] :: %s :: → %s\n", seq, line, prompt, filled)
+			// The file is named only when it is not the macro itself: the numbers
+			// start again in each file a call() brought in, and a bare line number
+			// would be a line of whichever one the reader assumed.
+			where := fmt.Sprintf("line %d", line)
+			if file != "" && file != "macro.psl" {
+				where = fmt.Sprintf("%s line %d", file, line)
+			}
+			fmt.Printf("  %d. [%s] :: %s :: → %s\n", seq, where, prompt, filled)
 		} else {
 			fmt.Printf("  %d. :: %s :: → %s\n", seq, prompt, filled)
 		}
@@ -244,4 +252,3 @@ func printSlots(sessionDir string) {
 		}
 	}
 }
-

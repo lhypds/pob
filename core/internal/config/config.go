@@ -82,9 +82,11 @@ func (c *Config) legacySettingsFile() string {
 	return filepath.Join(c.InstanceDir(), "settings.json")
 }
 
-// macroFile is <root>/<instance>/macro.psl, the Prompt Script Language program
-// Play and `pob macro` run.
-func (c *Config) macroFile() string { return filepath.Join(c.InstanceDir(), "macro.psl") }
+// MacroFile is <root>/<instance>/macro.psl, the Prompt Script Language program
+// Play and `pob macro` run. It is the path and not only the text because a
+// call() in the macro names another file relative to the directory this one is
+// in — see runMacroCall.
+func (c *Config) MacroFile() string { return filepath.Join(c.InstanceDir(), "macro.psl") }
 
 // legacyMacroFile is macro.txt, where the macro used to be kept before it had
 // a language and an extension of its own. See migrateMacroToPSL.
@@ -118,8 +120,8 @@ func (c *Config) ensureFiles() {
 			c.writeSettings(settings)
 		}
 	}
-	if _, err := os.Stat(c.macroFile()); os.IsNotExist(err) {
-		_ = os.WriteFile(c.macroFile(), []byte(""), 0o644)
+	if _, err := os.Stat(c.MacroFile()); os.IsNotExist(err) {
+		_ = os.WriteFile(c.MacroFile(), []byte(""), 0o644)
 	}
 }
 
@@ -135,10 +137,10 @@ func (c *Config) migrateMacroToPSL() {
 	if _, err := os.Stat(c.legacyMacroFile()); err != nil {
 		return
 	}
-	if _, err := os.Stat(c.macroFile()); err == nil {
+	if _, err := os.Stat(c.MacroFile()); err == nil {
 		return
 	}
-	_ = os.Rename(c.legacyMacroFile(), c.macroFile())
+	_ = os.Rename(c.legacyMacroFile(), c.MacroFile())
 }
 
 // migrateLegacyKeys rewrites settings that have been renamed, keeping the
@@ -426,7 +428,7 @@ func (c *Config) MCPHost() string {
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
 
 func (c *Config) Macro() string {
-	data, err := os.ReadFile(c.macroFile())
+	data, err := os.ReadFile(c.MacroFile())
 	if err != nil {
 		return ""
 	}
@@ -434,7 +436,7 @@ func (c *Config) Macro() string {
 }
 
 func (c *Config) AppendToMacro(line string) {
-	f, err := os.OpenFile(c.macroFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(c.MacroFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}

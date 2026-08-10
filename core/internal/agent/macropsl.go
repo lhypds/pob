@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,9 +43,9 @@ type macroNode struct {
 	line int // 1-based line in macro.psl, for logs and for finding the line back
 }
 
-// macroRun carries the state of one replay: the session it writes under, the
-// macro as it now stands, and how many slots have been filled so far, since the
-// count names their log directories.
+// macroRun carries the state of one file being replayed: the session it writes
+// under, the file as it now stands, and how many slots have been filled so far,
+// since the count names their log directories.
 //
 // source is the file itself, and psl is handed it whole and unaltered — no
 // preamble, nothing rewritten, the macro as it was typed. That works because
@@ -51,6 +54,12 @@ type macroNode struct {
 // forward, which is what record does after every run. A statement the replay is
 // finished with and did not fill — a skipped block, a run that failed — is spent
 // instead, since a slot left on it would be the one psl reaches for next.
+//
+// One file, not one run: a call() starts a run of its own over the file it
+// names, so that each file is the one psl is handed and each keeps its own line
+// numbers. What belongs to the replay as a whole rather than to a file hangs off
+// the root — the slot count that numbers the log directories, and whether a stop
+// has been reached, which ends every file at once.
 type macroRun struct {
 	sessionID string
 	source    string
@@ -65,16 +74,98 @@ type macroRun struct {
 	// is empty when this psl is older than the flag that takes it — settled once
 	// for the run rather than asked about at each slot.
 	prompt string
+
+	// name is what the file is called — what psl is told it is called, and what
+	// the log puts in front of a line number once more than one file is in play.
+	name string
+	// path is the file itself, and dir the directory it was read from: what a
+	// relative path in a call() inside it is resolved against, and what says a
+	// file is already running when one is reached again.
+	path string
+	dir  string
+	// parent is the run whose call() started this one, nil in the macro itself.
+	parent *macroRun
+
+	// stopped says a stop statement has been reached. Root only — read and
+	// written through halted and halt, since what it ends is the whole replay
+	// and not the file the statement happened to be in.
+	stopped bool
 }
 
 // newMacroRun starts a replay over the macro as it was written.
-func newMacroRun(sessionID, source, prompt string) *macroRun {
+func newMacroRun(sessionID, path, source, prompt string) *macroRun {
 	return &macroRun{
 		sessionID: sessionID,
 		source:    source,
 		written:   strings.Split(source, "\n"),
 		prompt:    prompt,
+		name:      filepath.Base(path),
+		path:      path,
+		dir:       filepath.Dir(path),
 	}
+}
+
+// newCallRun starts a replay over a file a call() named, under the run that
+// reached the call.
+func newCallRun(parent *macroRun, path, source string) *macroRun {
+	run := newMacroRun(parent.sessionID, path, source, parent.prompt)
+	run.parent = parent
+	return run
+}
+
+// root is the run over the macro itself — this one, unless a call() brought it
+// in.
+func (run *macroRun) root() *macroRun {
+	for run.parent != nil {
+		run = run.parent
+	}
+	return run
+}
+
+// nextSlot numbers the next fill. The count is the whole replay's, so the slot
+// directories of a session run straight through however many files filled them.
+func (run *macroRun) nextSlot() int {
+	root := run.root()
+	root.slots++
+	return root.slots
+}
+
+// halt ends the replay — this file and every file above it. See runMacroAction's
+// stop.
+func (run *macroRun) halt() { run.root().stopped = true }
+
+// halted reports whether a stop has been reached, anywhere in the replay.
+func (run *macroRun) halted() bool { return run.root().stopped }
+
+// depth is how many call()s deep this file is, 0 in the macro itself.
+func (run *macroRun) depth() int {
+	n := 0
+	for r := run.parent; r != nil; r = r.parent {
+		n++
+	}
+	return n
+}
+
+// running reports whether a file is already being replayed further up — what
+// says a call() would put the replay back into a file it is standing in, which
+// is a macro that never ends rather than one that runs twice.
+func (run *macroRun) running(path string) bool {
+	for r := run; r != nil; r = r.parent {
+		if r.path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// where names a line for the log. A replay of one file says "line 4", the way it
+// always has; once a call() is in play the file is named too, since the numbers
+// start again in each one.
+func (run *macroRun) where(line int) string {
+	if run.parent == nil {
+		return fmt.Sprintf("line %d", line)
+	}
+	return fmt.Sprintf("%s line %d", run.name, line)
 }
 
 // line returns the macro's line as it now stands, 1-based, or "" past the end.
@@ -177,18 +268,19 @@ func (run *macroRun) spendUncovered(nodes []macroNode) {
 
 // runMacro replays macro.psl statement by statement.
 func (r *Runner) runMacro(ctx context.Context) {
+	path := r.cfg.MacroFile()
 	source := r.cfg.Macro()
 	nodes := parseMacro(source)
 
-	hasSlots := hasMacroSlot(nodes)
+	hasSlots := macroNeedsPSL(nodes, filepath.Dir(path), map[string]bool{path: true})
 
 	// Checked before anything moves: a macro whose slots cannot be filled is one
 	// Pob cannot run as written, and finding that out halfway through would
 	// leave the statements above the slot already played.
 	if hasSlots && !r.psl.Available() {
-		message := "macro.psl has a :: … :: slot, and Pob fills those by running the psl compiler. " +
-			"psl was not found — install it (see https://github.com/pob/psl), or set \"psl\" in " +
-			"settings.json to the path of the executable, and run the macro again."
+		message := "macro.psl, or a file it calls, has a :: … :: slot, and Pob fills those by running " +
+			"the psl compiler. psl was not found — install it (see https://github.com/pob/psl), or set " +
+			"\"psl\" in settings.json to the path of the executable, and run the macro again."
 		applog.Logf("Macro not run: %s", message)
 		r.br.ShowAlert("psl needed", message)
 		return
@@ -223,7 +315,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	macroStart := time.Now()
 	applog.Logf("[%s] Macro session started", sessionID)
 
-	run := newMacroRun(sessionID, source, prompt)
+	run := newMacroRun(sessionID, path, source, prompt)
 	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
 
@@ -236,7 +328,9 @@ func (r *Runner) runMacro(ctx context.Context) {
 	applog.Log("Macro execution complete")
 
 	// A run that was stopped never reached its end, so nothing is announced:
-	// the hook is what says the macro finished.
+	// the hook is what says the macro finished. A stop statement is the other
+	// thing — the macro naming its own end rather than someone pulling it out
+	// from under the cursor — so that one announces like any other finish.
 	if ctx.Err() == nil {
 		if hook := r.cfg.StopHook(); hook != "" {
 			_ = exec.Command("/bin/sh", "-c", hook).Start()
@@ -248,7 +342,11 @@ func (r *Runner) runMacro(ctx context.Context) {
 // whose condition holds.
 func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macroNode) {
 	for _, node := range nodes {
-		if ctx.Err() != nil {
+		// The two ways a replay ends before its last statement: Stop, and a stop
+		// statement it reached. Both are checked here rather than at each kind of
+		// statement, so a stop deep inside a block unwinds the blocks around it and
+		// the files above them the same way the Stop button does.
+		if ctx.Err() != nil || run.halted() {
 			return
 		}
 
@@ -269,11 +367,17 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		}
 
 		if name, args, ok := r.resolveMacroAction(ctx, run, node); ok {
-			r.runMacroAction(ctx, run.sessionID, name, args)
+			r.runMacroAction(ctx, run, name, args)
 		}
 		// A no-op when the statement filled: what it spends is the slot of one
 		// that did not, which the replay is nonetheless done with.
 		run.spend(node.line)
+
+		// Immediately is what stop says, and the delay between one call and the
+		// next is the last thing the statement before it would otherwise cost.
+		if run.halted() {
+			return
+		}
 
 		if delayMs := r.cfg.MacroDefaultDelay(); delayMs > 0 {
 			sleepCtx(ctx, time.Duration(delayMs)*time.Millisecond)
@@ -305,7 +409,7 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 	passes := 0
 
 	for passes < node.count {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || run.halted() {
 			break
 		}
 		if passes > 0 {
@@ -322,7 +426,9 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 		r.runMacroNodes(ctx, run, node.body)
 	}
 
-	if passes == node.count && node.condition != "" {
+	// A loop a stop ended on its last allowed pass did not run out of passes, and
+	// saying so would be the log reporting a bound that was never reached.
+	if passes == node.count && node.condition != "" && !run.halted() {
 		applog.Logf("[%s] Macro %s — %d passes, the count the loop was given", run.sessionID, label, passes)
 	}
 
@@ -346,9 +452,9 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 		return "", nil, false
 	}
 
-	name, args, ok := parseMacroLine(strings.TrimSpace(filled))
+	name, args, ok := readMacroStatement(strings.TrimSpace(filled))
 	if !ok {
-		applog.Logf("[%s] Macro line %d: filled to %q, which does not read as a statement — skipping", run.sessionID, node.line, filled)
+		applog.Logf("[%s] Macro %s: filled to %q, which does not read as a statement — skipping", run.sessionID, run.where(node.line), filled)
 		return "", nil, false
 	}
 	return name, args, true
@@ -452,20 +558,19 @@ func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNod
 			return "", false
 		}
 		if filled == statement {
-			applog.Logf("[%s] Macro line %d: psl returned the statement unchanged — giving up on it", run.sessionID, node.line)
+			applog.Logf("[%s] Macro %s: psl returned the statement unchanged — giving up on it", run.sessionID, run.where(node.line))
 			return "", false
 		}
 		statement = filled
 	}
-	applog.Logf("[%s] Macro line %d: %s -> %s", run.sessionID, node.line, node.raw, strings.TrimSpace(statement))
+	applog.Logf("[%s] Macro %s: %s -> %s", run.sessionID, run.where(node.line), node.raw, strings.TrimSpace(statement))
 	return statement, true
 }
 
 // fillOneSlot runs psl once over the macro and returns the statement with its
 // first slot filled.
 func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode, statement string) (string, bool) {
-	run.slots++
-	seq := run.slots
+	seq := run.nextSlot()
 
 	slot, found := psl.FindSlot(statement, 0)
 	if !found {
@@ -479,10 +584,10 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	source := run.source
 	targetLine := node.line - 1
 	if live, found := liveSlotLine(source); !found || live != targetLine {
-		applog.Logf("[%s] Macro slot (%s) — psl would fill a slot on line %d, not this statement on line %d; not running it",
-			run.sessionID, slot.Instruction, live+1, node.line)
-		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false,
-			"the first slot in the macro is not this statement's", nil)
+		applog.Logf("[%s] Macro slot (%s) — psl would fill a slot on line %d, not this statement on %s; not running it",
+			run.sessionID, slot.Instruction, live+1, run.where(node.line))
+		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
+			"the first slot in the file is not this statement's", nil)
 		return "", false
 	}
 
@@ -508,17 +613,17 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
-	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot, Prompt: run.prompt})
+	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
-		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
+		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
 		return "", false
 	}
 
 	filled, ok := extractLine(source, result.Source, targetLine)
 	if !ok {
 		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
-		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
+		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
 		return "", false
 	}
 
@@ -534,7 +639,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, strings.TrimSpace(filled),
 		result.Model, result.Duration.Round(time.Millisecond))
-	r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
+	r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
 
 	// The answer goes into the macro, which is what the next run is handed: with
 	// this slot no longer in the file, the first one left is the next statement's
@@ -585,7 +690,8 @@ func extractLine(before, after string, line int) (string, bool) {
 	return strings.Join(afterLines[line:end], "\n"), true
 }
 
-func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, args []string) {
+func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string, args []string) {
+	sessionID := run.sessionID
 	num := func(i int) (float64, bool) {
 		if i >= len(args) {
 			return 0, false
@@ -672,6 +778,21 @@ func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, arg
 		applog.Logf("[%s] Macro sleep(%dms)", sessionID, int(ms))
 		sleepCtx(ctx, time.Duration(ms)*time.Millisecond)
 
+	case macroStopKeyword:
+		// Nothing under this runs — not the statements after it, not the rest of
+		// the block it is in, and not the file that called the file it is in. What
+		// it leaves behind is a finished run rather than an abandoned one, so the
+		// session is written out and stop_hook fires the way it does at the end.
+		applog.Logf("[%s] Macro stop — the run ends here", sessionID)
+		run.halt()
+
+	case macroCallKeyword:
+		if len(args) == 0 {
+			applog.Logf("[%s] Macro call wants the path of a PSL file — call(\"other.psl\")", sessionID)
+			return
+		}
+		r.runMacroCall(ctx, run, args[0])
+
 	case "take_screenshot":
 		var crop *bridge.CropRect
 		if len(args) >= 4 {
@@ -698,6 +819,91 @@ func (r *Runner) runMacroAction(ctx context.Context, sessionID, name string, arg
 	}
 }
 
+// maxCallDepth is how many call()s deep a replay may go. A macro split across a
+// few files is a macro someone wrote in pieces; eight files down is past the
+// depth anyone meant, and the bound is what turns a mistake nothing else catches
+// into a line in the log.
+const maxCallDepth = 8
+
+// runMacroCall replays another PSL file where the call() stands, statement by
+// statement, and comes back to the statement under it.
+//
+// The file is read at the moment the call is reached rather than once at the
+// start, so a call inside a loop replays the file as it was written on every
+// pass — the same thing restoring does for a loop's own statements, and had here
+// for nothing, since the file arrives from disk each time.
+//
+// It is a run of its own, because psl fills the first slot in the file it is
+// handed and the file the called statements are in is not the one that called
+// them: the called file is what goes over, its own line numbers are what the
+// slots come back to, and its own name is what the log and psl are told. What it
+// shares with the run above it is the session — the slot directories are
+// numbered straight through — and the stop that ends every file at once.
+func (r *Runner) runMacroCall(ctx context.Context, run *macroRun, arg string) {
+	sessionID := run.sessionID
+
+	path, err := resolveCallPath(run.dir, arg)
+	if err != nil {
+		applog.Logf("[%s] Macro call(%q) — %v; not running it", sessionID, arg, err)
+		return
+	}
+	// A file that reaches itself, directly or round a ring of calls, is a replay
+	// with no end in it. The depth bound catches the rest — a chain of files that
+	// each call a new one.
+	if run.running(path) {
+		applog.Logf("[%s] Macro call(%q) — %s is already running and would call itself; not running it",
+			sessionID, arg, path)
+		return
+	}
+	if run.depth() >= maxCallDepth {
+		applog.Logf("[%s] Macro call(%q) — %d files deep, which is as far as call goes; not running it",
+			sessionID, arg, maxCallDepth)
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		applog.Logf("[%s] Macro call(%q) — cannot read %s: %v; skipping it", sessionID, arg, path, err)
+		return
+	}
+
+	source := string(data)
+	nodes := parseMacro(source)
+	called := newCallRun(run, path, source)
+	called.spendUncovered(nodes)
+
+	applog.Logf("[%s] Macro call(%q) -> %s (%d actions)", sessionID, arg, path, countMacroNodes(nodes))
+	r.runMacroNodes(ctx, called, nodes)
+	if !called.halted() {
+		applog.Logf("[%s] Macro call(%q) — %s done", sessionID, arg, called.name)
+	}
+}
+
+// resolveCallPath works out which file a call() names.
+//
+// A relative path is relative to the directory of the file the call is written
+// in, not to wherever Pob happens to be running: `call("../shared.psl")` in
+// ~/.pob/<instance>/macro.psl is ~/.pob/shared.psl, and means that whoever
+// started the replay. A path beginning with ~/ is under the home directory, the
+// way it is everywhere else it is written down.
+func resolveCallPath(dir, arg string) (string, error) {
+	path := strings.TrimSpace(arg)
+	if path == "" {
+		return "", errors.New("call wants the path of a PSL file")
+	}
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, rest)
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	return filepath.Abs(path)
+}
+
 // macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by a
 // line holding nothing but `}`. Matched whatever its case, so `IF` opens a block
 // too: the alternative to recognising it is running the body unguarded, which is
@@ -709,6 +915,17 @@ const macroIfKeyword = "if"
 // case for the same reason as `if` — a header that went unrecognised would leave
 // the body of the block to run once, unbounded and unguarded.
 const macroLoopKeyword = "loop"
+
+// macroStopKeyword ends the replay where it stands. It is written `stop`, and
+// `stop()` is read too: the empty parentheses say nothing the bare word does not,
+// and a statement that ends a run is the last one to refuse over punctuation.
+// Spelled lowercase like the rest of the vocabulary, and read that way — a name
+// is a name, and the block keywords are the only two that take any case.
+const macroStopKeyword = "stop"
+
+// macroCallKeyword replays another PSL file where it stands:
+// `call("../shared.psl")`. See runMacroCall.
+const macroCallKeyword = "call"
 
 // parseMacro turns macro.psl into the statements to execute. Lines it cannot
 // read are logged and dropped, the way a bad action line always has been — a
@@ -778,7 +995,7 @@ func parseMacroBlock(lines []string, i, depth int) ([]macroNode, int) {
 			continue
 		}
 
-		name, args, ok := parseMacroLine(trimmed)
+		name, args, ok := readMacroStatement(trimmed)
 		if !ok {
 			applog.Logf("Macro: skipping line: %s", trimmed)
 			continue
@@ -929,6 +1146,19 @@ func cutParens(s string) (string, bool) {
 	return strings.TrimSpace(inner), true
 }
 
+// readMacroStatement reads one line as a call, whichever of the two shapes a
+// statement is written in.
+//
+// It is where `stop` — the one statement written without parentheses — is read,
+// so that a line of the macro and a line psl filled to the same text arrive at
+// the same statement. Everything else goes to parseMacroLine unchanged.
+func readMacroStatement(line string) (string, []string, bool) {
+	if line == macroStopKeyword {
+		return macroStopKeyword, nil, true
+	}
+	return parseMacroLine(line)
+}
+
 // parseMacroLine parses `name(arg1, arg2)` or `name("quoted string")`.
 func parseMacroLine(line string) (string, []string, bool) {
 	openParen := strings.Index(line, "(")
@@ -984,6 +1214,72 @@ func hasMacroSlot(nodes []macroNode) bool {
 		}
 	}
 	return false
+}
+
+// macroNeedsPSL reports whether replaying these statements would run psl: a
+// slot in one of them, or in a file one of their call()s brings in. seen holds
+// the files already accounted for, the macro itself included, so a ring of calls
+// is walked once.
+//
+// The called files are read here rather than found out about at the call,
+// because the point of the check is saying so before the cursor moves: a macro
+// whose second file cannot be filled is one to refuse at the start, not thirty
+// statements in. A call whose path is itself a slot cannot be followed and does
+// not need to be — that slot is one of its own, and hasMacroSlot has it already.
+func macroNeedsPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
+	if hasMacroSlot(nodes) {
+		return true
+	}
+	return calledFilesNeedPSL(nodes, dir, seen)
+}
+
+func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
+	for _, node := range nodes {
+		if calledFilesNeedPSL(node.body, dir, seen) {
+			return true
+		}
+		if node.action != macroCallKeyword || len(node.args) == 0 {
+			continue
+		}
+		path, err := resolveCallPath(dir, node.args[0])
+		if err != nil || seen[path] {
+			continue
+		}
+		seen[path] = true
+
+		// Read rather than parsed: parsing logs every line it cannot make sense
+		// of, and the file is parsed again when the call is reached. A slot the
+		// replay would never arrive at counts here, which is the same way round
+		// hasMacroSlot has it for a block that never runs — the check errs towards
+		// asking for psl, since the cost of that is a message and the cost of the
+		// other way is a macro that stops halfway.
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		text := string(data)
+		if psl.HasSlot(text) {
+			return true
+		}
+		if calledFilesNeedPSL(parseCallLines(text), filepath.Dir(path), seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseCallLines reads the call() statements out of a file, and nothing else. It
+// is what lets the check walk from one file to the next without parsing — and so
+// without logging — a file the replay may never reach.
+func parseCallLines(text string) []macroNode {
+	var nodes []macroNode
+	for _, line := range strings.Split(text, "\n") {
+		name, args, ok := parseMacroLine(strings.TrimSpace(line))
+		if ok && name == macroCallKeyword {
+			nodes = append(nodes, macroNode{action: name, args: args})
+		}
+	}
+	return nodes
 }
 
 // countMacroNodes counts every statement, a block header and the statements

@@ -72,9 +72,9 @@ A line that cannot be read does not stop the run — it is written to the log an
 statements around it stand. A macro is often half-recorded and half-typed, and one bad line in the
 middle of it is a line to fix, not a reason to refuse the other forty.
 
-There are three kinds of statement: a **call**, which does something to the machine, an **if
-block**, which guards the statements inside it with a condition, and a **loop block**, which runs
-the statements inside it again and again. Any of them can hold an **AI slot** — a piece of a
+There are three kinds of statement: a **call**, which does something to the machine or to the run,
+an **if block**, which guards the statements inside it with a condition, and a **loop block**, which
+runs the statements inside it again and again. Any of them can hold an **AI slot** — a piece of a
 statement that is a prompt rather than a value, filled in as the replay reaches it.
 
 
@@ -203,19 +203,20 @@ still as it was written — so the first slot left in the file is again the one 
 on.
 
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
-psl to be found — Pob checks over the whole macro before the first statement runs rather than
-partway through, and puts up **psl needed** instead of moving the cursor. Every fill is kept under
-`logs/<session>/slots/<n>/` with the screenshot it was answered from and what psl said while filling
-it (see [Logs](05_Logs.md)); `pob --session <id>` lists them. The whole macro as it ended up — every
-slot filled, in one file — is kept beside them as `logs/<session>/macro.txt`.
+psl to be found — Pob checks over the whole macro, and over the files it `call`s, before the first
+statement runs rather than partway through, and puts up **psl needed** instead of moving the cursor.
+Every fill is kept under `logs/<session>/slots/<n>/` with the screenshot it was answered from and
+what psl said while filling it (see [Logs](05_Logs.md)); `pob --session <id>` lists them. The whole
+macro as it ended up — every slot filled, in one file — is kept beside them as
+`logs/<session>/macro.txt`.
 
 
 Calls
 -----
 
 A call is `name(argument, argument)` — the name, then arguments in parentheses, and nothing after
-the closing one. Names are case-sensitive, spelled as below. These are also the tools the AI calls
-and the actions the [MCP](08_MCP.md) server exposes: one vocabulary, whoever is driving. Any
+the closing one. Names are case-sensitive, spelled as below. Most of these are also the tools the AI
+calls and the actions the [MCP](08_MCP.md) server exposes: one vocabulary, whoever is driving. Any
 argument can be an AI slot instead of a value, or hold one inside it.
 
 This table is also what Pob describes to psl on every fill — a model asked for part of a statement
@@ -234,6 +235,10 @@ is told what the statement is a call to.
 | `sleep(milliseconds)` | number | Pause |
 | `resetCursor()` | — | Send the cursor back to the origin it starts at |
 | `take_screenshot(x?, y?, w?, h?)` | numbers, all four or none | Capture a screenshot into the session's `screenshots/`. With all four, crop to that region |
+| `stop` | — | End the run here. Written without parentheses; `stop()` is read too |
+| `call(path)` | one string | Replay another PSL file here, then carry on below it |
+
+The last two are about the run rather than the machine, and have sections of their own below.
 
 Numbers are written plainly — `398`, `-615`, `0.5`. Strings are written in double quotes, and a
 backslash escapes the character after it, which is how a quote gets inside one:
@@ -347,6 +352,86 @@ about to run says so. What the log says is the passes: one line as each begins, 
 verdict that ended it.
 
 
+stop
+----
+
+`stop` ends the run where it stands:
+
+```
+if (:: a password prompt is on screen ::) {
+    stop
+}
+typeText("the next thing")
+```
+
+Nothing under it runs — not the statements after it, not the rest of the block it is in, not the
+passes a `loop` around it had left, and not the file that called the file it is written in. It is
+the Stop button reached from inside the macro, and it takes effect between one statement and the
+next in exactly the same way. There is no delay after it: `macro_default_delay` is the gap before
+the statement that would have been next, and there is no such statement.
+
+It is the one statement written without parentheses, because the parentheses would hold nothing.
+`stop()` is read as well, for anyone who would rather write every statement the same shape. The name
+is lowercase like every other name and read that way — `STOP` is a line that cannot be read, and is
+logged and skipped like any other.
+
+A run that reaches a `stop` has finished, as against a run someone stopped: the session is written
+out and `stop_hook` fires, the same as a run that fell off the last line. The Stop button is the one
+that does neither.
+
+Where this earns its place is beside an `if`. A macro that has noticed something it was not written
+for — a login screen, an error dialog, a list that came back empty — has nothing useful to do with
+the forty statements below, and `stop` is how it says so.
+
+
+call
+----
+
+`call` replays another PSL file where it stands, and comes back to the statement under it:
+
+```
+call("../sign-in.psl")
+move(398, 915)
+click()
+call("../sign-out.psl")
+```
+
+The argument is a path, and a relative one is relative to the directory of the file the `call` is
+written in — not to wherever Pob was started from. The macro lives in `~/.pob/<instance>/`, so
+`call("../sign-in.psl")` is `~/.pob/sign-in.psl`, beside the instance directories and shared by all
+of them. A path beginning with `~/` is under the home directory, and an absolute path is itself.
+
+The called file is ordinary PSL: the same statements, the same blocks, the same `:: … ::` slots, and
+its own `call`s, resolved against its own directory. It is read at the moment the call is reached
+rather than once at the start, so a `call` inside a `loop` replays the file as it is written on
+every pass — and editing a called file between two runs takes effect on the second, the way editing
+the macro does.
+
+What it is for is the piece of a macro that is the same in five macros. Signing in, closing whatever
+dialog this application opens on startup, the six statements that get from the home screen to the
+place the work happens: recorded once, kept in one file, and called from each of the macros that
+needs it.
+
+A file that calls itself, or a ring of files that comes back round to one already running, is a
+replay with no end in it. Pob refuses that call rather than making it, and says so in the log; the
+statements around it still run. Eight files deep is as far as `call` goes, which is the bound on the
+other shape of the same mistake — a chain where every file is a new one.
+
+Each file is its own program as far as psl is concerned. It is the file handed over on a fill, and
+the line numbers a slot comes back to are its own — so the log names the file in front of the line
+once more than one is in play, and `logs/<session>/slots/<n>/slot.json` records which file each fill
+was a line of. The slot directories are numbered straight through the session however many files
+filled them.
+
+The check for psl follows `call` as well: a macro with no slot of its own that calls a file with one
+still needs psl, and Pob reads the called files before the cursor moves rather than finding out
+partway down. A `call` whose path is itself a slot cannot be read ahead — but a macro with a slot in
+it needs psl anyway, which is the same answer.
+
+`logs/<session>/macro.psl` and `macro.txt` are the macro, as they have always been. A called file is
+not copied into the session; what the run made of it is in the log and in the slots it filled.
+
+
 When something is wrong
 -----------------------
 
@@ -370,7 +455,12 @@ The one thing that is never done is running statements a broken `if` was written
 | A `loop` whose `}` is missing | The end of the macro closes it |
 | A `}` with no `if` or `loop` above it | Logged and skipped |
 | Markers touching a letter or digit outside them — `std::cout` | Not a slot; it stays in the statement as written |
-| A slot in a macro, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
+| A slot in a macro, or in a file it calls, with psl not installed | The macro does not run at all: **psl needed** goes up before the cursor moves |
+| A `call` naming a file that is not there, or cannot be read | Logged and skipped; the statements around it still run |
+| A `call` with no path — `call()` | Logged and skipped |
+| A `call` reaching a file that is already running, directly or round a ring | Not made, and the refusal is logged. The statements around it still run |
+| A `call` nine files deep | Not made, and the depth is logged |
+| `stop` mis-spelled or mis-cased — `STOP`, `halt` | A line that cannot be read: logged and skipped, and the run carries on |
 
 
 How it runs
@@ -386,12 +476,13 @@ macro addresses — what the screenshots show, what the clicks go through — is
 
 Between one call and the next Pob waits `macro_default_delay` milliseconds, one second by default
 (see [Settings](06_Settings.md)). A UI that needs longer gets an explicit `sleep()`. Judging an `if`
-adds no delay of its own — the model call is the wait — and neither does going round a `loop`: the
-gap between one pass and the next is the delay after the last statement of the pass, as it would be
-anywhere else.
+adds no delay of its own — the model call is the wait — and neither does going round a `loop`, or
+stepping into a `call`: the gap between one pass or one file and the next is the delay after the
+last statement before it, as it would be anywhere else.
 
 Stop halts the run between statements, and during a `sleep()` rather than after it. A run that
-reaches the end fires `stop_hook`, if one is set; a stopped run does not.
+reaches the end fires `stop_hook`, if one is set; a stopped run does not. A run that reached a
+`stop` statement did reach its end, and fires it.
 
 
 See also

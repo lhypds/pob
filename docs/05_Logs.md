@@ -24,7 +24,7 @@ Structure
                    +--- macro.txt                 the same macro compiled: every `:: … ::` replaced by what psl filled it with, and the ones never asked about written out as `<instruction>`.
                    +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
                         +--- <n>/
-                             +--- slot.json       the instruction, the statement and the line of macro.psl it came from, what was filled in, and which model filled it.
+                             +--- slot.json       the instruction, the statement and the file and line it came from, what was filled in, and which model filled it.
                              +--- psl.txt         what the compiler said while filling it.
                              +--- screenshot.png  what the slot was filled from.
                    +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.
