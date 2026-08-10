@@ -1,5 +1,6 @@
 {
   "psl": "psl",
+  "image_scale": 1,
   "macro_default_delay": 1000,
   "editor": "system",
   "terminal": "iterm2",

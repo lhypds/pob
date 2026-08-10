@@ -35,6 +35,7 @@ type Config struct {
 
 var defaults = map[string]any{
 	"psl":                 psl.DefaultBinary,
+	"image_scale":         DefaultImageScale,
 	"macro_default_delay": 1000,
 	"editor":              "system",
 	"terminal":            "system",
@@ -313,6 +314,37 @@ func (c *Config) StopHook() string { v, _ := c.readSettings()["stop_hook"].(stri
 // and what keys they take are psl's own business, kept in its .pslrc — Pob
 // holds no API key of its own.
 func (c *Config) PSLBinary() string { return c.str("psl", psl.DefaultBinary) }
+
+// DefaultImageScale hands the model the screenshot at the size it was taken,
+// and MinImageScale is as small as it can be asked to go — a tenth across is
+// a hundredth of the pixels, past which nothing is legible anyway.
+const (
+	DefaultImageScale = 1.0
+	MinImageScale     = 0.1
+)
+
+// ImageScale shrinks the screenshot a `:: … ::` slot is filled from, before it
+// goes to the model: 1 is the picture as taken, 0.5 half as wide and half as
+// tall — a quarter of the pixels, and roughly a quarter of the image tokens a
+// vision model spends reading it.
+//
+// It costs accuracy, so it is 1 unless someone says otherwise: what a slot is
+// usually asked for is where something on the screen is, and a smaller picture
+// is a coarser answer to that.
+//
+// What it buys is the vision encoder, which has to run over every patch before
+// the answer's first token is written — on one local 8B model, 15.1s of a slot
+// at 1 and 6.1s of the same slot at 0.5. It buys nothing off the other half of
+// a slot, the answer being written a token at a time, and that half can be the
+// larger by far: a model that reasons first spends minutes on a slot that wants
+// the word true, and no picture size touches it. So the token counts in the
+// slot's log are what say whether this setting is the one to reach for.
+//
+// Pob undoes the shrinking on the answer, so a macro is written in screen
+// pixels whatever this is set to. See rescaleFilled.
+func (c *Config) ImageScale() float64 {
+	return c.floatVal("image_scale", DefaultImageScale, MinImageScale, 1)
+}
 
 // ServerEnabled reports whether the Pob server should run. It is on by
 // default; turning it off is how a machine stops accepting pointer and

@@ -20,6 +20,7 @@ the rest are left where they are to be copied across by hand.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
+| `image_scale` | `1` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `1` the picture as taken, `0.5` half as wide and half as tall — a quarter of the pixels, and roughly a quarter of the image tokens it spends reading them (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way |
 | `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
@@ -49,6 +50,7 @@ Example:
 ```json
 {
   "psl": "psl",
+  "image_scale": 1,
   "macro_default_delay": 1000,
   "editor": "vscode",
   "stop_hook": "afplay /System/Library/Sounds/Morse.aiff",
@@ -82,14 +84,42 @@ environment psl runs without one. A single slot can name the model it wants —
 `:: gpt-5.6> the x offset to the Save button ::` — which is a psl feature Pob
 passes straight through. See psl's own README for the rest.
 
-The one setting on this side is `psl`, which says where the executable is.
+Two settings are on this side: `psl`, which says where the executable is, and
+`image_scale`, which says how much of the screenshot the model is shown.
+
+A slot is two bills. One is the picture: a vision model reads it as a grid of
+patches, and every patch has to go through the vision encoder before a single
+token of the answer is written. The other is the answer itself, one token at a
+time. `image_scale` is the first bill and nothing else, so which one is larger is
+worth knowing before reaching for it.
+
+The picture is charged by its pixels and not by its bytes. Re-encoding the same
+grid smaller — PNG to JPEG — changes what crosses the wire and nothing the model
+does; halving the scale quarters the patches, and that is the whole of what makes
+a picture cheaper. On one local 8B vision model, filling the same coordinate slot
+from a 1736×1384 screenshot took 15.1s, and 6.1s from the same screenshot at
+`0.5` — the answer was 8 tokens either way, so almost all of it was the picture.
+Measure on your own model rather than taking that number: it is a statement about
+one vision encoder on one machine.
+
+The second bill is the one to check first, because it can be far larger and no
+picture size touches it. A model that reasons before answering spends thousands
+of tokens on a slot that wants the word `true`, and on a local model that is
+minutes. If a slot takes a minute, read the token counts in
+[`logs/<session>/slots/<n>/psl.txt`](05_Logs.md) before shrinking anything: a
+large output is a model to change, not a picture to cut down.
+
+Shrinking is a trade and not a saving. The picture is where a coordinate comes
+from, and a coarser picture is a coarser answer — which is why this is `1` until
+someone sets it, and why what it is worth is a question about the model you are
+actually running.
 
 
 See also
 --------
 
 - [Logs](05_Logs.md) — the tree a run writes, and where every filled slot is kept
-- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay`, and the compiler a `:: … ::` slot is filled by
+- [Macro PSL](03_Macro%20PSL.md) — `macro_default_delay` and `image_scale`, and the compiler a `:: … ::` slot is filled by
 - [UI](02_UI.md) — the toolbar button that opens it
 - [Pob Server](09_Server.md) — what `server` and `server_port` control
 - [MCP Server](08_MCP.md) — what `mcp`, `mcp_port` and `mcp_host` control

@@ -352,6 +352,20 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		return "", false
 	}
 
+	// What the model is shown, which is the screenshot itself unless image_scale
+	// asks for less of it. The shrunken one is what goes in the log too: the
+	// picture worth keeping beside an answer is the one it was read off.
+	scale := r.cfg.ImageScale()
+	if smaller, w, h, err := shrinkPNG(shot, scale); err != nil {
+		applog.Logf("[%s] Macro slot (%s) — could not scale the screenshot (%v), sending it whole", run.sessionID, slot.Instruction, err)
+		scale = 1
+	} else if w > 0 {
+		applog.Logf("[%s] Macro slot (%s) — %s", run.sessionID, slot.Instruction, scaleNote(w, h, scale))
+		shot = smaller
+	} else {
+		scale = 1
+	}
+
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
 	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: "macro.psl", Image: shot, Prompt: run.prompt})
@@ -366,6 +380,16 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
 		r.store.SaveMacroSlot(run.sessionID, seq, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
 		return "", false
+	}
+
+	// The answer was read off a smaller picture, so the distances in it are that
+	// picture's. Grown back here rather than at the click, so that the macro,
+	// the log and the compiled file all say the same screen pixels a macro
+	// written by hand would.
+	if grown, done := rescaleFilled(statement, slot.Start, slot.End, filled, scale); done {
+		applog.Logf("[%s] Macro slot (%s) -> %s scaled back to %s", run.sessionID, slot.Instruction,
+			strings.TrimSpace(filled), strings.TrimSpace(grown))
+		filled = grown
 	}
 
 	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, strings.TrimSpace(filled),

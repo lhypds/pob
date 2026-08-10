@@ -326,3 +326,28 @@ func TestRecordedWindowFrameWinsOverTheSettingsCopy(t *testing.T) {
 		t.Error("window_x is still in settings.json, want it dropped either way")
 	}
 }
+
+// image_scale is the picture as taken unless someone asks for less of it, and
+// a hand-edited file asking for more, or for none, is clamped rather than
+// refused — a 0 would send the model nothing to read.
+func TestImageScaleIsWholeByDefaultAndClamped(t *testing.T) {
+	root := t.TempDir()
+	if got := New(root, "pb-aaaa").ImageScale(); got != DefaultImageScale {
+		t.Errorf("ImageScale() = %v on a fresh machine, want %v", got, DefaultImageScale)
+	}
+
+	for _, c := range []struct{ set, want any }{
+		{0.5, 0.5},
+		{"0.25", 0.25},
+		{2, 1.0},
+		{0, MinImageScale},
+		{-1, MinImageScale},
+		{"half", DefaultImageScale},
+	} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "settings.json"), map[string]any{"image_scale": c.set})
+		if got := New(dir, "pb-aaaa").ImageScale(); got != c.want {
+			t.Errorf("ImageScale() = %v with image_scale %v, want %v", got, c.set, c.want)
+		}
+	}
+}

@@ -148,6 +148,14 @@ Coordinates come back as screenshot pixels, and `move` and `drag` are relative t
 is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
 not a position on the screen.
 
+They are screenshot pixels whatever `image_scale` is set to (see [Settings](06_Settings.md)). A
+scale below `1` shows the model a smaller picture, and it answers in that picture's pixels; Pob
+grows the answer back before it goes into the macro, so a `move` filled from a half-size screenshot
+and one filled from a whole one write the same line. Only the part the model wrote is grown — a
+number already in the statement was never in the model's coordinates — and only where the numbers
+are distances across the picture: `move`, `drag` and `take_screenshot`. `sleep` is milliseconds and
+`scroll` is a wheel delta, so neither is touched.
+
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to
 and skipped, like any other line that cannot be read. Nothing is retried: the macro goes on to the
 next statement. A psl run that fails outright — no model configured, no answer — leaves the statement
@@ -310,7 +318,7 @@ See also
 
 - [UI](02_UI.md) — the PSL, record and Execute buttons
 - [Key names](04_Keys.md) — what `keyPress` accepts
-- [Settings](06_Settings.md) — `macro_default_delay`, and where the `psl` executable is
+- [Settings](06_Settings.md) — `macro_default_delay`, `image_scale`, and where the `psl` executable is
 - [psl](https://github.com/pob/psl) — the compiler, its `.pslrc`, and the models it is pointed at
 - [Logs](05_Logs.md) — the session a run writes, and where each slot the AI filled is kept
 - [CLI](07_CLI.md) — `pob macro` runs `macro.psl` from the terminal
