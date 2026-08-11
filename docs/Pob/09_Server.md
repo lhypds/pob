@@ -54,7 +54,7 @@ curl -o now.png                         http://192.168.1.40:8033/pb-a703/
   what makes a watchable frame rate possible. See
   [Operation API](10_Operation%20API.md#asking-for-a-cheaper-frame).
 
-Three pages sit around it, all part of the [Web UI](12_Web UI.md):
+Three pages sit around it, all part of the [Web UI](12_Web%20UI.md):
 
 - **`/`** — the index. What is running here — instance, root, psl, session,
   MCP, server — and the machine's own address to go on with. The bare root is
@@ -82,6 +82,6 @@ See also
 --------
 
 - [Operation API](10_Operation%20API.md) — the command grammar
-- [Web UI](12_Web UI.md) — the pages this server hosts
+- [Web UI](12_Web%20UI.md) — the pages this server hosts
 - [Pob Keyboard](13_Keyboard.md) — a desktop client for the same API
 - [Settings](06_Settings.md) — `server` and `server_port`

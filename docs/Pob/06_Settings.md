@@ -25,9 +25,9 @@ the rest are left where they are to be copied across by hand.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a macro runs to its end (e.g. `afplay /System/Library/Sounds/Morse.aiff`). A stopped run does not fire it |
-| `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web UI.md) down with it |
+| `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web%20UI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
-| `webui_view_fps` | `5` | How often the [Web UI](12_Web UI.md)'s view page refetches the picture, in frames per second (`0.1`–`30`, clamped). Every frame is a screen capture on this machine, which is why the rate is set here and not on the page |
+| `webui_view_fps` | `5` | How often the [Web UI](12_Web%20UI.md)'s view page refetches the picture, in frames per second (`0.1`–`30`, clamped). Every frame is a screen capture on this machine, which is why the rate is set here and not on the page |
 | `mcp` | `true` | Run the [MCP server](08_MCP.md), which starts with the instance so a client that has Pob registered finds it there. `false` keeps the port closed |
 | `mcp_port` | `8032` | The port [MCP](08_MCP.md) clients reach this machine through — the one written into their config, so changing it means changing theirs. `POB_MCP_PORT` overrides it |
 | `mcp_host` | `0.0.0.0` | The interface the [MCP server](08_MCP.md) binds. Every one of them by default, so a client on another machine reaches it — loopback keeps working alongside. `127.0.0.1` closes it to this machine. `POB_MCP_HOST` overrides it |

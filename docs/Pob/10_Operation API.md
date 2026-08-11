@@ -4,7 +4,7 @@ Operation API
 
 The API that *operates* the machine — pointer, keys, text. The [Pob
 server](09_Server.md) takes its commands as `text/plain` POSTs, which is what the
-[Web UI](12_Web UI.md) sends and what makes the same thing scriptable — anything
+[Web UI](12_Web%20UI.md) sends and what makes the same thing scriptable — anything
 that can send an HTTP request can move the pointer and type on the machine.
 
 (The other one is the [Control API](11_Control%20API.md), which drives the *app* —
@@ -40,11 +40,11 @@ That address is the machine itself, so the method says what you want of it:
 |--------|------|-----------------|
 | `POST` | `/<instance-id>/` | Runs a command — the rest of this page |
 | `GET` | `/<instance-id>/` | A PNG of what the machine looks like right now, virtual cursor included — or something cheaper, on request |
-| `GET` | `/<instance-id>/control` | The [Web UI](12_Web UI.md) control page — text field, keyboard mirror, trackpad |
-| `GET` | `/<instance-id>/view` | The [Web UI](12_Web UI.md) view page, which refetches that frame on a clock you can set |
+| `GET` | `/<instance-id>/control` | The [Web UI](12_Web%20UI.md) control page — text field, keyboard mirror, trackpad |
+| `GET` | `/<instance-id>/view` | The [Web UI](12_Web%20UI.md) view page, which refetches that frame on a clock you can set |
 | `GET` | `/<instance-id>/status` | What is running here, as JSON — the same facts `pob status` prints |
 | `GET` | `/<instance-id>/pob.js` | The script both pages drive the machine with |
-| `GET` | `/` | The [Web UI](12_Web UI.md) index page: those facts, and the address above to go on with |
+| `GET` | `/` | The [Web UI](12_Web%20UI.md) index page: those facts, and the address above to go on with |
 
 The pages answer without the instance in the path as well —
 `http://192.168.1.40:8033/control` is the same page. A **GET** on the bare root
@@ -121,7 +121,7 @@ unchanged. One command per request body:
 
 `MOVE` is a delta, the way the board sends one. **`MOVE_TO` is absolute**, in
 screenshot pixels — the same coordinates the [MCP tools](08_MCP.md) use, and
-the ones a click on the [view page](12_Web UI.md) reads straight off the
+the ones a click on the [view page](12_Web%20UI.md) reads straight off the
 picture. It is the one action the board does not have, so nothing that speaks
 its protocol will ever send it.
 
@@ -156,7 +156,7 @@ See also
 --------
 
 - [Pob Server](09_Server.md) — what serves these commands
-- [Web UI](12_Web UI.md) — the page that sends them
+- [Web UI](12_Web%20UI.md) — the page that sends them
 - [Pob Keyboard](13_Keyboard.md) — a desktop client for this API
 - [Key names](04_Keys.md) — what `keycode` accepts
 - [MCP Server](08_MCP.md) — the same actions as MCP tools

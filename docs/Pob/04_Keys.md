@@ -5,7 +5,7 @@ Key names
 `keyPress` / `key_press` takes one key, optionally preceded by `+`-joined
 modifiers: `ctrl+alt+shift+f5`. A name is a *position* on the keyboard rather
 than a character, so the machine's own layout decides what it produces — which
-is what lets the [Web UI](12_Web UI.md) and [Pob Keyboard](13_Keyboard.md) forward
+is what lets the [Web UI](12_Web%20UI.md) and [Pob Keyboard](13_Keyboard.md) forward
 real keypresses verbatim.
 
 | Modifier | Meaning |
