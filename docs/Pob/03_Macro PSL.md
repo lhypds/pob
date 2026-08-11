@@ -3,7 +3,7 @@ Macro PSL
 =========
 
 A macro is a sequence of actions Pob plays back — recorded from what you do, or written by hand.
-Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — PSL — is
+Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — [PSL](https://github.com/lhypds/psl) — is
 what that file is written in.
 
 ```
@@ -19,7 +19,7 @@ keyPress("return")
 
 One statement per line, run top to bottom. Anywhere a value would go, a statement can hold a prompt
 instead — `:: … ::`, an AI slot — and what the AI answers is what that part of the line then says.
-The slots are filled by running [psl](https://github.com/lhypds/psl), the compiler the language has
+The slots are filled by running PSL, the compiler the language has
 of its own, which is where the models and the API keys live.
 
 The language has documentation of its own, a page per part of it. Please refer to
