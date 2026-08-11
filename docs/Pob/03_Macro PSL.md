@@ -23,7 +23,7 @@ The slots are filled by running [psl](https://github.com/lhypds/psl), the compil
 of its own, which is where the models and the API keys live.
 
 The language has documentation of its own, a page per part of it. Please refer to
-**[Macro PSL](../Macro%20PSL/01_Macro PSL.md)** for all of it:
+**[Macro PSL](../Macro%20PSL/01_Macro%20PSL.md)** for all of it:
 
 
 See also
