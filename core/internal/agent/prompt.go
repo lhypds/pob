@@ -12,7 +12,7 @@ package agent
 // Unsaid, `move(dx, dy)` reads as a position on screen — the one misreading that
 // puts the cursor somewhere else on every statement that follows.
 //
-// It is the Calls table of docs/03_Macro PSL.md and the switch in runMacroAction
+// It is the Calls table of docs/Macro PSL/06_Calls.md and the switch in runMacroAction
 // said a third way, and moves when they do: a call this leaves out is one the
 // model has no reason to use, and one it invents is a line Pob logs and skips.
 const macroPrompt = `This file is a Pob macro: one statement per line, replayed top to bottom to

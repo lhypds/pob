@@ -4,8 +4,8 @@ Development
 
 Requirements: Go, plus the platform shell's toolchain — Xcode Command Line
 Tools (Swift) on macOS, GTK 3 development libraries on Linux (see
-[linux-x11/README.md](../linux-x11/README.md)), or the .NET 8 SDK on Windows
-(see [win/README.md](../win/README.md)).
+[linux-x11/README.md](../../linux-x11/README.md)), or the .NET 8 SDK on Windows
+(see [win/README.md](../../win/README.md)).
 
 ```
 ./setup.sh      # select your OS (recorded in the SYSTEM file), then

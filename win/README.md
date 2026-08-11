@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   # %USERPROFILE
 Everything is per-user, so there is no administrator prompt: the `PATH` entry
 is the user's, and it points at the `Helpers` folder holding the CLI — `pob`
 to see what is running, `pob launch` to start the app. Open a new terminal
-afterwards for the `PATH` to take. See [CLI](../docs/07_CLI.md).
+afterwards for the `PATH` to take. See [CLI](../docs/Pob/07_CLI.md).
 
 
 Run from source (on Windows)
@@ -105,7 +105,7 @@ Fusion guest is the equivalent, and it is scriptable:
 ./win/vm_deploy.sh   # build arm64, start the VM headless, install, restart Pob
 ```
 
-[Windows VM](../docs/15_VM.md) has the guest setup that matters — autologon, no
+[Windows VM](../docs/Pob/15_VM.md) has the guest setup that matters — autologon, no
 screen lock, and why the app has to be started by the Task Scheduler rather
 than over SSH.
 

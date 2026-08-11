@@ -22,8 +22,8 @@ It allows AI to:
 
 The same bridge works for people, not only for AI: every instance runs a
 server, so there is a web page you can open on your phone, and a desktop app
-with a full-size keyboard and a trackpad — see [Pob Server](docs/09_Server.md),
-[Web UI](docs/12_Web%20UI.md) and [Pob Keyboard](docs/13_Keyboard.md).
+with a full-size keyboard and a trackpad — see [Pob Server](docs/Pob/09_Server.md),
+[Web UI](docs/Pob/12_Web%20UI.md) and [Pob Keyboard](docs/Pob/13_Keyboard.md).
 
 
 Getting started
@@ -45,12 +45,12 @@ powershell -ExecutionPolicy Bypass -File install.ps1      # Windows
 ```
 
 On macOS drag `Pob.app` to Applications and use **Pob → Install 'pob'
-Command…** in the app menu. See [CLI](docs/07_CLI.md) for the details of all
+Command…** in the app menu. See [CLI](docs/Pob/07_CLI.md) for the details of all
 three.
 
 Press Record in the toolbar, do the thing once, and press Execute to have it
 done again — the actions land in the instance's `macro.psl`, a
-[macro](docs/03_Macro%20PSL.md) you can then open and edit. Anywhere the macro
+[macro](docs/Pob/03_Macro%20PSL.md) you can then open and edit. Anywhere the macro
 should read the screen instead of repeating a value, write a `:: … ::` in its
 place and the AI fills it in as the macro runs — a coordinate, a piece of text,
 a true or false. Those are filled by [psl](https://github.com/lhypds/psl), the
@@ -112,7 +112,7 @@ sort of thing that otherwise leaves the cursor where it was and the click under
 it somewhere nobody chose. `pob macro --check` is the same reading from the
 terminal, and works with Pob closed.
 
-See [Macro PSL](docs/03_Macro%20PSL.md) for every statement, what a slot has to
+See [Macro PSL](docs/Pob/03_Macro%20PSL.md) for every statement, what a slot has to
 come back as, and what happens to a line that cannot be read.
 
 
@@ -121,18 +121,18 @@ Documentation
 
 | Doc | What's in it |
 |-----|--------------|
-| [Architecture](docs/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
-| [UI](docs/02_UI.md) | The window and every toolbar button |
-| [Macro PSL](docs/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `:: … ::` slots psl fills in as it runs |
-| [Key names](docs/04_Keys.md) | What `keyPress` / `key_press` accepts |
-| [Logs](docs/05_Logs.md) | The `~/.pob/` tree: the instance directory and its sessions |
-| [Settings](docs/06_Settings.md) | Every key in `settings.json` |
-| [CLI](docs/07_CLI.md) | The `pob` command |
-| [MCP Server](docs/08_MCP.md) | Driving Pob from Claude Code, Claude Desktop, Gemini CLI |
-| [Pob Server](docs/09_Server.md) | The server every instance runs, and its address |
-| [Operation API](docs/10_Operation%20API.md) | The HTTP command grammar for driving the machine |
-| [Control API](docs/11_Control%20API.md) | The localhost API the `pob` CLI drives the app with |
-| [Web UI](docs/12_Web%20UI.md) | The remote control page, for a phone |
-| [Pob Keyboard](docs/13_Keyboard.md) | The desktop keyboard and trackpad client |
-| [Development](docs/14_Development.md) | Building, the dev scripts, and cutting a release |
-| [Windows VM](docs/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |
+| [Architecture](docs/Pob/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
+| [UI](docs/Pob/02_UI.md) | The window and every toolbar button |
+| [Macro PSL](docs/Pob/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `:: … ::` slots psl fills in as it runs |
+| [Key names](docs/Pob/04_Keys.md) | What `keyPress` / `key_press` accepts |
+| [Logs](docs/Pob/05_Logs.md) | The `~/.pob/` tree: the instance directory and its sessions |
+| [Settings](docs/Pob/06_Settings.md) | Every key in `settings.json` |
+| [CLI](docs/Pob/07_CLI.md) | The `pob` command |
+| [MCP Server](docs/Pob/08_MCP.md) | Driving Pob from Claude Code, Claude Desktop, Gemini CLI |
+| [Pob Server](docs/Pob/09_Server.md) | The server every instance runs, and its address |
+| [Operation API](docs/Pob/10_Operation%20API.md) | The HTTP command grammar for driving the machine |
+| [Control API](docs/Pob/11_Control%20API.md) | The localhost API the `pob` CLI drives the app with |
+| [Web UI](docs/Pob/12_Web%20UI.md) | The remote control page, for a phone |
+| [Pob Keyboard](docs/Pob/13_Keyboard.md) | The desktop keyboard and trackpad client |
+| [Development](docs/Pob/14_Development.md) | Building, the dev scripts, and cutting a release |
+| [Windows VM](docs/Pob/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |

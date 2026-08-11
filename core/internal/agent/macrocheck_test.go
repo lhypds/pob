@@ -152,7 +152,7 @@ STOP
 halt
 `,
 		`there is no statement called "clik"`,
-		`there is no statement called "Move" — see the Calls table in docs/03_Macro PSL.md. Did you mean move? Names are case-sensitive`,
+		`there is no statement called "Move" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean move? Names are case-sensitive`,
 		`"STOP" is not a statement — stop is spelled lowercase`,
 		`"halt" is not a statement — a call is name(argument, argument)`,
 	)

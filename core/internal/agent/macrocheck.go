@@ -214,7 +214,7 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 
 	shape, known := macroVocabulary[name]
 	if !known {
-		return problemf(line, "there is no statement called %q — see the Calls table in docs/03_Macro PSL.md%s", name, didYouMean(name)), true
+		return problemf(line, "there is no statement called %q — see the Calls table in docs/Macro PSL/06_Calls.md%s", name, didYouMean(name)), true
 	}
 
 	// A slot written where a whole argument goes can come back as more than one of
@@ -252,7 +252,7 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 // macroCallShape is what a call has to be written like: how many arguments it
 // takes, and whether those arguments are numbers.
 //
-// This is the Calls table of docs/03_Macro PSL.md, the switch in runMacroAction
+// This is the Calls table of docs/Macro PSL/06_Calls.md, the switch in runMacroAction
 // and the vocabulary in macroPrompt said a fourth way, and moves when they do. A
 // call missing from here is one the check calls unknown and refuses to run; one
 // whose shape is wrong here is a working statement the check would not let past.

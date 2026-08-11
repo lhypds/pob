@@ -99,7 +99,7 @@ sudo ./install.sh         # /opt/pob + /usr/local/bin/pob
 
 The command that lands on the `PATH` is the CLI from `Helpers/` — `pob` to
 see what is running, `pob launch` to start the app. See
-[CLI](../docs/07_CLI.md).
+[CLI](../docs/Pob/07_CLI.md).
 
 On first run the working files (`settings.json`, `macro.psl`, `logs/`,
 `app.log`) are created in `~/.pob/`. A macro with a `:: … ::` slot
