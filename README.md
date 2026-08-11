@@ -12,7 +12,7 @@ Design
 
 It perceives the application through the window that contains it and interacts with the application.
 
-<img width="839" height="762" alt="image" src="https://github.com/user-attachments/assets/e74edfe9-7bd7-40b1-a403-d0391477d2d8" />
+<img width="560" alt="image" src="https://github.com/user-attachments/assets/64db922a-4104-43c7-aa33-6511bbe484c9" />
 
 Features:
 
