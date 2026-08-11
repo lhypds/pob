@@ -51,6 +51,13 @@ Command, in the app menu.
 Macro PSL
 ---------
 
+To operate the application, Pob uses an AI native language called PSL (Prompt Script Language).  
+
+How a macro runs:  
+Pob executes it line by line -> reaches an AI slot -> psl fills the slot in -> execution continues
+
+How it looks like (macro.psl):
+
 ```
 // Reply to every unread message, then sign out.
 move(398, 915)
@@ -66,9 +73,7 @@ if (:: a chat window is open ::) {
 call("../sign-out.psl")
 ```
 
-Refer:  
-[Macro PSL](docs/Macro%20PSL/01_Macro%20PSL.md)  
-[PSL](https://github.com/lhypds/psl)  
+Refer: [PSL](https://github.com/lhypds/psl) and [Macro PSL](docs/Macro%20PSL/01_Macro%20PSL.md)  
 
 
 Documentation
