@@ -22,7 +22,7 @@ A loop that should stop when the screen says so takes a condition in front of th
 
 ```
 loop (:: the window is still open ::, 5) {
-    move(:: the x offset to the Close button ::, 0)
+    move(:: the close button ::)
     click()
 }
 ```
