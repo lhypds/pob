@@ -225,24 +225,31 @@ func TestParseMacroStopWantsItsParentheses(t *testing.T) {
 
 // A line of the macro and a line psl filled to the same text are the same
 // statement — the two go through one reader so that they cannot come apart.
+//
+// quoted is the one thing the reader knows that the values it hands back do not:
+// the quotes are off them by then, and `sleep("10m")` and `sleep(10m)` are the
+// same three characters afterwards.
 func TestParseMacroLineReadsEveryStatement(t *testing.T) {
 	tests := []struct {
-		line string
-		name string
-		ok   bool
+		line   string
+		name   string
+		quoted bool
+		ok     bool
 	}{
-		{"stop()", "stop", true},
-		{"stop", "", false},
-		{"STOP", "", false},
-		{"stop now", "", false},
-		{"sleep(500)", "sleep", true},
-		{`call("../shared.psl")`, "call", true},
-		{"click()", "click", true},
+		{"stop()", "stop", false, true},
+		{"stop", "", false, false},
+		{"STOP", "", false, false},
+		{"stop now", "", false, false},
+		{"sleep(3s)", "sleep", false, true},
+		{`sleep("3s")`, "sleep", true, true},
+		{`call("../shared.psl")`, "call", true, true},
+		{"click()", "click", false, true},
+		{"move(1, 2)", "move", false, true},
 	}
 	for _, tt := range tests {
-		name, _, ok := parseMacroLine(tt.line)
-		if ok != tt.ok || name != tt.name {
-			t.Errorf("parseMacroLine(%q) = (%q, %v), want (%q, %v)", tt.line, name, ok, tt.name, tt.ok)
+		name, _, quoted, ok := parseMacroLine(tt.line)
+		if ok != tt.ok || name != tt.name || quoted != tt.quoted {
+			t.Errorf("parseMacroLine(%q) = (%q, quoted %v, %v), want (%q, quoted %v, %v)", tt.line, name, quoted, ok, tt.name, tt.quoted, tt.ok)
 		}
 	}
 }
@@ -276,7 +283,10 @@ func TestMacroTime(t *testing.T) {
 		{"0", 0, false},
 
 		// And a time is nothing else: no unit that is not one, no space in the
-		// middle of it, and nothing below none at all.
+		// middle of it, and nothing below none at all. The quotes reach here only
+		// from the check, which reads an argument as written; the replay is told
+		// by the parse — see TestParseMacroLineReadsEveryStatement.
+		{`"10m"`, 0, false},
 		{"soon", 0, false},
 		{"10 m", 0, false},
 		{"10 minutes", 0, false},
@@ -535,7 +545,7 @@ func TestFilledStatementsParse(t *testing.T) {
 		{`keyPress("cmd+v")`, "keyPress", []string{"cmd+v"}},
 	}
 	for _, tt := range tests {
-		name, args, ok := parseMacroLine(tt.filled)
+		name, args, _, ok := parseMacroLine(tt.filled)
 		if !ok {
 			t.Errorf("parseMacroLine(%q) did not read as a statement", tt.filled)
 			continue

@@ -221,6 +221,20 @@ func TestCallOfAMissingFileIsSkipped(t *testing.T) {
 	}
 }
 
+// The replay refuses a quoted time the same way the check does, which is what
+// keeps the two readings from coming apart: a statement psl filled with `"5ms"`
+// is skipped rather than waited out, because the check never saw that line and
+// something has to.
+func TestAQuotedTimeIsSkippedByTheReplay(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, "sleep(1ms)\nsleep(\"5ms\")\nsleep(2ms)")
+
+	checkRan(t, m.ran(t), []string{"1", "2"})
+	if !m.logged(t, "a time is not a string") {
+		t.Error("the log does not say why the quoted time was skipped")
+	}
+}
+
 // The bound on a chain of files that each call a new one, which nothing else
 // catches: every file is different, so none of them is already running.
 func TestCallStopsAtTheDepthBound(t *testing.T) {

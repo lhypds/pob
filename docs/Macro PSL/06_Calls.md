@@ -20,8 +20,10 @@ them one after another adds them up: `10h5m` is ten hours and five minutes. The 
 unit may be fractional, so `0.5s` and `500ms` are the same time said two ways.
 
 The unit is what makes a time a time, and it is never left off: `sleep(500)` is a number where a
-time goes, and the check says so rather than guessing which unit was meant. `sleep` is the only call
-that takes one.
+time goes, and the check says so rather than guessing which unit was meant. Nor does a time go in
+quotes — `sleep("10m")` is a string, and a string is not a time however much it looks like one.
+Both are refused before the run, and both are refused again if a slot fills to one. `sleep` is the
+only call that takes a time.
 
 Whitespace around a statement and between arguments is ignored, which is what lets an `if` body be
 indented.

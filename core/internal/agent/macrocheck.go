@@ -242,7 +242,14 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 		}
 		switch {
 		case shape.isTime:
-			if _, ok := macroTime(unquoted(arg)); !ok {
+			// The check reads the argument as it was written, quotes and all, which
+			// is what lets it tell a time from a string that looks like one. The
+			// replay is told the same thing by the parse — see parseMacroLine.
+			if inner, quoted := strings.CutPrefix(arg, `"`); quoted {
+				inner = strings.TrimSuffix(inner, `"`)
+				return problemf(line, "%s was written with %s — a time is not a string, so it goes in without the quotes: %s", name, truncate(arg, 42), truncate(inner, 40)), true
+			}
+			if _, ok := macroTime(arg); !ok {
 				return problemf(line, "%s was written with %q, which is not %s", name, truncate(arg, 40), macroTimeWants), true
 			}
 		case shape.numeric:
@@ -252,22 +259,6 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 		}
 	}
 	return macroProblem{}, false
-}
-
-// unquoted is the value a written argument holds, for the checks that read one.
-// A string argument is quoted where the check sees it — the parse has not been
-// over it yet — and `"10m"` is the same time as the line replaying it will wait,
-// since the parse takes the quotes off before the replay reads it.
-//
-// A quote that opens and never closes is left as it was written, and is then not
-// a length of time or anything else the check can read.
-func unquoted(arg string) string {
-	if inner, ok := strings.CutPrefix(arg, `"`); ok {
-		if inner, ok := strings.CutSuffix(inner, `"`); ok {
-			return inner
-		}
-	}
-	return arg
 }
 
 // macroCallShape is what a call has to be written like: how many arguments it

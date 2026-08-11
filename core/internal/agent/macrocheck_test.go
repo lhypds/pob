@@ -145,6 +145,18 @@ sleep(:: how long the upload takes ::)
 	)
 }
 
+// A time in quotes is a string, and a string is not a time. It reads as one to
+// anybody looking at it, which is the reason to refuse it here rather than
+// quietly wait ten minutes on a statement whose author wrote a string.
+func TestCheckCatchesAQuotedTime(t *testing.T) {
+	wantProblems(t, `sleep("10m")
+sleep(10m)
+typeText("10m")
+`,
+		`line 1: sleep was written with "10m" — a time is not a string, so it goes in without the quotes: 10m`,
+	)
+}
+
 func TestCheckCatchesArgumentsThatAreNotNumbers(t *testing.T) {
 	wantProblems(t, `scroll(a, b)
 move(1, "2")

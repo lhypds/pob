@@ -27,6 +27,11 @@ type macroNode struct {
 	action string   // action call name; empty on a block or an unfilled statement
 	args   []string // action arguments
 
+	// quoted says the arguments were written as one double-quoted string, which
+	// the values themselves no longer show once the quotes are off. It is what
+	// tells a call that takes a time it was handed a string instead.
+	quoted bool
+
 	// slots says the statement holds at least one :: … :: and so cannot be read
 	// until the replay reaches it — action and args are empty until then.
 	slots bool
@@ -391,8 +396,8 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 			continue
 		}
 
-		if name, args, ok := r.resolveMacroAction(ctx, run, node); ok {
-			r.runMacroAction(ctx, run, name, args)
+		if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
+			r.runMacroAction(ctx, run, name, args, quoted)
 		}
 		// A no-op when the statement filled: what it spends is the slot of one
 		// that did not, which the replay is nonetheless done with.
@@ -467,24 +472,24 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 // resolveMacroAction fills the statement's slots, if it has any, and reads the
 // result as a call. A statement that cannot be read once its slots are filled
 // is logged and skipped, the way a bad line always has been.
-func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node macroNode) (string, []string, bool) {
+func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node macroNode) (string, []string, bool, bool) {
 	if !node.slots {
-		return node.action, node.args, true
+		return node.action, node.args, node.quoted, true
 	}
 
 	filled, ok := r.fillStatement(ctx, run, node)
 	if !ok {
-		return "", nil, false
+		return "", nil, false, false
 	}
 
 	// The comment on the end of the statement came back with it, and a statement
 	// is read the same way whether it was written out or filled in.
-	name, args, ok := parseMacroLine(strings.TrimSpace(stripLine(filled)))
+	name, args, quoted, ok := parseMacroLine(strings.TrimSpace(stripLine(filled)))
 	if !ok {
 		applog.Logf("[%s] Macro %s: filled to %q, which does not read as a statement — skipping", run.sessionID, run.where(node.line), filled)
-		return "", nil, false
+		return "", nil, false, false
 	}
-	return name, args, true
+	return name, args, quoted, true
 }
 
 // evalMacroCondition works out whether a block's condition holds — an if's, or
@@ -718,7 +723,7 @@ func extractLine(before, after string, line int) (string, bool) {
 	return strings.Join(afterLines[line:end], "\n"), true
 }
 
-func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string, args []string) {
+func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string, args []string, quoted bool) {
 	sessionID := run.sessionID
 	num := func(i int) (float64, bool) {
 		if i >= len(args) {
@@ -800,6 +805,10 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 
 	case "sleep":
 		if len(args) == 0 {
+			return
+		}
+		if quoted {
+			applog.Logf("[%s] Macro sleep was written with %q — a time is not a string, so it goes in without the quotes: %s — skipping", sessionID, truncate(args[0], 40), truncate(args[0], 40))
 			return
 		}
 		d, ok := macroTime(args[0])
@@ -979,11 +988,12 @@ const macroTimeWants = "a time — a number with its unit on the end: 250ms, 3s,
 // exactly the line this refuses so that the check can name it instead of the
 // replay quietly waiting eight minutes.
 //
-// A quoted one reads the same, because the parse takes the quotes off before
-// anything reads the value: `sleep("10m")` is the same statement as `sleep(10m)`.
-// It is not how the language is written and not what the docs teach, but a model
-// answering a slot sometimes quotes what it writes, and refusing that would cost
-// a run for nothing.
+// A quoted one is a string and not a time, and is refused as one: `sleep("10m")`
+// is a statement the check stops the run over, and a slot filled with `"10m"` is
+// a statement the replay logs and skips. The quotes come off in the parse, so
+// what carries that as far as here is parseMacroLine's `quoted` — this reads the
+// value, and whether the value was a string is not a question the value can
+// answer.
 //
 // Nothing negative: a run cannot wait less than no time.
 func macroTime(arg string) (time.Duration, bool) {
@@ -1102,7 +1112,7 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 			continue
 		}
 
-		name, args, ok := parseMacroLine(trimmed)
+		name, args, quoted, ok := parseMacroLine(trimmed)
 		if !ok {
 			// Why it is not one is checkStatement's to say: it reads the line
 			// against the vocabulary, which is more than the parse knows about.
@@ -1111,7 +1121,7 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 			}
 			continue
 		}
-		nodes = append(nodes, macroNode{raw: trimmed, action: name, args: args, line: lineNo})
+		nodes = append(nodes, macroNode{raw: trimmed, action: name, args: args, quoted: quoted, line: lineNo})
 	}
 
 	if depth > 0 {
@@ -1262,19 +1272,25 @@ func cutParens(s string) (string, bool) {
 // Every statement is this shape, `stop()` included, so a line of the macro and a
 // line psl filled to the same text arrive at the same statement by going through
 // the one reader.
-func parseMacroLine(line string) (string, []string, bool) {
+//
+// quoted says the argument list was one double-quoted string, which is the only
+// thing about a value that the parse knows and the value itself does not: the
+// quotes come off here, and `"10m"` and `10m` are the same three characters
+// afterwards. A time is not a string — see macroTime — so the one statement that
+// takes one is told which it was given.
+func parseMacroLine(line string) (name string, args []string, quoted, ok bool) {
 	openParen := strings.Index(line, "(")
 	if openParen < 0 || !strings.HasSuffix(line, ")") {
-		return "", nil, false
+		return "", nil, false, false
 	}
-	name := strings.TrimSpace(line[:openParen])
+	name = strings.TrimSpace(line[:openParen])
 	if name == "" {
-		return "", nil, false
+		return "", nil, false, false
 	}
 
 	argsStr := strings.TrimSpace(line[openParen+1 : len(line)-1])
 	if argsStr == "" {
-		return name, []string{}, true
+		return name, []string{}, false, true
 	}
 
 	if strings.HasPrefix(argsStr, "\"") {
@@ -1297,15 +1313,15 @@ func parseMacroLine(line string) (string, []string, bool) {
 				i++
 			}
 		}
-		return name, []string{result.String()}, true
+		return name, []string{result.String()}, true, true
 	}
 
 	parts := strings.Split(argsStr, ",")
-	args := make([]string, len(parts))
+	args = make([]string, len(parts))
 	for i, p := range parts {
 		args[i] = strings.TrimSpace(p)
 	}
-	return name, args, true
+	return name, args, false, true
 }
 
 // hasMacroSlot reports whether any statement holds a :: … :: slot, at any depth.
@@ -1378,7 +1394,7 @@ func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) boo
 func parseCallLines(text string) []macroNode {
 	var nodes []macroNode
 	for _, line := range codeLines(text) {
-		name, args, ok := parseMacroLine(strings.TrimSpace(line))
+		name, args, _, ok := parseMacroLine(strings.TrimSpace(line))
 		if ok && name == macroCallKeyword {
 			nodes = append(nodes, macroNode{action: name, args: args})
 		}

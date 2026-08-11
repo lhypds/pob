@@ -230,7 +230,7 @@ func TestAFilledStatementWithACommentReadsBack(t *testing.T) {
 		{`stop()   // nothing below this is wanted`, "stop", nil},
 	}
 	for _, tt := range tests {
-		name, args, ok := parseMacroLine(strings.TrimSpace(stripLine(tt.filled)))
+		name, args, _, ok := parseMacroLine(strings.TrimSpace(stripLine(tt.filled)))
 		if !ok {
 			t.Errorf("%q did not read as a statement", tt.filled)
 			continue
