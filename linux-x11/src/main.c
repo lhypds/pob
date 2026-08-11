@@ -280,7 +280,7 @@ void app_update_window_lock(void) {
 }
 
 // Sets the window lock and syncs the toolbar button (icon, tooltip).
-static void set_locked(gboolean on) {
+static void apply_locked(gboolean on) {
     if (g_state.is_locked == on) return;
     g_state.is_locked = on;
     set_button_icon(g_state.lock_btn, on ? ICONS_LOCKED : ICONS_UNLOCKED);
@@ -288,6 +288,15 @@ static void set_locked(gboolean on) {
                                 on ? "Window Locked (click to unlock)"
                                    : "Window Unlocked (click to lock)");
     app_update_window_lock();
+}
+
+// The lock as the instance now stands, written to instance.json so the next
+// run starts the way this one was left: a window locked to hold a macro's
+// coordinates would otherwise come back movable and have to be locked again.
+static void set_locked(gboolean on) {
+    if (g_state.is_locked == on) return;
+    apply_locked(on);
+    settings_save_window_locked(on);
 }
 
 // Sets click-through and syncs the toolbar button (icon, tooltip, shape).
@@ -1037,6 +1046,10 @@ static void on_activate(GtkApplication *app, gpointer data) {
         gtk_window_set_default_size(g_state.window, 600, 400);
         gtk_window_set_position(g_state.window, GTK_WIN_POS_CENTER);
     }
+
+    // The lock comes back with the frame: applied rather than set, since it is
+    // what instance.json already says.
+    apply_locked(settings_get_window_locked());
 
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);

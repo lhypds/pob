@@ -44,6 +44,11 @@ public partial class App : Application
             return;
         }
 
+        // The lock the window was left with, read before the toolbar is built
+        // so its button starts on the right icon. An instance set up for a
+        // macro comes back locked rather than movable.
+        AppState.IsLocked = SettingsService.GetWindowLocked();
+
         var toolbar = new ToolbarWindow();
         var overlay = new OverlayWindow();
         _toolbar = toolbar;

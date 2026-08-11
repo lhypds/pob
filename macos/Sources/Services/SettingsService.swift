@@ -57,9 +57,9 @@ class SettingsService {
 
     /// What this instance is, rather than how it is configured: its id, the
     /// name `pob new` gave it, when it last ran, and — while it runs — the pid
-    /// and control port. The Go core owns it; the window frame is the shell's
-    /// one entry, since where the window was is a property of the machine and
-    /// not something anybody sets.
+    /// and control port. The Go core owns it; the window frame and its lock are
+    /// the shell's entries, since where the window was and whether it can be
+    /// moved are properties of the machine and not something anybody sets.
     private var instanceFile: URL {
         instanceDir.appendingPathComponent("instance.json")
     }
@@ -211,6 +211,28 @@ class SettingsService {
         json["window_y"] = Double(frame.origin.y)
         json["window_width"] = Double(frame.size.width)
         json["window_height"] = Double(frame.size.height)
+        writeInstanceFile(json)
+    }
+
+    /// Whether the window was left locked, from instance.json. It belongs
+    /// beside the frame: the lock is what keeps the frame still, so a run that
+    /// restored the frame but not the lock would come back movable — and a
+    /// window locked to hold a macro's coordinates would have to be locked
+    /// again by hand every launch. Unlocked is the answer for an instance that
+    /// has never recorded one.
+    func getWindowLocked() -> Bool {
+        loadJSON(instanceFile)["is_locked"] as? Bool ?? false
+    }
+
+    func saveWindowLocked(_ locked: Bool) {
+        var json = loadJSON(instanceFile)
+        json["is_locked"] = locked
+        writeInstanceFile(json)
+    }
+
+    /// Writes instance.json whole, so everything already in it — the id, the
+    /// name, the times the core keeps — survives the shell's own entries.
+    private func writeInstanceFile(_ json: [String: Any]) {
         if let string = serializeJSON(json) {
             try? string.write(to: instanceFile, atomically: true, encoding: .utf8)
         }

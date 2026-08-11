@@ -254,10 +254,12 @@ gboolean settings_get_window_frame(int *x, int *y, int *w, int *h) {
     return ok;
 }
 
-void settings_save_window_frame(int x, int y, int w, int h) {
-    gchar *path = instance_file_path();
-
-    // Preserve every existing key, only replace the frame values.
+// Opens a rewrite of instance.json holding every key it already has except
+// `skip` — a NULL-terminated list of the ones the caller is about to write.
+// The rest of the file is the core's: the id, the name, the times it keeps, and
+// the port it advertises while it runs, none of which the shell may drop.
+// The object is left open for those members; finish_instance_write closes it.
+static JsonBuilder *begin_instance_write(const char *const *skip, JsonParser **parser_out) {
     JsonParser *parser = NULL;
     JsonObject *existing = load_instance(&parser);
 
@@ -267,24 +269,23 @@ void settings_save_window_frame(int x, int y, int w, int h) {
         GList *members = json_object_get_members(existing);
         for (GList *l = members; l; l = l->next) {
             const gchar *key = l->data;
-            if (g_str_equal(key, "window_x") || g_str_equal(key, "window_y") ||
-                g_str_equal(key, "window_width") || g_str_equal(key, "window_height"))
-                continue;
+            gboolean replaced = FALSE;
+            for (const char *const *s = skip; *s && !replaced; s++)
+                replaced = g_str_equal(key, *s);
+            if (replaced) continue;
             json_builder_set_member_name(builder, key);
             json_builder_add_value(builder, json_node_copy(json_object_get_member(existing, key)));
         }
         g_list_free(members);
     }
-    json_builder_set_member_name(builder, "window_x");
-    json_builder_add_double_value(builder, x);
-    json_builder_set_member_name(builder, "window_y");
-    json_builder_add_double_value(builder, y);
-    json_builder_set_member_name(builder, "window_width");
-    json_builder_add_double_value(builder, w);
-    json_builder_set_member_name(builder, "window_height");
-    json_builder_add_double_value(builder, h);
+    *parser_out = parser; // keeps `existing` alive until the write is done
+    return builder;
+}
+
+static void finish_instance_write(JsonBuilder *builder, JsonParser *parser) {
     json_builder_end_object(builder);
 
+    gchar *path = instance_file_path();
     JsonGenerator *gen = json_generator_new();
     json_generator_set_pretty(gen, TRUE);
     json_generator_set_indent(gen, 2);
@@ -297,6 +298,39 @@ void settings_save_window_frame(int x, int y, int w, int h) {
     g_object_unref(builder);
     if (parser) g_object_unref(parser);
     g_free(path);
+}
+
+void settings_save_window_frame(int x, int y, int w, int h) {
+    static const char *const frame_keys[] = {"window_x", "window_y", "window_width",
+                                             "window_height", NULL};
+    JsonParser *parser = NULL;
+    JsonBuilder *builder = begin_instance_write(frame_keys, &parser);
+    json_builder_set_member_name(builder, "window_x");
+    json_builder_add_double_value(builder, x);
+    json_builder_set_member_name(builder, "window_y");
+    json_builder_add_double_value(builder, y);
+    json_builder_set_member_name(builder, "window_width");
+    json_builder_add_double_value(builder, w);
+    json_builder_set_member_name(builder, "window_height");
+    json_builder_add_double_value(builder, h);
+    finish_instance_write(builder, parser);
+}
+
+gboolean settings_get_window_locked(void) {
+    JsonParser *parser = NULL;
+    JsonObject *obj = load_instance(&parser);
+    gboolean locked = obj && json_object_get_boolean_member_with_default(obj, "is_locked", FALSE);
+    if (parser) g_object_unref(parser);
+    return locked;
+}
+
+void settings_save_window_locked(gboolean locked) {
+    static const char *const lock_keys[] = {"is_locked", NULL};
+    JsonParser *parser = NULL;
+    JsonBuilder *builder = begin_instance_write(lock_keys, &parser);
+    json_builder_set_member_name(builder, "is_locked");
+    json_builder_add_boolean_value(builder, locked);
+    finish_instance_write(builder, parser);
 }
 
 // ── opening files ───────────────────────────────────────────────────────────

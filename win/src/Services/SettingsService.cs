@@ -246,6 +246,36 @@ public static class SettingsService
         obj["window_y"] = (double)y;
         obj["window_width"] = (double)w;
         obj["window_height"] = (double)h;
+        WriteInstance(obj);
+    }
+
+    /// <summary>
+    /// Whether the window was left locked. It belongs beside the frame: the
+    /// lock is what keeps the frame still, so a run that restored the frame but
+    /// not the lock would come back movable — and a window locked to hold a
+    /// macro's coordinates would have to be locked again by hand every launch.
+    /// False for an instance that has never recorded one.
+    /// </summary>
+    public static bool GetWindowLocked()
+    {
+        JsonObject? obj = LoadInstance();
+        if (obj == null) return false;
+        if (!obj.TryGetPropertyValue("is_locked", out JsonNode? node) || node is not JsonValue v) return false;
+        return v.TryGetValue(out bool locked) && locked;
+    }
+
+    public static void SaveWindowLocked(bool locked)
+    {
+        JsonObject obj = LoadInstance() ?? new JsonObject();
+        obj["is_locked"] = locked;
+        WriteInstance(obj);
+    }
+
+    // Writes instance.json whole, so everything already in it — the id, the
+    // name, the times and the port the core keeps — survives the shell's own
+    // entries.
+    private static void WriteInstance(JsonObject obj)
+    {
         try
         {
             File.WriteAllText(InstanceFilePath(),

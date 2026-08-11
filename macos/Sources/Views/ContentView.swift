@@ -161,8 +161,9 @@ struct InstanceContentView: View {
         .onChange(of: bridge.flashTick) { _ in
             flashScreenshot()
         }
-        .onChange(of: isLocked) { _ in
+        .onChange(of: isLocked) { locked in
             updateWindowLock()
+            instance.settings.saveWindowLocked(locked)
         }
         .onChange(of: isTargeting) { _ in
             updateClickThrough()
@@ -172,6 +173,9 @@ struct InstanceContentView: View {
         }
         .onAppear {
             AppLogger.log("Pob started")
+            // The lock the window was left with, so an instance set up for a
+            // macro comes back the way it was rather than movable again.
+            isLocked = instance.settings.getWindowLocked()
             updateClickThrough()
             updateWindowLock()
         }

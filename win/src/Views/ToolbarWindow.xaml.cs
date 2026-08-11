@@ -42,6 +42,9 @@ public partial class ToolbarWindow : Window
         InstanceIdText.Text = SettingsService.InstanceId;
         SyncInstanceBadge();
         SetClickThroughVisual(AppState.IsClickThrough);
+        // The restored lock (App.OnStartup reads it) rather than a fixed
+        // unlocked button: the state and the icon start out saying the same.
+        SetLockVisual(AppState.IsLocked);
     }
 
     private ContentView? Content2 => AppState.Overlay?.ContentView;
@@ -237,12 +240,17 @@ public partial class ToolbarWindow : Window
     // it on themselves: recorded coordinates are relative to the window, so a
     // nudge or a resize partway through aims the replay at the wrong pixels.
     // Unlocking again is the user's call.
+    //
+    // The lock is written to instance.json so the next run starts the way this
+    // one was left: a window locked to hold a macro's coordinates would
+    // otherwise come back movable and have to be locked again.
     private void SetLocked(bool locked)
     {
         if (AppState.IsLocked == locked) return;
         AppState.IsLocked = locked;
         SetLockVisual(locked);
         AppState.UpdateWindowLock();
+        SettingsService.SaveWindowLocked(locked);
     }
 
     private void OnResetClicked(object sender, RoutedEventArgs e) => Dialogs.ShowReset(this);

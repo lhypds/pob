@@ -132,6 +132,17 @@ final class PobInstance: NSObject, ObservableObject {
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
         window.standardWindowButton(.zoomButton)?.isEnabled = true
 
+        // The lock comes back with the frame. The view owns it from here on —
+        // it is applied again as the window is attached because the window can
+        // arrive after the view has already read the saved state, and a window
+        // restored to a locked instance must not be movable in between. Last,
+        // so it is the same order the view's own lock takes: the window set up
+        // first, then held still.
+        if settings.getWindowLocked() {
+            window.isMovable = false
+            window.styleMask.remove(.resizable)
+        }
+
         updateClickThroughPolling()
         updateIgnoresMouseEvents()
     }
