@@ -33,6 +33,13 @@ shape of the same mistake — a chain where every file is a new one. The check w
 the run and reports both, along with a path naming a file that is not there; the replay refuses
 them again if it somehow meets one, since a path that was itself a slot is only known at the call.
 
+The depth is counted over the blocks a [statement slot](05_AI%20slot.md) generated as well, since
+those are files replayed inside another by the same machinery — a `call` inside a generated block is
+one file deeper than the file that asked for the block, and a relative path in it is resolved against
+that file's directory. A generated block has no file behind it, so nothing can `call` one and nothing
+can reach one round a ring; what a `call` inside one *can* reach is the file it was generated in,
+and that is refused as the file calling itself that it is.
+
 Each file is its own program as far as psl is concerned. It is the file handed over on a fill, and
 the line numbers a slot comes back to are its own — so the log names the file in front of the line
 once more than one is in play, and `logs/<session>/slots/<n>/slot.json` records which file each fill

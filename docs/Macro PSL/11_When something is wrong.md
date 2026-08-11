@@ -35,6 +35,7 @@ not start.
 | A `call` naming a file that is not there, or cannot be read | The path it worked out, and that there is no such file |
 | A `call` reaching a file that is already running, directly or round a ring | That it is a replay with no end in it |
 | A `call` nine files deep | How deep it is, and that eight is as far as `call` goes |
+| A line that is neither kind of slot — two slots on one line, or a slot with a word beside it | `a slot stands for statements when it is the whole line and for a value when it is written inside one, and this is neither`. A slot on a line of its own is not one of these: it is a [statement slot](05_AI%20slot.md), and what it fills to is read when it arrives |
 | A slot in a macro, or in a file it calls, with psl not installed | The one thing checked separately: **psl needed** goes up instead, since it is fixed by installing something rather than by editing the file |
 
 Everything in a called file is checked too, and named by the file it is in: `sign-in.psl line 4`.
@@ -54,6 +55,9 @@ and the ones around it still run:
 | An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
 | A `loop` whose condition fills to something other than `true` or `false` | Reads as false: the loop ends there, with what it filled to in the log |
 | A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
+| A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |
+| A statement slot that fills to nothing that reads as a statement | Logged with what it filled to, and nothing is replayed for that line |
+| A statement slot nine files deep, counting the `call`s above it | How deep it is, and that it is not filled at all — a block this replay would not run is not worth a model call |
 
 Two things are not mistakes at all, and neither reading has anything to say about them:
 

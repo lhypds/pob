@@ -34,6 +34,20 @@ loop (:: another unread message in the list ::, 10) {
 }
 ```
 
+and **anywhere a statement goes**, written on a line of its own:
+
+```
+click(120, 300)
+:: click my mom and type a message, but do not send it ::
+sleep(2s)
+```
+
+Those are the two kinds, and which one a slot is is decided by what is written around it rather than
+by what it says. A slot inside a statement is a *value slot*: the statement is what runs, and the
+slot is the piece of it nobody could write down in advance. A slot that is the whole line is a
+*statement slot*: there is no statement around it to be the piece of, so what it stands for is the
+statements themselves. Statement slots are their own section below.
+
 When the replay reaches the statement, Pob takes a screenshot and runs the psl compiler over the
 macro — the file itself, whole and unaltered, with that screenshot as the slot's image. psl asks a
 model, writes the answer in where the markers were, and hands the file back; Pob reads the statement
@@ -58,8 +72,8 @@ could describe to it in advance, at the moment it is looking at that screen.
 What comes back
 
 Nothing states what kind of value is wanted — the model is shown the statement and works that out
-from where the slot sits in it, which is why the whole macro goes with it. What it answers has to
-leave a statement that reads as PSL:
+from where the slot sits in it, which is why the whole macro goes with it. What a value slot answers
+has to leave a statement that reads as PSL:
 
 | Written | What the slot has to come back as |
 |---------|-----------------------------------|
@@ -108,6 +122,64 @@ same way. These are the mistakes the check before the run cannot catch, since wh
 is not written down until it is filled — which is why the replay goes on reading forgivingly while
 the check does not.
 
+Statement slots
+
+A slot on a line of its own is answered with the statements that belong there — one of them or
+several, blocks and all — and with nothing else:
+
+```
+click(120, 300)
+:: click my mom and type a message, but do not send it ::
+sleep(2s)
+```
+
+and what line 2 there comes back as is a block of them:
+
+```
+click(398, 915)
+sleep(500ms)
+typeText("hi mom")
+```
+
+Nothing else has to be written for it. There is no statement around the slot saying what a value
+would have to be, because it is not a value that goes there, and a statement slot is the one place
+in the language where what comes back is program rather than data.
+
+What comes back is replayed where the line stands, as a file of its own — the same thing
+[`call`](10_call.md) does with the file it names, and for the same reason. Every statement in a macro
+is found by its line number: that is how an answer goes back where it came from, how a loop puts its
+statements back, and how Pob and psl stay on the same slot at all. Statements written into the macro
+where the one line was would move every statement under them off the number the parse found it at.
+So the block is a file with line numbers of its own, and the line that asked keeps the one line it
+always had — `sleep(2s)` above is still on line 3 afterwards.
+
+Everything that follows from that is what follows from a `call`:
+
+- **It is named for where it came from.** `macro.psl` line 2 generates `macro-line2.psl`, which is
+  what psl is told the file is called and what the log puts in front of the block's own line
+  numbers — so `macro-line2.psl line 3` is the third statement of the block, not of the macro.
+- **A slot inside the block is the block's own.** The model may leave one, and it is filled when the
+  block's replay reaches it, off a screenshot taken then, against the block's file. A statement slot
+  inside a generated block generates another block under it.
+- **`stop()` inside it ends everything**, the macro included. See [stop](09_stop.md).
+- **A relative path in a `call` inside it** is resolved against the directory of the file that asked,
+  which is where the macro is — the only place the block could have meant.
+- **Eight files deep is as far as it goes**, counted together with `call`: both are a file replayed
+  inside another, and the bound is the same bound.
+
+The check has nothing to say about a statement slot. What comes back is not written down until it is
+filled, so it is read when it arrives, the way a called file is: a statement in the block that does
+not read as PSL is logged and skipped, and the ones around it still run. What the check does catch is
+a line that is neither kind of slot — two slots on one line, or a slot with a word beside it — since
+a statement slot already fills to as many statements as the instruction asks for.
+
+The whole block is kept under `logs/<session>/slots/<n>/` with the screenshot it was read off, and it
+is in `logs/<session>/macro.txt` too — opened back out into lines, under the indentation of the line
+that asked for it, so that what the session writes down is a program that reads as PSL and runs a
+statement to a line. That file's line numbers are its own from then on: a block is more lines than the
+one line it came from, and the line each `slot.json` names is a line of `macro.psl`, which has not
+moved.
+
 Writing one
 
 Write an instruction a screenshot can settle — "a chat window is open", "the file list is empty",
@@ -133,18 +205,21 @@ all: psl fills the first slot in the file it is given, Pob replays the file top 
 answer goes back into the file before the next run, so the first slot left is always the one the
 replay is waiting on.
 
-Two kinds of statement would break that step, and both are settled by writing their slots out of the
-file as `<instruction>` — there to be read, not to be answered. One is a statement that will never
-run: the body of an `if` whose condition did not hold, or a line Pob could not read in the first
-place. The other is a statement whose own fill failed, which the replay is finished with either way.
-Neither is ever asked about, and a slot left on one of them would be answered in place of the
-statement below it, from a screenshot taken for something else.
+Three kinds of statement would break that step, and all three are settled by writing their slots out
+of the file as `<instruction>` — there to be read, not to be answered. One is a statement that will
+never run: the body of an `if` whose condition did not hold, or a line Pob could not read in the
+first place. Another is a statement whose own fill failed, which the replay is finished with either
+way. The third is a statement slot that has been filled, since the block it filled to is a file of
+its own from that moment and a slot the model wrote into it belongs to that file. None is ever asked
+about here, and a slot left on one of them would be answered in place of the statement below it,
+from a screenshot taken for something else.
 
 A `loop` is the one thing that puts a slot back into the file, which is the same step run backwards
 and holds for the same reason. What it puts back is its own header and the statements under it —
 everything above them is filled or written out by the time a pass begins, and everything below is
 still as it was written — so the first slot left in the file is again the one the replay is waiting
-on.
+on. A statement slot in a loop's body goes back to the `:: … ::` it was written as, and generates a
+block of its own on every pass: the screen a pass is about is the one the pass before it changed.
 
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
 psl to be found — Pob checks over the whole macro, and over the files it `call`s, before the first
@@ -159,6 +234,7 @@ See also
 --------
 
 - [Calls](06_Calls.md) — the vocabulary a fill is described with
+- [call](10_call.md) — the other way a file is replayed inside another, and the bound they share
 - [loop blocks](08_loop%20blocks.md) — the slots a pass asks again
 - [Settings](../Pob/06_Settings.md) — `image_scale`, and where the `psl` executable is
 - [Logs](../Pob/05_Logs.md) — where each slot the AI filled is kept

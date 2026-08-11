@@ -16,7 +16,8 @@ thing once, and what you get back is a program you can open.
 
 The name is what sets PSL apart from a scripting language that only ever does what it is told.
 Anywhere a value would go, a statement can hold a prompt instead — `:: … ::`, an AI slot — and what
-the AI answers is what that part of the line then says. A macro written in PSL is part instruction
+the AI answers is what that part of the line then says. Written on a line of its own, where a whole
+statement would go, what the AI answers is the statements. A macro written in PSL is part instruction
 and part question: it repeats what it was given, and asks about what it could not be.
 
 ```

@@ -205,6 +205,33 @@ typeText("Hi :: the name at the top ::, thanks!")
 `)
 }
 
+// A slot on a line of its own is a statement the check knows nothing about
+// until psl has answered — what comes back is a piece of PSL and is read when it
+// arrives. So it goes past, the way a call whose name is a slot does.
+func TestCheckLeavesAStatementSlotToTheReplay(t *testing.T) {
+	wantProblems(t, `click()
+:: click my mom and type a message, do not send it ::
+	:: scroll to the bottom of the list ::  // whatever that takes
+sleep(1s)
+`)
+}
+
+// A slot beside something that is neither a statement nor part of one is
+// neither kind of slot, and is told which two things it could have been rather
+// than pointed at parentheses the line was never going to have.
+//
+// Two slots on one line is the one worth naming: a statement slot already fills
+// to as many statements as the instruction asks for, so the second one is a line
+// written twice rather than a line asking twice.
+func TestCheckCatchesASlotThatIsNeitherKind(t *testing.T) {
+	wantProblems(t, `:: click Save :: :: then type the message ::
+:: click Save :: and then some
+`,
+		`is not a statement — a slot stands for statements when it is the whole line and for a value when it is written inside one, and this is neither`,
+		`is not a statement — a slot stands for statements when it is the whole line and for a value when it is written inside one, and this is neither`,
+	)
+}
+
 func TestCheckCatchesUnknownStatements(t *testing.T) {
 	wantProblems(t, `clik()
 Move(1, 2)

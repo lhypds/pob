@@ -6,6 +6,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,6 +145,14 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n])
+}
+
+// oneLine folds a value onto the single line a log entry is. The log stamps the
+// time on the front of a message and the newline on the end of it, so a message
+// carrying newlines of its own is several entries with one timestamp between
+// them — and what a statement slot fills to is a block of statements.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) {

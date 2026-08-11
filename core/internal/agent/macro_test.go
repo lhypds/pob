@@ -93,6 +93,52 @@ click()`, []string{
 	})
 }
 
+// A slot with nothing else on its line stands for the statements it fills to
+// rather than for a value inside one, and the parse is where that is settled —
+// it is the one thing about such a slot that is written down.
+func TestParseMacroStatementSlot(t *testing.T) {
+	nodes := parseMacro(`click()
+:: click my mom and type a message, do not send it ::
+	:: the same thing, indented ::  // and with a note on the end
+move(:: the x offset ::, 40)
+typeText("a :: b :: c")`)
+
+	want := []bool{false, true, true, false, false}
+	if len(nodes) != len(want) {
+		t.Fatalf("parsed %d statements, want %d: %q", len(nodes), len(want), nodeSummary(nodes, ""))
+	}
+	for i, isStatement := range want {
+		if nodes[i].isStatementSlot != isStatement {
+			t.Errorf("%q: isStatementSlot = %v, want %v", nodes[i].raw, nodes[i].isStatementSlot, isStatement)
+		}
+	}
+}
+
+func TestStatementSlot(t *testing.T) {
+	for _, tt := range []struct {
+		line string
+		want bool
+	}{
+		{":: click the Save button ::", true},
+		{"::click the Save button::", true},
+		{"   :: click the Save button ::   ", true},
+		// A slot inside a statement is an argument, and is answered with one.
+		{"move(:: the x offset ::, 40)", false},
+		{`typeText("Hi :: the name ::")`, false},
+		// A slot beside something that is neither a statement nor part of one.
+		{":: click Save :: :: then type ::", false},
+		{":: click Save :: click()", false},
+		// Not a slot at all: no markers, an empty pair, and scope resolution.
+		{"click()", false},
+		{"::::", false},
+		{"std::cout", false},
+	} {
+		if got := statementSlot(tt.line); got != tt.want {
+			t.Errorf("statementSlot(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}
+
 // A condition written out rather than asked needs no model call, and reads as
 // the value it names.
 func TestParseMacroLiteralCondition(t *testing.T) {

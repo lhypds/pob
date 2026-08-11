@@ -220,12 +220,17 @@ func (s *Storage) SaveMacro(sessionID string) {
 }
 
 // SaveCompiledMacro writes the macro as the session left it to
-// logs/<session>/macro.txt — every slot filled with what psl answered, and the
-// ones never asked about written out as <instruction>.
+// logs/<session>/macro.txt — every slot filled with what psl answered, the ones
+// never asked about written out as <instruction>, and every statement slot opened
+// out into the block it filled to, a statement to a line.
 //
 // macro.psl beside it is the macro as it was written; this is the program that
 // actually ran, whole and in one piece rather than a slot at a time under
 // slots/. A run that was stopped partway leaves what it had compiled by then.
+//
+// Its line numbers are its own once a generated block is in it, since a block is
+// more lines than the one that asked for it. The line in each slot.json is a line
+// of macro.psl, which is the file that has not moved.
 func (s *Storage) SaveCompiledMacro(sessionID, source string) {
 	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.txt"), []byte(source), 0o644)
 }

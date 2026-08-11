@@ -232,6 +232,16 @@ func printSlots(sessionDir string) {
 		if !wasFilled {
 			filled = "— unfilled, statement skipped"
 		}
+		// A slot written on a line of its own fills to statements rather than to a
+		// value, and a block of them printed on the arrow line would run off the end
+		// of it. How much came back goes there instead, and the statements go under
+		// it — so the list reads one slot at a time however much one of them filled
+		// to.
+		var block []string
+		if wasFilled && strings.Contains(value, "\n") {
+			block = strings.Split(value, "\n")
+			filled = fmt.Sprintf("a block of %d lines", len(block))
+		}
 		if line := intField(slotJSON, "line"); line > 0 {
 			// The file is named only when it is not the macro itself: the numbers
 			// start again in each file a call() brought in, and a bare line number
@@ -246,6 +256,9 @@ func printSlots(sessionDir string) {
 		}
 		if statement != "" {
 			fmt.Printf("     in: %s\n", statement)
+		}
+		for _, line := range block {
+			fmt.Printf("         %s\n", line)
 		}
 		if model != "" {
 			fmt.Printf("     filled by %s\n", model)

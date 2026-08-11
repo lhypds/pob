@@ -19,8 +19,9 @@ keyPress("return")
 
 One statement per line, run top to bottom. Anywhere a value would go, a statement can hold a prompt
 instead — `:: … ::`, an AI slot — and what the AI answers is what that part of the line then says.
-The slots are filled by running PSL, the compiler the language has
-of its own, which is where the models and the API keys live.
+Written on a line of its own, where a whole statement would go, what the AI answers is the
+statements, and they are replayed there. The slots are filled by running PSL, the compiler the
+language has of its own, which is where the models and the API keys live.
 
 The language has documentation of its own, a page per part of it. Please refer to
 **[Macro PSL](../Macro%20PSL/01_Macro%20PSL.md)** for all of it:

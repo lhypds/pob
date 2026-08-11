@@ -124,6 +124,12 @@ func rescaleFilled(statement string, start, end int, filled string, scale float6
 	if scale >= 1 || scale <= 0 || start < 0 || end > len(statement) || start > end {
 		return filled, false
 	}
+	// A slot that is the whole line filled to statements rather than to a value,
+	// so there is no statement around it to read a call name off and nothing to
+	// cut the answer back out of. What came back is read as the lines it is.
+	if statementSlot(stripLine(statement)) {
+		return rescaleBlock(filled, scale)
+	}
 	if !scaledCalls[callName(statement)] {
 		return filled, false
 	}
@@ -138,6 +144,64 @@ func rescaleFilled(statement string, start, end int, filled string, scale float6
 		return filled, false
 	}
 	return prefix + scaled + suffix, true
+}
+
+// rescaleBlock grows the numbers in a block a statement slot filled to back to
+// the picture's full size — a statement at a time, since a block is statements
+// and each says for itself whether its numbers were measured on the picture.
+//
+// A line that is not one of those is handed back exactly as it came: a sleep is
+// a time, a typeText is text, a block header holds no numbers of its own, and a
+// statement the model left a slot in has not been answered yet — that slot is
+// the generated file's own, filled off a screenshot of its own and scaled then.
+func rescaleBlock(filled string, scale float64) (string, bool) {
+	lines := strings.Split(filled, "\n")
+	grown := false
+	for i, line := range lines {
+		scaled, ok := rescaleStatement(line, scale)
+		if !ok {
+			continue
+		}
+		lines[i], grown = scaled, true
+	}
+	if !grown {
+		return filled, false
+	}
+	return strings.Join(lines, "\n"), true
+}
+
+// rescaleStatement grows one generated statement's numbers back. Only what is
+// between the parentheses is rewritten, so the indentation the model wrote and
+// any note it put on the end of the line are still there afterwards.
+func rescaleStatement(line string, scale float64) (string, bool) {
+	code, comment := splitComment(line)
+	name, args, ok := macroArguments(strings.TrimSpace(code))
+	if !ok || !scaledCalls[name] || len(args) == 0 {
+		return line, false
+	}
+	scaled, ok := rescaleNumbers(strings.Join(args, ","), scale)
+	if !ok {
+		return line, false
+	}
+	indent := code[:len(code)-len(strings.TrimLeft(code, " \t"))]
+	return indent + name + "(" + scaled + ")" + comment, true
+}
+
+// splitComment cuts a line into the code on it and whatever comment follows, so
+// the numbers can be rewritten without disturbing the note beside them. The two
+// join back into the line they came from.
+//
+// A comment anywhere but the end — `click(/* here */ 1, 2)` — leaves the code
+// half unreadable as a call, which is a line rescaleStatement then hands back
+// untouched. That is the right way round: a number nobody could place is a
+// number to leave alone rather than to guess at.
+func splitComment(line string) (code, comment string) {
+	spans, _ := commentSpans(line, false)
+	if len(spans) == 0 {
+		return line, ""
+	}
+	code = strings.TrimRight(line[:spans[0][0]], " \t")
+	return code, line[len(code):]
 }
 
 // rescaleNumbers grows every number in a comma-separated answer back to the

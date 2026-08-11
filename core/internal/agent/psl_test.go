@@ -25,10 +25,16 @@ func stubCompiler(t *testing.T) (psl.Compiler, func(answer string)) {
 	answerFile := filepath.Join(dir, "answer.txt")
 	stub := filepath.Join(dir, "psl")
 
+	// The answer is read out of the file rather than passed in with -v, because
+	// awk will not take a newline in one — and an answer of several lines is what
+	// a slot standing for a whole statement comes back as.
 	script := `#!/bin/sh
 file="$1"
-answer=$(cat ` + answerFile + `)
-awk -v ans="$answer" '{
+awk -v af="` + answerFile + `" '
+BEGIN {
+  while ((getline line < af) > 0) { ans = (n++ ? ans "\n" line : line) }
+}
+{
   if (!done && match($0, /::[^:]+::/)) {
     $0 = substr($0, 1, RSTART-1) ans substr($0, RSTART+RLENGTH)
     done = 1
@@ -98,6 +104,46 @@ if (:: a save dialog is on screen ::) {
 		run.record(tt.line, got)
 	}
 
+	if psl.HasSlot(run.source) {
+		t.Errorf("the macro still holds a slot: %q", run.source)
+	}
+}
+
+// A slot on a line of its own is answered with statements rather than with a
+// value, so the file psl hands back is longer than the one it was given. What
+// the line filled to is everything between the lines above it and the lines
+// below, which is what extractLine reads — and the line that asked keeps the one
+// line it had, so nothing under it moves off the number it was parsed at.
+func TestFillingAStatementSlot(t *testing.T) {
+	compiler, answer := stubCompiler(t)
+
+	macro := "click()\n:: click my mom and type a message ::\nsleep(2s)"
+	run := &macroRun{sessionID: "test", source: macro, written: strings.Split(macro, "\n")}
+
+	block := "click(398, 915)\ntypeText(\"hi mom\")"
+	answer(block)
+
+	source := run.source
+	if live, ok := liveSlotLine(source); !ok || live != 1 {
+		t.Fatalf("psl would fill a slot on line %d, want the statement slot on line 2", live+1)
+	}
+	result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filled, ok := extractLine(source, result.Source, 1)
+	if !ok {
+		t.Fatal("could not read the filled block back")
+	}
+	if filled != block {
+		t.Errorf("the line filled to %q, want the whole block %q", filled, block)
+	}
+
+	run.record(2, filled)
+	if got := strings.TrimSpace(run.line(3)); got != "sleep(2s)" {
+		t.Errorf("line 3 is now %q, want sleep(2s) — a statement moves off its line number for nothing", got)
+	}
 	if psl.HasSlot(run.source) {
 		t.Errorf("the macro still holds a slot: %q", run.source)
 	}

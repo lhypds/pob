@@ -36,6 +36,11 @@ type macroNode struct {
 	// until the replay reaches it — action and args are empty until then.
 	slots bool
 
+	// isStatementSlot says the line is a slot and nothing else, which is what
+	// makes it stand for the statements it fills to rather than for a value
+	// inside one. See runStatementSlot.
+	isStatementSlot bool
+
 	isIf   bool // if only
 	isLoop bool // loop only
 
@@ -74,6 +79,18 @@ type macroRun struct {
 	// back before a pass, so that the statements it is about to replay ask their
 	// slots again instead of repeating the answers of the pass before.
 	written []string
+
+	// blocks is what each statement slot filled to, whole, by the line it was
+	// written on — what compiled puts back into the file once the replay is over.
+	//
+	// The line itself holds the block folded onto it while the replay is running,
+	// because a statement is found by its line number for as long as anything is
+	// still being replayed. This is the same text unfolded, kept beside the file
+	// rather than in it, and read only when the file has stopped being a program
+	// and is only being written down. A statement slot in a loop's body fills
+	// again on every pass and so leaves the last pass's block here, the same way
+	// the file itself holds the last pass's answers.
+	blocks map[int]string
 
 	// prompt is the briefing that goes over beside the file on every fill, and
 	// is empty when this psl is older than the flag that takes it — settled once
@@ -123,6 +140,40 @@ func newCallRun(parent *macroRun, path, source string) *macroRun {
 	run := newMacroRun(parent.sessionID, path, source, parent.prompt)
 	run.parent = parent
 	return run
+}
+
+// newGeneratedRun starts a replay over the block a statement slot filled to,
+// under the run whose line asked for it. See runStatementSlot.
+//
+// It is a call() with no file behind it, and the two differences are that. path
+// stays empty, since there is nothing on disk for a later call() to reach and
+// nothing a path could be compared against — and resolveCallPath hands back an
+// absolute path or an error, so an empty one is nothing it can collide with. dir
+// is the asking file's, so a call() written inside a generated block names files
+// from where the macro is, which is the only place the block could have meant.
+func newGeneratedRun(parent *macroRun, line int, source string) *macroRun {
+	source = neutralizeComments(source)
+	return &macroRun{
+		sessionID: parent.sessionID,
+		source:    source,
+		written:   strings.Split(source, "\n"),
+		prompt:    parent.prompt,
+		name:      generatedName(parent.name, line),
+		dir:       parent.dir,
+		parent:    parent,
+	}
+}
+
+// generatedName is what a generated block is called: the file that asked and the
+// line it asked on, which is where to go back to. psl is handed a file and names
+// it in what it says, and the log puts it in front of the block's own line
+// numbers — so it is written as a filename, and one every platform will take.
+func generatedName(name string, line int) string {
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if base == "" {
+		base = "macro"
+	}
+	return fmt.Sprintf("%s-line%d.psl", base, line)
 }
 
 // root is the run over the macro itself — this one, unless a call() brought it
@@ -204,6 +255,61 @@ func (run *macroRun) record(n int, filled string) {
 	}
 	lines[n-1] = strings.ReplaceAll(filled, "\n", " ")
 	run.source = strings.Join(lines, "\n")
+}
+
+// recordBlock keeps what a statement slot filled to, unfolded, against the line
+// that asked for it. See compiled.
+func (run *macroRun) recordBlock(line int, block string) {
+	if run.blocks == nil {
+		run.blocks = map[int]string{}
+	}
+	run.blocks[line] = block
+}
+
+// compiled is the macro as the session ran it — every slot filled, the ones
+// never asked about written out as <instruction>, and every statement slot
+// opened back out into the block it filled to, one statement per line.
+//
+// That last part is what this exists for. A macro is a file of statements, one
+// per line, and the point of writing the compiled one down is that it can be read
+// as the program that actually ran. While the replay is running a generated block
+// has to stay folded onto the one line it came from, because every statement is
+// found by its line number until the last of them has run — but nothing needs
+// those numbers afterwards, and a row per step is what the file is for.
+//
+// So the line numbers here are this file's own. A statement below a generated
+// block is further down than it was in macro.psl, which is kept beside it as the
+// macro that was written and is the file the line in each slot.json counts to.
+func (run *macroRun) compiled() string {
+	if len(run.blocks) == 0 {
+		return run.source
+	}
+	lines := strings.Split(run.source, "\n")
+	out := make([]string, 0, len(lines))
+	for n, line := range lines {
+		block, generated := run.blocks[n+1]
+		if !generated {
+			out = append(out, line)
+			continue
+		}
+		// The block goes in under the indentation of the line that asked for it, so
+		// one generated inside an if reads as part of that if. Its own indentation
+		// is kept on top of that.
+		//
+		// Taken from the line as it was written rather than as it stands: what the
+		// line holds now came back from psl, and how much of a line a compiler
+		// leaves alone either side of the span it filled is not something to lay a
+		// file out by.
+		asked := line
+		if n < len(run.written) {
+			asked = run.written[n]
+		}
+		indent := asked[:len(asked)-len(strings.TrimLeft(asked, " \t"))]
+		for _, statement := range strings.Split(block, "\n") {
+			out = append(out, indent+statement)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // spend writes the slots on a line out of the macro — `:: x ::` becomes `<x>` —
@@ -351,7 +457,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 
 	// The macro with every answer in it, kept beside the one that was written:
 	// what the replay actually ran, rather than what it was asked to.
-	r.store.SaveCompiledMacro(sessionID, run.source)
+	r.store.SaveCompiledMacro(sessionID, run.compiled())
 
 	r.store.SaveSessionStartEndTimes(sessionID, macroStart, time.Now())
 	applog.Logf("[%s] Macro session times saved", sessionID)
@@ -396,7 +502,12 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 			continue
 		}
 
-		if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
+		// A slot written on a line of its own is answered with the statements that
+		// belong there rather than with a value, so what comes back is replayed
+		// rather than read as the one call the line was.
+		if node.isStatementSlot {
+			r.runStatementSlot(ctx, run, node)
+		} else if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
 			r.runMacroAction(ctx, run, name, args, quoted)
 		}
 		// A no-op when the statement filled: what it spends is the slot of one
@@ -666,11 +777,11 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	// written by hand would.
 	if grown, done := rescaleFilled(statement, slot.Start, slot.End, filled, scale); done {
 		applog.Logf("[%s] Macro slot (%s) -> %s scaled back to %s", run.sessionID, slot.Instruction,
-			strings.TrimSpace(filled), strings.TrimSpace(grown))
+			oneLine(filled), oneLine(grown))
 		filled = grown
 	}
 
-	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, strings.TrimSpace(filled),
+	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, oneLine(filled),
 		result.Model, result.Duration.Round(time.Millisecond))
 	r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
 
@@ -912,11 +1023,79 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 	}
 }
 
-// maxCallDepth is how many call()s deep a replay may go. A macro split across a
-// few files is a macro someone wrote in pieces; eight files down is past the
-// depth anyone meant, and the bound is what turns a mistake nothing else catches
-// into a line in the log.
+// maxCallDepth is how many files deep a replay may go — the ones a call() named
+// and the blocks a statement slot generated, counted together, since both are a
+// file replayed inside another. A macro split across a few files is a macro
+// someone wrote in pieces; eight down is past the depth anyone meant, and the
+// bound is what turns a mistake nothing else catches into a line in the log.
 const maxCallDepth = 8
+
+// runStatementSlot fills a slot written on a line of its own and replays what
+// comes back, where the line stands.
+//
+// A slot inside a statement is answered with a value, and the statement around
+// it is what says which kind. A slot that is the whole line has no statement
+// around it to say anything, so what it stands for is the statements themselves
+// — one of them or several, blocks and all — and that is a piece of PSL rather
+// than a value.
+//
+// It is replayed as a run of its own, the way call() replays the file it names,
+// and for the reason the line numbers are: psl fills the first slot in the file
+// it is handed, and Pob knows which slot that is by replaying the file top to
+// bottom and putting every answer back on the line it came from. Statements
+// written into the file where this one line was would move every statement under
+// them off the number the parse found it at, and the replay, the log and the
+// loops all read a macro by those. So the block is a file of its own with line
+// numbers of its own, and the line that asked keeps the one line it always had.
+//
+// What that one line holds while the replay is running is the block folded onto
+// it, which is what any answer of several lines does — see record. The block
+// itself is kept beside the file, and goes back into it a statement to a line
+// once nothing is counting line numbers any more — see compiled.
+func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macroNode) {
+	// Asked before the fill rather than after it: a block this replay would not
+	// run is not a block worth spending a model call on.
+	if run.depth() >= maxCallDepth {
+		applog.Logf("[%s] Macro %s — %d files deep, which is as far as a generated block goes; not filling it",
+			run.sessionID, run.where(node.line), maxCallDepth)
+		return
+	}
+
+	filled, ok := r.fillOneSlot(ctx, run, node, run.line(node.line))
+	if !ok {
+		return
+	}
+
+	// The line is done being asked about from here: what it filled to is a file
+	// of its own, and a slot the model wrote into the block belongs to that file
+	// rather than to this one. Left live here it would be the first slot in this
+	// file, and so the one filled in place of the statement below.
+	run.spend(node.line)
+
+	block := strings.TrimSpace(filled)
+	nodes := parseMacro(block)
+	if len(nodes) == 0 {
+		applog.Logf("[%s] Macro %s: filled to %q, which holds no statement — skipping",
+			run.sessionID, run.where(node.line), truncate(oneLine(block), 60))
+		return
+	}
+
+	generated := newGeneratedRun(run, node.line, block)
+	generated.spendUncovered(nodes)
+
+	applog.Logf("[%s] Macro %s -> %s (%d actions)", run.sessionID, run.where(node.line),
+		generated.name, countMacroNodes(nodes))
+	r.runMacroNodes(ctx, generated, nodes)
+	if !generated.halted() {
+		applog.Logf("[%s] Macro %s — %s done", run.sessionID, run.where(node.line), generated.name)
+	}
+
+	// Kept after the replay rather than before it, and taken from the block's own
+	// compiled file: what goes into the macro the session writes out is the block
+	// as it ran, with its own slots filled and its own generated blocks opened out
+	// in turn.
+	run.recordBlock(node.line, generated.compiled())
+}
 
 // runMacroCall replays another PSL file where the call() stands, statement by
 // statement, and comes back to the statement under it.
@@ -1159,8 +1338,10 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 
 		if psl.HasSlot(trimmed) {
 			// What it says depends on what psl answers, so it is read when the
-			// replay gets to it rather than now.
-			nodes = append(nodes, macroNode{raw: trimmed, slots: true, line: lineNo})
+			// replay gets to it rather than now. Whether it is a statement or a
+			// value that comes back is settled here, by what is written around the
+			// slot — which is the one thing about it that is written down.
+			nodes = append(nodes, macroNode{raw: trimmed, slots: true, isStatementSlot: statementSlot(trimmed), line: lineNo})
 			continue
 		}
 
@@ -1374,6 +1555,19 @@ func parseMacroLine(line string) (name string, args []string, quoted, ok bool) {
 		args[i] = strings.TrimSpace(p)
 	}
 	return name, args, false, true
+}
+
+// statementSlot reports whether a line is one slot and nothing else, which is
+// what makes it a statement slot rather than a value written inside a statement.
+//
+// Nothing else at all, once the comments are off and the line is trimmed. A slot
+// with a call around it — `move(:: … ::, 0)` — is an argument and is answered
+// with one, and a line holding a slot beside something that is neither a
+// statement nor part of one is neither kind and is refused before the run.
+func statementSlot(line string) bool {
+	line = strings.TrimSpace(line)
+	slot, found := psl.FindSlot(line, 0)
+	return found && slot.Start == 0 && slot.End == len(line)
 }
 
 // hasMacroSlot reports whether any statement holds a :: … :: slot, at any depth.

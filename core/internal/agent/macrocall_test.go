@@ -325,6 +325,144 @@ func TestMacroNeedsPSLFollowsCalls(t *testing.T) {
 	}
 }
 
+// A block a statement slot filled to is replayed the way a called file is: a
+// file of its own, with its own line numbers, under the run whose line asked for
+// it. What it shares with that run is the session, the directory a relative path
+// is resolved against, and the stop that ends every file at once.
+func TestAGeneratedBlockReplaysLikeACalledFile(t *testing.T) {
+	m := newMacroTest(t)
+	m.write(t, "shared.psl", "sleep(3ms)")
+
+	parent := newMacroRun("test", filepath.Join(m.dir, "macro.psl"), "sleep(1ms)\n:: do the thing ::", "")
+	block := "sleep(2ms)\ncall(\"../shared.psl\")\nsleep(4ms)"
+	generated := newGeneratedRun(parent, 2, block)
+	m.runner.runMacroNodes(context.Background(), generated, parseMacro(block))
+
+	checkRan(t, m.ran(t), []string{"2", "3", "4"})
+	if generated.name != "macro-line2.psl" {
+		t.Errorf("the block is called %q, want it named for the line that asked", generated.name)
+	}
+	if generated.dir != parent.dir {
+		t.Errorf("the block resolves paths against %q, want the asking file's %q", generated.dir, parent.dir)
+	}
+	if generated.depth() != 1 {
+		t.Errorf("the block is %d files deep, want 1 — it counts towards the bound the same way a call does", generated.depth())
+	}
+}
+
+// stop() ends the whole replay wherever it is written, and a generated block is
+// no different from a called file about that.
+func TestStopInAGeneratedBlockEndsEverything(t *testing.T) {
+	m := newMacroTest(t)
+
+	parent := newMacroRun("test", filepath.Join(m.dir, "macro.psl"), ":: do the thing ::", "")
+	block := "sleep(1ms)\nstop()\nsleep(2ms)"
+	generated := newGeneratedRun(parent, 1, block)
+	m.runner.runMacroNodes(context.Background(), generated, parseMacro(block))
+
+	checkRan(t, m.ran(t), []string{"1"})
+	if !parent.halted() {
+		t.Error("a stop inside a generated block left the run that asked for it going")
+	}
+}
+
+// A generated block is replayed inside the file that asked for it, so a call()
+// written in one that reaches that file back is the replay with no end in it
+// that a file calling itself would be.
+func TestACallInAGeneratedBlockCannotReachTheFileThatAskedForIt(t *testing.T) {
+	m := newMacroTest(t)
+
+	source := ":: do the thing ::"
+	path := filepath.Join(m.dir, "macro.psl")
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parent := newMacroRun("test", path, source, "")
+	block := "call(\"macro.psl\")\nsleep(2ms)"
+	generated := newGeneratedRun(parent, 1, block)
+	m.runner.runMacroNodes(context.Background(), generated, parseMacro(block))
+
+	checkRan(t, m.ran(t), []string{"2"})
+	if !m.logged(t, "is already running and would call itself") {
+		t.Error("the call was not refused as one reaching a file already running")
+	}
+}
+
+// The macro a session writes out is the program that ran, one statement per
+// line — so a generated block goes back to being lines in it, under the
+// indentation of the line that asked for it, and a block generated inside one
+// goes in with it.
+func TestTheCompiledMacroOpensGeneratedBlocksBackOut(t *testing.T) {
+	macro := "click(120, 300)\nif (true) {\n\t<make the two clicks>\n}\nsleep(2s)"
+	run := &macroRun{sessionID: "test", source: macro, written: strings.Split(macro, "\n")}
+
+	// What the replay leaves behind: the line with the block folded onto it, and
+	// the block kept beside it. The indentation comes from the line as it was
+	// written, so it is there whatever psl left of the rest of the line.
+	run.record(3, "click(489, 597) click(814, 814)")
+	run.recordBlock(3, "click(489, 597)\nclick(814, 814)")
+
+	want := `click(120, 300)
+if (true) {
+	click(489, 597)
+	click(814, 814)
+}
+sleep(2s)`
+	if got := run.compiled(); got != want {
+		t.Errorf("compiled() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// A statement slot inside a generated block generates a block of its own, and
+// what the session writes out is the outer one with the inner one already opened
+// out in it — each run's compiled() feeding the one above it.
+func TestTheCompiledMacroNestsGeneratedBlocks(t *testing.T) {
+	macro := ":: do the thing ::"
+	run := &macroRun{sessionID: "test", source: macro, written: strings.Split(macro, "\n")}
+
+	outerSource := "click(0, 0)\n\t:: and then the rest ::"
+	outer := &macroRun{sessionID: "test", source: outerSource, written: strings.Split(outerSource, "\n"), parent: run}
+	outer.record(2, "\tclick(1, 2) sleep(1ms)")
+	outer.recordBlock(2, "click(1, 2)\nsleep(1ms)")
+
+	run.record(1, "click(0, 0) click(1, 2) sleep(1ms)")
+	run.recordBlock(1, outer.compiled())
+
+	want := "click(0, 0)\n\tclick(1, 2)\n\tsleep(1ms)"
+	if got := run.compiled(); got != want {
+		t.Errorf("compiled() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// A macro with no generated block in it is the file itself, untouched.
+func TestTheCompiledMacroOfAMacroWithNoBlocks(t *testing.T) {
+	macro := "click(120, 300)\nmove(-120, 40)"
+	run := &macroRun{sessionID: "test", source: macro}
+	if got := run.compiled(); got != macro {
+		t.Errorf("compiled() = %q, want the file itself %q", got, macro)
+	}
+}
+
+// What a generated block is called: the file that asked and the line it asked
+// on, written as a filename because psl is handed one.
+func TestGeneratedName(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		line int
+		want string
+	}{
+		{"macro.psl", 2, "macro-line2.psl"},
+		{"shared.psl", 40, "shared-line40.psl"},
+		// A block that generated a block, which the depth bound is what stops.
+		{"macro-line2.psl", 1, "macro-line2-line1.psl"},
+		{"", 7, "macro-line7.psl"},
+	} {
+		if got := generatedName(tt.name, tt.line); got != tt.want {
+			t.Errorf("generatedName(%q, %d) = %q, want %q", tt.name, tt.line, got, tt.want)
+		}
+	}
+}
+
 // The slot directories of a session are numbered in the order they were filled,
 // straight through however many files did the filling — a called file does not
 // start again at 1 and write over what the macro left.

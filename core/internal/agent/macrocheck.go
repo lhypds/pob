@@ -189,6 +189,14 @@ func checkStatements(nodes []macroNode) []macroProblem {
 // itself comes back as is the replay's question, and is the one thing left to
 // the log.
 func checkStatement(raw string, line int) (macroProblem, bool) {
+	// A line that is a slot and nothing else stands for the statements it fills
+	// to rather than for a value, and there is no shape to hold those against
+	// until psl has answered: what comes back is a piece of PSL, read then and
+	// checked then, the way a file a call() brings in is. Left to the replay.
+	if statementSlot(raw) {
+		return macroProblem{}, false
+	}
+
 	name, args, ok := macroArguments(raw)
 	if !ok {
 		switch {
@@ -201,6 +209,13 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 			return problemf(line, "stop is written %s(), with the parentheses every other statement has", macroStopKeyword), true
 		case strings.EqualFold(raw, macroStopKeyword):
 			return problemf(line, "%q is not a statement — stop is written %s(), lowercase and with parentheses", raw, macroStopKeyword), true
+		case psl.HasSlot(raw):
+			// It got past statementSlot, so it is a slot with something beside it
+			// that is not a statement — two slots on the one line, or a slot with a
+			// word after it. Worth its own line: what is wrong is not the slot but
+			// where it is, and the line about calls would send someone to look at
+			// the parentheses of a line that has none on purpose.
+			return problemf(line, "%q is not a statement — a slot stands for statements when it is the whole line and for a value when it is written inside one, and this is neither", truncate(raw, 60)), true
 		}
 		return problemf(line, "%q is not a statement — a call is name(argument, argument), and nothing follows the closing parenthesis", truncate(raw, 60)), true
 	}

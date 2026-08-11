@@ -68,6 +68,13 @@ commas and all: move(40, <instruction>) wants one number, and
 move(<instruction>) wants both, written -120, 40. Either way the answer has to
 leave a line that reads as one of the statements above.
 
+A slot with nothing else on its line stands for the statements that belong
+there, and is answered with those and nothing else: one statement, or several
+written one per line, blocks included. There is no statement around it saying
+what a value would have to be, because it is not a value that goes there. Write
+as many statements as the instruction asks for and no more, and write nothing
+that is not a statement — no prose, no fences, no heading.
+
 An if or loop condition is answered with true or false and nothing else. A loop
 asks its condition again before every pass, over a fresh image, and the answer
 is about the screen as that image shows it — nothing in the file says which pass

@@ -140,6 +140,41 @@ func TestStatementsThatAreNotDistancesAreLeftAlone(t *testing.T) {
 	}
 }
 
+// A slot on a line of its own fills to statements rather than to a value, and
+// they were read off the same shrunken picture: each one is grown back by what
+// it is, and the ones whose numbers are not distances on the picture come back
+// exactly as the model wrote them.
+func TestABlockIsScaledAStatementAtATime(t *testing.T) {
+	statement := ":: click my mom and type a message ::"
+	filled := `click(199, 61)
+sleep(500ms)
+typeText("hi mom")
+	move(-50, 20)  // back to where it was
+scroll(0, 400)`
+	want := `click(398, 122)
+sleep(500ms)
+typeText("hi mom")
+	move(-100, 40)  // back to where it was
+scroll(0, 400)`
+
+	got, done := rescaleFilled(statement, 0, len(statement), filled, 0.5)
+	if !done || got != want {
+		t.Errorf("rescaleFilled over a block =\n%s\n%v; want\n%s", got, done, want)
+	}
+}
+
+// A statement the model left a slot in has not been answered yet. That slot is
+// the generated file's own, filled off a screenshot of its own and grown back
+// then — so nothing here touches it.
+func TestABlockLeavesItsOwnSlotsAlone(t *testing.T) {
+	statement := ":: reply to the message ::"
+	filled := "click(:: the message box ::)\ntypeText(:: a short reply ::)"
+	got, done := rescaleFilled(statement, 0, len(statement), filled, 0.5)
+	if done || got != filled {
+		t.Errorf("rescaleFilled = %q, %v; want the block untouched", got, done)
+	}
+}
+
 // psl replaces the slot and leaves the rest of the line as it was. A line that
 // came back with its surroundings moved is one Pob cannot tell the model's
 // numbers from the macro's in, so it is taken as written rather than guessed at.
