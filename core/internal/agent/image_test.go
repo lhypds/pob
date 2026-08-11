@@ -51,6 +51,53 @@ func TestShrinkingHalvesBothSides(t *testing.T) {
 	}
 }
 
+// The model has to see one coordinate system: when its screenshot is half the
+// original size, every existing image coordinate in its temporary file is half
+// size too. Other numeric values and numbers in prose stay as written.
+func TestExistingCoordinatesAreScaledInTheModelCopy(t *testing.T) {
+	source := `moveTo(1000, 500)
+click(300, 200) // keep this example at click(900, 800)
+move(-40, :: how far down from 80? ::)
+move(:: x, or y ::, 40)
+takeScreenshot(100, 200, 300, 400)
+scroll(0, 400)
+sleep(500ms)
+loop (10) {
+  typeText("click(700, 600)")
+}
+/*
+click(900, 800)
+*/
+/* keep 9 */ dragTo(600, 100)
+drag(100, /* keep this note */ 200)`
+	want := `moveTo(500, 250)
+click(150, 100) // keep this example at click(900, 800)
+move(-20, :: how far down from 80? ::)
+move(:: x, or y ::, 20)
+takeScreenshot(50, 100, 150, 200)
+scroll(0, 400)
+sleep(500ms)
+loop (10) {
+  typeText("click(700, 600)")
+}
+/*
+click(900, 800)
+*/
+/* keep 9 */ dragTo(300, 50)
+drag(50, /* keep this note */ 100)`
+
+	if got := scaleMacroCoordinates(source, 0.5); got != want {
+		t.Errorf("scaleMacroCoordinates =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestAFullSizeModelCopyLeavesTheFileByteForByteAlone(t *testing.T) {
+	source := "  moveTo(1000, 500) // unchanged\n"
+	if got := scaleMacroCoordinates(source, 1); got != source {
+		t.Errorf("scaleMacroCoordinates at 1 = %q, want %q", got, source)
+	}
+}
+
 // Averaging rather than sampling is the point of the box filter: a checkerboard
 // picked from lands on one of its two colours, and averaged lands between them.
 func TestShrinkingAveragesRatherThanSamples(t *testing.T) {
@@ -107,15 +154,33 @@ func TestAnAbsoluteAnswerIsGrownBackToScreenPixels(t *testing.T) {
 	}
 }
 
-// A statement can hold a recorded offset beside an asked-for one, and the
-// recorded one was never in the model's coordinates: only the slot's own text
-// is grown.
+// Once the model-facing statement's scaled surroundings are replaced with the
+// original source text, only the slot's answer is grown.
 func TestOnlyTheAnsweredPartOfAStatementIsScaled(t *testing.T) {
 	statement := "move(40, ::how far down::)"
 	start, end := 9, len(statement)-1
 	got, done := rescaleFilled(statement, start, end, "move(40, 120)", 0.5)
 	if !done || got != "move(40, 240)" {
 		t.Errorf("rescaleFilled = %q, %v; want the 40 left alone and the 120 doubled", got, done)
+	}
+}
+
+func TestScaledModelSurroundingsAreRestoredBeforeTheAnswerIsGrown(t *testing.T) {
+	statement := "move(40, ::how far down::)"
+	modelStatement := "move(20, ::how far down::)"
+	start := strings.Index(statement, "::")
+	end := start + len("::how far down::")
+	modelStart := strings.Index(modelStatement, "::")
+	modelEnd := modelStart + len("::how far down::")
+
+	restored, ok := restoreFilledSurroundings(statement, start, end, modelStatement,
+		modelStart, modelEnd, "move(20, 120)")
+	if !ok || restored != "move(40, 120)" {
+		t.Fatalf("restoreFilledSurroundings = %q, %v; want the original 40 restored", restored, ok)
+	}
+	got, done := rescaleFilled(statement, start, end, restored, 0.5)
+	if !done || got != "move(40, 240)" {
+		t.Errorf("rescaleFilled = %q, %v; want only the new answer grown", got, done)
 	}
 }
 

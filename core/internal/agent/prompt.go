@@ -63,6 +63,13 @@ doubleClick written with a target — are the other way round: those are the
 position in the image itself, read off it the way a caption is, and where the
 cursor happens to be does not come into it.
 
+The image sent with this file may be scaled down from the original screenshot.
+When it is, Pob also scales the existing coordinates and pixel offsets in the
+copy of the file you see, so every image-measured number in this file uses the
+same pixel grid as the attached image. Answer every coordinate or offset in
+that same grid. Pob restores the file's full-size coordinates after the answer
+is returned.
+
 How much of a statement a slot stands for is what is written around it. A slot
 that is one argument of several is answered with that argument alone, and one
 written where the whole argument list goes is answered with the whole list,

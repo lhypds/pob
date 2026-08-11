@@ -109,12 +109,14 @@ to write than `move(:: the offset to the Save button ::)` followed by a `click()
 They are screenshot pixels whatever `image_scale` is set to (see [Settings](../Pob/06_Settings.md)), and it
 is below `1` by default. So the model is shown a smaller picture than the screen and answers in that
 picture's pixels, and Pob grows the answer back before it goes into the macro: a `move` filled from a
-third-size screenshot and one filled from a whole one write the same line. Only the part the model wrote is grown — a
-number already in the statement was never in the model's coordinates — and only where the numbers
-are measured on the picture: `move`, `moveTo`, `drag`, `dragTo`, the three clicks and
-`takeScreenshot`. A position on a third-size picture is a third of the position on the screen, the
-same as a distance is, so both kinds grow back by the same factor. `sleep` is a time and `scroll` is
-a wheel delta, so neither is touched.
+third-size screenshot and one filled from a whole one write the same line. The temporary copy of the
+file sent to the model has its existing coordinates shrunk into the same pixel grid too, so every
+image-measured number the model sees agrees with the picture. Those temporary values are discarded
+when the answer comes back: the existing source stays byte-for-byte as written and only the new part
+is grown. This applies where numbers are measured on the picture: `move`, `moveTo`, `drag`, `dragTo`,
+the three clicks and `takeScreenshot`. A position on a third-size picture is a third of the position
+on the screen, the same as a distance is, so both kinds grow back by the same factor. `sleep` is a
+time and `scroll` is a wheel delta, so neither is touched.
 
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to
 and skipped. Nothing is retried: the macro goes on to the next statement. A psl run that fails

@@ -809,20 +809,57 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		scale = 1
 	}
 
+	// The file and image the model sees have to describe one pixel grid. Keep
+	// the real source in screen pixels, but scale every existing coordinate in
+	// the temporary copy handed to psl. The current statement and slot in that
+	// copy are retained so the answer can be cut back out of it afterwards.
+	modelSource := source
+	modelStatement := statement
+	modelSlot := slot
+	if scale < 1 {
+		modelSource = scaleMacroCoordinates(source, scale)
+		modelLines := strings.Split(modelSource, "\n")
+		if targetLine < 0 || targetLine >= len(modelLines) {
+			applog.Logf("[%s] Macro slot (%s) — could not find the statement in the scaled model copy", run.sessionID, slot.Instruction)
+			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
+				"the statement is missing from the scaled model copy", shot)
+			return "", false
+		}
+		modelStatement = modelLines[targetLine]
+		var modelSlotFound bool
+		modelSlot, modelSlotFound = psl.FindSlot(modelStatement, 0)
+		if !modelSlotFound {
+			applog.Logf("[%s] Macro slot (%s) — could not find the slot in the scaled model copy", run.sessionID, slot.Instruction)
+			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
+				"the slot is missing from the scaled model copy", shot)
+			return "", false
+		}
+	}
+
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
 
-	result, err := r.psl.Fill(ctx, psl.Request{Source: source, Name: run.name, Image: shot, Prompt: run.prompt})
+	result, err := r.psl.Fill(ctx, psl.Request{Source: modelSource, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
 		return "", false
 	}
 
-	filled, ok := extractLine(source, result.Source, targetLine)
+	filled, ok := extractLine(modelSource, result.Source, targetLine)
 	if !ok {
 		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
 		return "", false
+	}
+	if scale < 1 {
+		var restored bool
+		filled, restored = restoreFilledSurroundings(statement, slot.Start, slot.End,
+			modelStatement, modelSlot.Start, modelSlot.End, filled)
+		if !restored {
+			applog.Logf("[%s] Macro slot (%s) — psl rewrote text outside the slot in the scaled model copy; not using its coordinates", run.sessionID, slot.Instruction)
+			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
+			return "", false
+		}
 	}
 
 	// The answer was read off a smaller picture, so the distances in it are that
@@ -846,12 +883,13 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	return filled, true
 }
 
-// Nothing of Pob's is written into the macro: no preamble, no statement
-// rewritten, the file as it was typed. What travels beside it is the screenshot,
-// as the slot's image, and macroPrompt, as psl's --prompt — what the calls in
-// the file are and what their arguments mean, which is what psl takes a briefing
-// on an API for. What a value has to look like is still what the statement
-// around the slot says, and psl's own prompting is what says the rest.
+// Nothing of Pob's is written permanently into the macro: no preamble and no
+// existing statement rewritten. When the screenshot is shrunk, the temporary
+// file handed to psl has its existing image coordinates shrunk by the same
+// amount; after the answer comes back, its surrounding text is restored from
+// the real file. What travels beside that copy is the screenshot as the slot's
+// image, and macroPrompt as psl's --prompt — what the calls in the file are and
+// what their arguments mean, which is what psl takes a briefing on an API for.
 
 // liveSlotLine returns the 0-based line of the slot psl would fill in the file
 // it is handed.

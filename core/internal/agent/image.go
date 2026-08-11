@@ -107,14 +107,147 @@ var scaledCalls = map[string]bool{
 	"takeScreenshot": true,
 }
 
+// scaleMacroCoordinates makes the temporary copy of a macro sent beside a
+// shrunken screenshot use that screenshot's pixel grid too. The real source is
+// never changed: after psl fills the slot, restoreFilledSurroundings puts its
+// answer back between the original source text before Pob grows that answer.
+//
+// Only existing, plain numeric arguments of calls measured on the image are
+// changed. Numbers in slot instructions, strings and comments are prose rather
+// than coordinates; loop counts, times and scroll deltas use other units.
+func scaleMacroCoordinates(source string, scale float64) string {
+	if scale >= 1 || scale <= 0 {
+		return source
+	}
+
+	lines := strings.Split(source, "\n")
+	inBlock := false
+	for i, line := range lines {
+		var comments [][2]int
+		comments, inBlock = commentSpans(line, inBlock)
+		lines[i] = scaleLineCoordinates(line, comments, scale)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// scaleLineCoordinates rewrites the numeric arguments of one coordinate call
+// without disturbing its whitespace, slots or comments. Comment bytes are
+// blanked only in a same-length copy used to find the call and its arguments,
+// which keeps every replacement offset valid in the original line.
+func scaleLineCoordinates(line string, comments [][2]int, scale float64) string {
+	codeBytes := []byte(line)
+	for _, span := range comments {
+		for i := span[0]; i < span[1]; i++ {
+			codeBytes[i] = ' '
+		}
+	}
+	code := string(codeBytes)
+	start := len(code) - len(strings.TrimLeft(code, " \t"))
+	end := len(strings.TrimRight(code, " \t"))
+	if start >= end {
+		return line
+	}
+
+	statement := code[start:end]
+	name, _, ok := macroArguments(statement)
+	if !ok || !scaledCalls[name] {
+		return line
+	}
+	open := strings.IndexByte(statement, '(')
+	if open < 0 {
+		return line
+	}
+	argsStart := start + open + 1
+	argsEnd := end - 1 // macroArguments established that the last byte is ')'.
+	if argsStart >= argsEnd {
+		return line
+	}
+
+	type replacement struct {
+		start, end int
+		text       string
+	}
+	var replacements []replacement
+	for _, span := range macroArgumentSpans(code[argsStart:argsEnd]) {
+		raw := code[argsStart+span[0] : argsStart+span[1]]
+		number := strings.TrimSpace(raw)
+		n, err := strconv.ParseFloat(number, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			continue
+		}
+		offset := strings.Index(raw, number)
+		replacements = append(replacements, replacement{
+			start: argsStart + span[0] + offset,
+			end:   argsStart + span[0] + offset + len(number),
+			text:  strconv.Itoa(int(math.Round(n * scale))),
+		})
+	}
+
+	// Right to left keeps offsets found in the original line valid when a
+	// replacement has fewer digits than the full-size coordinate it replaces.
+	for i := len(replacements) - 1; i >= 0; i-- {
+		r := replacements[i]
+		line = line[:r.start] + r.text + line[r.end:]
+	}
+	return line
+}
+
+// macroArgumentSpans is splitMacroArgs with offsets retained. Commas inside a
+// slot instruction or quoted string belong to that value rather than to the
+// surrounding call, so both are stepped over whole.
+func macroArgumentSpans(args string) [][2]int {
+	if strings.TrimSpace(args) == "" {
+		return nil
+	}
+	slots := slotStarts(args)
+	var spans [][2]int
+	start, i := 0, 0
+	for i < len(args) {
+		if args[i] == '"' {
+			i = endOfString(args, i)
+			continue
+		}
+		if end, ok := slots[i]; ok {
+			i = end
+			continue
+		}
+		if args[i] == ',' {
+			spans = append(spans, [2]int{start, i})
+			start, i = i+1, i+1
+			continue
+		}
+		i++
+	}
+	return append(spans, [2]int{start, len(args)})
+}
+
+// restoreFilledSurroundings takes the answer out of the scaled, model-facing
+// statement and puts it between the text surrounding the slot in the real
+// statement. Existing coordinates therefore remain byte-for-byte as written;
+// only the answer goes on to rescaleFilled.
+func restoreFilledSurroundings(statement string, start, end int, modelStatement string,
+	modelStart, modelEnd int, filled string) (string, bool) {
+	if start < 0 || end > len(statement) || start > end ||
+		modelStart < 0 || modelEnd > len(modelStatement) || modelStart > modelEnd {
+		return filled, false
+	}
+	modelPrefix, modelSuffix := modelStatement[:modelStart], modelStatement[modelEnd:]
+	if !strings.HasPrefix(filled, modelPrefix) || !strings.HasSuffix(filled, modelSuffix) ||
+		len(filled) < len(modelPrefix)+len(modelSuffix) {
+		return filled, false
+	}
+	answer := filled[len(modelPrefix) : len(filled)-len(modelSuffix)]
+	return statement[:start] + answer + statement[end:], true
+}
+
 // rescaleFilled turns a statement filled from a shrunken picture back into one
 // written in screen pixels.
 //
-// Only what the model wrote is touched. A statement can hold a recorded number
-// beside an asked-for one — move(40, :: … ::) — and the recorded one was never
-// in the model's coordinates to begin with, so the answer is cut back out of
-// the filled line by the text that surrounded the slot rather than the line
-// being re-read as a call.
+// Only what the model wrote is touched in the real macro. A statement can hold
+// a recorded number beside an asked-for one — move(40, :: … ::) — and although
+// the temporary model copy showed that number scaled, its original text has
+// already been restored by restoreFilledSurroundings. The answer is cut back
+// out by the text around the slot rather than the whole line being re-read.
 //
 // Anything that does not fit that shape comes back unchanged: a filled line
 // whose surroundings moved is one psl rewrote further than the slot, and a
