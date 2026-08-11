@@ -4,7 +4,7 @@ Pob
 ===
 
 
-Pob (perception & operation bridge) is designed to connect AI with desktop applications.  
+Pob (Perception & Operation Bridge) is designed to connect AI with desktop applications.  
 
 
 Design
