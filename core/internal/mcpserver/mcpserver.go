@@ -535,7 +535,8 @@ func toolDefinitions() []any {
 			"Press a special key or shortcut. A key may be preceded by \"+\"-joined modifiers: "+
 				"cmd (Command on macOS, Ctrl elsewhere — use this for ordinary shortcuts), ctrl, alt, "+
 				"shift, gui (the key beside the space bar: Command / Windows / Super). Keys: a–z, 0–9, "+
-				"return, tab, space, backspace, forwarddelete, escape, insert, left, right, up, down, "+
+				"return (alias enter), tab, space, backspace (alias delete), forwarddelete, "+
+				"escape (alias esc), insert, left, right, up, down, "+
 				"home, end, pageup, pagedown, capslock, printscreen, scrolllock, pause, menu, f1–f24, "+
 				"minus, equals, leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, "+
 				"period, slash.",
