@@ -22,7 +22,7 @@ is told what the statement is a call to.
 | `keyPress(key)` | one string | Press a key, with `+`-joined modifiers in front of it — `return`, `cmd+v`, `ctrl+shift+t`. See [Key names](../Pob/04_Keys.md) |
 | `sleep(milliseconds)` | number | Pause |
 | `resetCursor()` | — | Send the cursor back to the origin it starts at |
-| `take_screenshot(x?, y?, w?, h?)` | numbers, all four or none | Capture a screenshot into the session's `screenshots/`. With all four, crop to that region |
+| `takeScreenshot(x?, y?, w?, h?)` | numbers, all four or none | Capture a screenshot into the session's `screenshots/`. With all four, crop to that region |
 | `stop` | — | End the run here. Written without parentheses; `stop()` is read too |
 | `call(path)` | one string | Replay another PSL file here, then carry on below it |
 

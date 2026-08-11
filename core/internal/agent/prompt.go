@@ -39,7 +39,7 @@ The whole vocabulary:
                        "return", "cmd+v", "ctrl+shift+t"
   sleep(milliseconds)  pause
   resetCursor()        send the cursor back to the origin a replay starts from
-  take_screenshot()    capture the screen; with x, y, w, h, crop to that region
+  takeScreenshot()     capture the screen; with x, y, w, h, crop to that region
   stop                 end the replay here; nothing under it runs
   call("other.psl")    replay another PSL file here, then carry on below it. The
                        path is relative to the file the call is written in

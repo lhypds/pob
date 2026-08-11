@@ -698,7 +698,7 @@ func TestToolCallsAreRecordedAsMacroLines(t *testing.T) {
 		`typeText("say \"hi\"")`,
 		`keyPress("cmd+v")`,
 		"sleep(250)",
-		"take_screenshot()",
+		"takeScreenshot()",
 	}
 	got := rec.recorded()
 	if len(got) != len(want) {
@@ -741,7 +741,7 @@ func TestRecordedActionNamesAreReplayable(t *testing.T) {
 	replayable := map[string]bool{
 		"move": true, "click": true, "rightClick": true, "doubleClick": true,
 		"drag": true, "scroll": true, "typeText": true, "keyPress": true,
-		"sleep": true, "take_screenshot": true, "resetCursor": true,
+		"sleep": true, "takeScreenshot": true, "resetCursor": true,
 	}
 	for _, line := range rec.recorded() {
 		name, _, ok := strings.Cut(line, "(")

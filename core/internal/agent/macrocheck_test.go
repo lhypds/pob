@@ -59,8 +59,8 @@ loop (:: another unread message ::, 10) {
 loop (false, 3) {
     stop
 }
-take_screenshot()
-take_screenshot(0, 0, 100, 100)
+takeScreenshot()
+takeScreenshot(0, 0, 100, 100)
 typeText("say \"hi\"")
 typeText("a, b")
 resetCursor()
@@ -77,7 +77,7 @@ func TestCheckAllowsASlotForAWholeArgumentList(t *testing.T) {
     move(::the profile icon::)
     click()
 }
-take_screenshot(:: the region the dialog is in ::)
+takeScreenshot(:: the region the dialog is in ::)
 `)
 }
 
@@ -111,13 +111,13 @@ func TestCheckCatchesArgumentCounts(t *testing.T) {
 	wantProblems(t, `click(1, 2)
 typeText("a", "b")
 call()
-take_screenshot(1, 2)
+takeScreenshot(1, 2)
 sleep()
 `,
 		"click takes no arguments, and 2 were written",
 		"typeText takes 1 argument, and 2 were written",
 		"call takes 1 argument, and none was written",
-		"take_screenshot takes all 4 arguments or none at all, and 2 were written",
+		"takeScreenshot takes all 4 arguments or none at all, and 2 were written",
 		"sleep takes 1 argument, and none was written",
 	)
 }
@@ -152,9 +152,22 @@ STOP
 halt
 `,
 		`there is no statement called "clik"`,
-		`there is no statement called "Move" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean move? Names are case-sensitive`,
+		`there is no statement called "Move" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean move? Names are camelCase and case-sensitive`,
 		`"STOP" is not a statement — stop is spelled lowercase`,
 		`"halt" is not a statement — a call is name(argument, argument)`,
+	)
+}
+
+// A name separated with underscores is the camelCase one written the other way,
+// and is pointed at it rather than called unheard-of. take_screenshot is the one
+// this happens to: it is what the statement was called before the rename, so a
+// macro recorded then is read here and says what to fix.
+func TestCheckPointsSnakeCaseAtTheCamelCaseName(t *testing.T) {
+	wantProblems(t, `take_screenshot()
+reset_cursor()
+`,
+		`there is no statement called "take_screenshot" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean takeScreenshot? Names are camelCase and case-sensitive`,
+		`there is no statement called "reset_cursor" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean resetCursor? Names are camelCase and case-sensitive`,
 	)
 }
 

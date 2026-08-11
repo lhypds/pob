@@ -423,7 +423,7 @@ struct InstanceContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
-                // Flush pending recorded input first so the take_screenshot()
+                // Flush pending recorded input first so the takeScreenshot()
                 // line the core appends lands after the user's actions.
                 instance.recorder.flushPending()
                 bridge.takeScreenshot()

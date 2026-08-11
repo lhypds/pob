@@ -788,9 +788,9 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 		return rpcError(id, -32603, "Screenshot capture failed")
 	}
 	if crop != nil {
-		s.record("take_screenshot(%d, %d, %d, %d)", int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
+		s.record("takeScreenshot(%d, %d, %d, %d)", int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
 	} else {
-		s.record("take_screenshot()")
+		s.record("takeScreenshot()")
 	}
 
 	content := []any{map[string]any{

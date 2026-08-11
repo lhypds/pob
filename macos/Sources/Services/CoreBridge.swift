@@ -148,7 +148,7 @@ final class CoreBridge: ObservableObject {
     }
 
     /// Toolbar screenshot button: the Go core flashes, captures and saves the
-    /// shot, and records a take_screenshot() macro line while recording.
+    /// shot, and records a takeScreenshot() macro line while recording.
     func takeScreenshot() {
         notify(method: "screenshot.take", params: [:])
     }

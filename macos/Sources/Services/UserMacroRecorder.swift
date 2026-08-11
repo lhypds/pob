@@ -92,7 +92,7 @@ final class UserMacroRecorder {
     }
 
     /// Flushes pending scroll/text buffers so lines appended by other writers
-    /// (e.g. the core's take_screenshot() on the toolbar screenshot button)
+    /// (e.g. the core's takeScreenshot() on the toolbar screenshot button)
     /// land after the actions the user already performed.
     func flushPending() {
         guard isActive else { return }

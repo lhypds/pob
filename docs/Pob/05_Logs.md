@@ -27,7 +27,7 @@ Structure
                              +--- slot.json       the instruction, the statement and the file and line it came from, what was filled in, and which model filled it.
                              +--- psl.txt         what the compiler said while filling it.
                              +--- screenshot.png  what the slot was filled from.
-                   +--- screenshots/              screenshots taken during the session with `take_screenshot()` tool.
+                   +--- screenshots/              screenshots taken during the session with `takeScreenshot()` tool.
 ```
 
 `<instance>` is the instance ID, of the form `pb-<4 hex>` (the last two bytes of a fresh UID in

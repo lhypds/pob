@@ -90,7 +90,7 @@ is below `1` by default. So the model is shown a smaller picture than the screen
 picture's pixels, and Pob grows the answer back before it goes into the macro: a `move` filled from a
 third-size screenshot and one filled from a whole one write the same line. Only the part the model wrote is grown — a
 number already in the statement was never in the model's coordinates — and only where the numbers
-are distances across the picture: `move`, `drag` and `take_screenshot`. `sleep` is milliseconds and
+are distances across the picture: `move`, `drag` and `takeScreenshot`. `sleep` is milliseconds and
 `scroll` is a wheel delta, so neither is touched.
 
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to

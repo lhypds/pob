@@ -113,7 +113,7 @@ public static class CoreBridge
     }
 
     // Toolbar screenshot button: the Go core flashes, captures and saves the
-    // shot, and records a take_screenshot() macro line while recording.
+    // shot, and records a takeScreenshot() macro line while recording.
     public static void TakeScreenshot()
     {
         Notify("screenshot.take", new Dictionary<string, object?>());

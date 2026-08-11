@@ -94,9 +94,9 @@ func boxDownscale(src image.Image, w, h int) *image.NRGBA {
 // on purpose: what a shell records there is a wheel delta, which is not a
 // distance across the image and does not scale with one.
 var scaledCalls = map[string]bool{
-	"move":            true,
-	"drag":            true,
-	"take_screenshot": true,
+	"move":           true,
+	"drag":           true,
+	"takeScreenshot": true,
 }
 
 // rescaleFilled turns a statement filled from a shrunken picture back into one

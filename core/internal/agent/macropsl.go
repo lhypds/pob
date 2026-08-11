@@ -821,7 +821,7 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		r.runMacroCall(ctx, run, args[0])
 
-	case "take_screenshot":
+	case "takeScreenshot":
 		var crop *bridge.CropRect
 		if len(args) >= 4 {
 			x, okX := num(0)
@@ -833,9 +833,9 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			}
 		}
 		if crop != nil {
-			applog.Logf("[%s] Macro take_screenshot(crop: %d, %d, %d, %d)", sessionID, int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
+			applog.Logf("[%s] Macro takeScreenshot(crop: %d, %d, %d, %d)", sessionID, int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
 		} else {
-			applog.Logf("[%s] Macro take_screenshot", sessionID)
+			applog.Logf("[%s] Macro takeScreenshot", sessionID)
 		}
 		r.br.FlashScreenshot()
 		if shot, err := r.br.CaptureScreenshot(true, crop); err == nil {

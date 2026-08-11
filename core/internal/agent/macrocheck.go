@@ -283,7 +283,7 @@ func (s macroCallShape) most() int {
 }
 
 // wants says how many arguments a call takes, in the words the Calls table uses.
-// take_screenshot is the one that takes two different numbers of them, and the
+// takeScreenshot is the one that takes two different numbers of them, and the
 // table's way of putting that — all four or none — is the way it reads here.
 func (s macroCallShape) wants() string {
 	if len(s.arity) > 1 {
@@ -300,19 +300,19 @@ func (s macroCallShape) wants() string {
 }
 
 var macroVocabulary = map[string]macroCallShape{
-	"move":            {arity: []int{2}, numeric: true},
-	"drag":            {arity: []int{2}, numeric: true},
-	"scroll":          {arity: []int{2}, numeric: true},
-	"click":           {arity: []int{0}},
-	"rightClick":      {arity: []int{0}},
-	"doubleClick":     {arity: []int{0}},
-	"typeText":        {arity: []int{1}},
-	"keyPress":        {arity: []int{1}},
-	"sleep":           {arity: []int{1}, numeric: true},
-	"resetCursor":     {arity: []int{0}},
-	"take_screenshot": {arity: []int{0, 4}, numeric: true},
-	macroStopKeyword:  {arity: []int{0}},
-	macroCallKeyword:  {arity: []int{1}},
+	"move":           {arity: []int{2}, numeric: true},
+	"drag":           {arity: []int{2}, numeric: true},
+	"scroll":         {arity: []int{2}, numeric: true},
+	"click":          {arity: []int{0}},
+	"rightClick":     {arity: []int{0}},
+	"doubleClick":    {arity: []int{0}},
+	"typeText":       {arity: []int{1}},
+	"keyPress":       {arity: []int{1}},
+	"sleep":          {arity: []int{1}, numeric: true},
+	"resetCursor":    {arity: []int{0}},
+	"takeScreenshot": {arity: []int{0, 4}, numeric: true},
+	macroStopKeyword: {arity: []int{0}},
+	macroCallKeyword: {arity: []int{1}},
 }
 
 // macroArguments reads a statement as written — before any slot in it is filled,
@@ -465,14 +465,23 @@ func checkCall(node macroNode, dir, name string, chain []string) []MacroProblem 
 // didYouMean names the statement a misspelling was nearly, and says nothing when
 // nothing is near enough. Case is most of what goes wrong — the vocabulary is
 // camelCase and a recording is not what wrote the line — so it is the first
-// thing looked at.
+// thing looked at, together with the underscore a snake_case hand puts where the
+// capital belongs. That second one is also what an old macro trips on:
+// takeScreenshot was written take_screenshot once, and a file recorded then
+// arrives here rather than at a name nothing recognises.
 func didYouMean(name string) string {
 	for known := range macroVocabulary {
-		if strings.EqualFold(known, name) {
-			return fmt.Sprintf(". Did you mean %s? Names are case-sensitive", known)
+		if strings.EqualFold(unseparated(known), unseparated(name)) {
+			return fmt.Sprintf(". Did you mean %s? Names are camelCase and case-sensitive", known)
 		}
 	}
 	return ""
+}
+
+// unseparated drops the underscores out of a name, which is what lets a
+// snake_case spelling of a camelCase statement compare equal to it.
+func unseparated(name string) string {
+	return strings.ReplaceAll(name, "_", "")
 }
 
 func ordinal(i int) string {
