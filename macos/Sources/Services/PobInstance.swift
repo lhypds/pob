@@ -73,7 +73,7 @@ final class PobInstance: NSObject, ObservableObject {
         window.backgroundColor = NSColor.clear
         window.titlebarAppearsTransparent = false
         window.titleVisibility = .hidden
-        window.title = "Pob \(AppDelegate.loadVersion())"
+        window.title = "Pob \(AppDelegate.version)"
         window.toolbarStyle = .unifiedCompact
 
         window.styleMask.insert(.resizable)

@@ -60,14 +60,17 @@ echo "Building pob-core and pob CLI (Go, linux/$ARCH)…"
 
 # ── build shell (C/GTK, inside a Debian container) ──────────────────────────
 echo "Building Linux shell in Docker (linux/$ARCH)…"
+# POB_VERSION is passed in: the container mounts linux-x11/ alone, so the
+# Makefile cannot read the VERSION file at the repository root itself.
 docker run --rm --platform "linux/$ARCH" \
+    -e POB_VERSION="$VERSION" \
     -v "$SCRIPT_DIR":/src -w /src debian:stable sh -c '
         set -e
         apt-get update -qq >/dev/null 2>&1
         apt-get install -y -qq gcc make pkg-config \
             libgtk-3-dev libjson-glib-dev libx11-dev libxtst-dev >/dev/null 2>&1
         make clean >/dev/null
-        make
+        make POB_VERSION="$POB_VERSION"
     '
 
 # ── assemble ─────────────────────────────────────────────────────────────────

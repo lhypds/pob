@@ -44,10 +44,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
     }
 
-    static func loadVersion() -> String {
+    /// The version this copy of Pob was built as.
+    ///
+    /// macos/build.sh stamps VERSION into the bundle's Info.plist, so the
+    /// answer travels inside Pob.app — dragging it to /Applications leaves the
+    /// VERSION file behind in the folder it was unzipped from, which is why
+    /// reading that file cannot be the primary source. A `swift build` binary
+    /// has no bundle around it, so there the dev checkout's VERSION is read.
+    static let version: String = {
+        if let stamped = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           !stamped.isEmpty
+        {
+            return stamped
+        }
+
         let executableURL = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        // .build/debug/Pob → macos/ (packaged: next to the bundle), one more
-        // up is the repository root where VERSION actually lives in dev.
+        // .build/debug/Pob → macos/, one more up is the repository root where
+        // VERSION actually lives in dev.
         let binaryParent3 = executableURL
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -69,7 +82,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         return "0.0.0"
-    }
+    }()
 
     private func createMenu() {
         let mainMenu = NSMenu()
@@ -271,7 +284,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fullNameLabel.frame = NSRect(x: 20, y: 60, width: 240, height: 18)
         container.addSubview(fullNameLabel)
 
-        let versionLabel = NSTextField(labelWithString: "Version \(Self.loadVersion())")
+        let versionLabel = NSTextField(labelWithString: "Version \(Self.version)")
         versionLabel.font = NSFont.systemFont(ofSize: 13)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.frame = NSRect(x: 20, y: 38, width: 240, height: 18)

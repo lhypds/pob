@@ -60,9 +60,12 @@ for ARCH in $WIN_ARCHS; do
 
     # ── build shell (C#/WPF, self-contained single file) ─────────────────────
     echo "Building Windows shell (release, $RID)…"
+    # -p:Version compiles VERSION into Pob.exe — what the About box shows,
+    # wherever the app ends up installed.
     dotnet publish "$SCRIPT_DIR/Pob.csproj" -c Release -r "$RID" \
         --self-contained true -p:PublishSingleFile=true \
         -p:IncludeNativeLibrariesForSelfExtract=true \
+        -p:Version="$VERSION" \
         -o "$SCRIPT_DIR/publish-$ARCH"
 
     # ── assemble ─────────────────────────────────────────────────────────────

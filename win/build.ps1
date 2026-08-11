@@ -35,9 +35,11 @@ try {
 # ── build shell (C#/WPF, self-contained single file) ─────────────────────────
 Write-Host "Building Windows shell (release)…"
 $PublishDir = Join-Path $ScriptDir "publish"
+# -p:Version compiles VERSION into Pob.exe — what the About box shows,
+# wherever the app ends up installed.
 dotnet publish (Join-Path $ScriptDir "Pob.csproj") -c Release -r $Rid `
     --self-contained true -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true -o $PublishDir
+    -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$Version -o $PublishDir
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 # ── assemble ─────────────────────────────────────────────────────────────────

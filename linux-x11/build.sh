@@ -63,7 +63,7 @@ echo "Building pob-core and pob CLI (Go)…"
 
 # ── build shell (C/GTK) ──────────────────────────────────────────────────────
 echo "Building Linux shell (release)…"
-(cd "$SCRIPT_DIR" && make clean >/dev/null && make)
+(cd "$SCRIPT_DIR" && make clean >/dev/null && make POB_VERSION="$VERSION")
 
 # ── assemble ─────────────────────────────────────────────────────────────────
 echo "Assembling dist/Pob…"

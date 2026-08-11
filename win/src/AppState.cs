@@ -8,6 +8,7 @@
 // glued content overlay window — visually one window, like the input-shape
 // region trick on X11.
 using System.IO;
+using System.Reflection;
 using System.Windows.Media;
 using Pob.Services;
 using Pob.Views;
@@ -41,8 +42,22 @@ public static class AppState
 
     public static string Version => _version ??= ReadVersion();
 
+    // What Pob.csproj carries when the build did not stamp a version in.
+    private const string Unstamped = "0.0.0";
+
     private static string ReadVersion()
     {
+        // What the build compiled into Pob.exe (win/build.sh and friends pass
+        // -p:Version from the VERSION file): an installed copy has no VERSION
+        // file at a path it can guess, so the files below are the fallback for
+        // an unstamped build inside a checkout.
+        string stamped = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+        // The SDK appends "+<commit>" when the repository has source-link info.
+        int plus = stamped.IndexOf('+');
+        if (plus >= 0) stamped = stamped[..plus];
+        if (stamped.Length > 0 && stamped != Unstamped) return stamped;
+
         // Project root first (dev workflow), then next to the executable
         // (packaged install), then relative to the dev build output
         // (win/bin/<cfg>/<tfm>/Pob.exe -> ../../../../VERSION).
@@ -65,7 +80,7 @@ public static class AppState
             {
             }
         }
-        return "0.0.0";
+        return Unstamped;
     }
 
     // ── mode / state transitions ────────────────────────────────────────────

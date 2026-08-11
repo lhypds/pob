@@ -25,6 +25,16 @@ const char *app_version(void) {
     static gchar *version = NULL;
     if (version) return version;
 
+    // What the build compiled in (see the Makefile): an installed copy has no
+    // VERSION file beside the binary, so the file below is only the fallback
+    // for a build made without the stamp.
+#ifdef POB_VERSION
+    if (POB_VERSION[0] != '\0') {
+        version = g_strdup(POB_VERSION);
+        return version;
+    }
+#endif
+
     // Project root first (dev workflow), then relative to the executable
     // (linux-x11/bin/pob -> ../../VERSION).
     gchar *candidates[2] = {NULL, NULL};

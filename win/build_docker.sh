@@ -72,6 +72,7 @@ for ARCH in $WIN_ARCHS; do
         dotnet publish Pob.csproj -c Release -r "$RID" \
             --self-contained true -p:PublishSingleFile=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version="$VERSION" \
             -o "publish-$ARCH"
 
     # ── assemble ─────────────────────────────────────────────────────────────

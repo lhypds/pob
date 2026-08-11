@@ -15,6 +15,11 @@
     <!-- Allows compiling (not running) this Windows-only app on macOS/Linux,
          e.g. win/build.sh and win/build_docker.sh. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- The build scripts override this with -p:Version=<VERSION file>, which
+         compiles the version into Pob.exe — an installed copy has no VERSION
+         file at a path it can guess. 0.0.0 marks an unstamped build (a plain
+         `dotnet build`), which sends AppState.Version to the VERSION file. -->
+    <Version>0.0.0</Version>
   </PropertyGroup>
 
   <!-- App.xaml lives under src/, outside the SDK's root-only convention. -->

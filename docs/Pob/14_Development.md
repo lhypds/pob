@@ -58,6 +58,15 @@ the app-menu item instead). See [CLI](07_CLI.md).
 The `README.txt` in each zip is `macos/README.txt`, `linux-x11/README.txt` or
 `win/README.txt`, copied in at build time.
 
+Every build compiles `VERSION` into what it produces — the App menu's About
+box and the window title read that, not a file, because an installed copy has
+no `VERSION` file at a path it can guess: macOS stamps `Info.plist`
+(`CFBundleShortVersionString`), Linux compiles in `-DPOB_VERSION`, Windows
+passes `-p:Version` to `dotnet publish`, and the `pob` CLI takes
+`-ldflags -X main.version`. A build made without the stamp (a bare
+`swift build`, `make`, or `dotnet build`) falls back to reading `VERSION` from
+the checkout, so a dev run still shows the right number.
+
 
 See also
 --------
