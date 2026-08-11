@@ -84,6 +84,7 @@ has to leave a statement that reads as PSL:
 | `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
 | `sleep(:: … ::)` | a time, unit and all — `3s` |
 | `if (:: … ::)` | `true` or `false` |
+| `} else if (:: … ::)` | `true` or `false` — it is the `if` it says it is |
 | `loop (:: … ::, 5)` | `true` or `false` |
 
 How much of a statement a slot stands for is what is written around it, which is the second and third

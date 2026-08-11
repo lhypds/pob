@@ -27,6 +27,11 @@ not start.
 | A `loop` whose condition is neither a slot nor `true`/`false` | The same |
 | An `if` or `loop` whose `}` is missing | The line the block was opened on, and that the end of the file closes it |
 | A `}` with no `if` or `loop` above it | `} closes a block that was never opened` |
+| An `else` with no `if` above it, or one whose `}` is missing | `else belongs to the if whose block the } above it closes — } else {, or the else on a line of its own under the }`, and that its whole block is dropped |
+| An `else` on a `loop` | That an `else` belongs to an `if`, and that its whole block is dropped |
+| A second `else` on one `if` | `the if above this one already has an else`, and that its whole block is dropped |
+| An `else` written with anything but a `{` after it — `} else (:: is it? ::) {` | That an `else` takes no condition of its own, and that its whole block is dropped |
+| An `else if` missing its parentheses or the `{`, or holding neither a slot nor `true`/`false` | The header, and that its whole block is dropped — the same as the `if` it is |
 | A `/*` nothing closes | The line it opened on, and that the comment runs to the end of the file |
 | A `*/` with no `/*` above it | Not a comment: it stays in the line, which is then not a statement |
 | A statement and a comment that closes mid-line, leaving two statements on it — `click() /* why */ move(1, 2)` | One line, which is not one statement — read as a call with arguments nobody wrote |
@@ -51,8 +56,8 @@ and the ones around it still run:
 |---------|--------------|
 | A statement that does not read as PSL once its slots are filled | Logged with what it was filled to, and skipped |
 | A `sleep` whose slot fills to something that is not a time — `500`, `"10m"` | Logged and skipped, in the same words the check would have used. The check never saw this line, so the replay says it instead |
-| A slot psl cannot fill — no model configured, no answer, no screenshot | The statement is skipped, with the reason in the log; a condition then reads as false, so its block is skipped |
-| An `if` whose condition fills to something other than `true` or `false` | Reads as false: the block is skipped, with what it filled to in the log |
+| A slot psl cannot fill — no model configured, no answer, no screenshot | The statement is skipped, with the reason in the log; a condition then has no verdict, so its block is skipped — and an `if` written with an `else` skips that too |
+| An `if` whose condition fills to something other than `true` or `false` | No verdict: the block is skipped, with what it filled to in the log. An `if` written with an `else` runs neither block — an `else` is what runs when the answer is false, and there is no answer |
 | A `loop` whose condition fills to something other than `true` or `false` | Reads as false: the loop ends there, with what it filled to in the log |
 | A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
 | A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |

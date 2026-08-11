@@ -12,12 +12,25 @@ import (
 // depth, so a test can state the shape it expects. A statement still holding a
 // slot is shown as it was written, since that is all that is known of it until
 // the replay fills it.
+//
+// An else is shown where it is written rather than where it is kept: the block
+// is one statement in from the keyword, and a chain — which is an if inside the
+// else of the one above it — is shown level with the if it continues, the way
+// the macro has it.
 func nodeSummary(nodes []macroNode, indent string) []string {
 	var out []string
 	for _, n := range nodes {
 		if n.isIf || n.isLoop {
 			out = append(out, indent+macroBlockLabel(n))
 			out = append(out, nodeSummary(n.body, indent+"  ")...)
+			switch {
+			case len(n.elseBody) == 0:
+			case len(n.elseBody) == 1 && n.elseBody[0].isElseIf:
+				out = append(out, nodeSummary(n.elseBody, indent)...)
+			default:
+				out = append(out, indent+"else")
+				out = append(out, nodeSummary(n.elseBody, indent+"  ")...)
+			}
 			continue
 		}
 		if n.slots {
@@ -76,6 +89,130 @@ drag(-775, -615)`, []string{
 		"  click()",
 		"drag(-775, -615)",
 	})
+}
+
+// The statements under the else are the ones that run when the condition does
+// not hold, and are written on the line that closes the block that runs when it
+// does.
+func TestParseMacroIfElse(t *testing.T) {
+	checkParse(t, `if (:: a save dialog is on screen ::) {
+    keyPress("return")
+} else {
+    keyPress("escape")
+    stop()
+}
+click()`, []string{
+		"if (:: a save dialog is on screen ::)",
+		`  keyPress(return)`,
+		"else",
+		`  keyPress(escape)`,
+		"  stop()",
+		"click()",
+	})
+}
+
+// The `}` and the else are one statement written on one line or on two. A `}`
+// closes a block on a line of its own everywhere else in the language, and an
+// else written under one is the same else as the one written beside it.
+func TestParseMacroElseUnderTheBrace(t *testing.T) {
+	beside := parseMacro(`if (true) {
+	click()
+} else {
+	move(1, 2)
+}`)
+	under := parseMacro(`if (true) {
+	click()
+}
+
+else {
+	move(1, 2)
+}`)
+	got := strings.Join(nodeSummary(under, ""), "\n")
+	want := strings.Join(nodeSummary(beside, ""), "\n")
+	if got != want {
+		t.Errorf("the two read differently:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestParseMacroElseKeywordCase(t *testing.T) {
+	for _, keyword := range []string{"else", "ELSE", "Else"} {
+		checkParse(t, `if (true) {
+	click()
+} `+keyword+` {
+	move(1, 2)
+}`, []string{
+			"if (true)",
+			"  click()",
+			"else",
+			"  move(1, 2)",
+		})
+	}
+}
+
+// A chain goes on asking. Each `else if` is the if of the else above it, so the
+// first condition that holds is the one whose block runs and the one `}` at the
+// end closes the lot.
+func TestParseMacroElseIfChain(t *testing.T) {
+	checkParse(t, `if (:: a save dialog is on screen ::) {
+	keyPress("return")
+} else if (:: an error dialog is on screen ::) {
+	keyPress("escape")
+} else if (false) {
+	stop()
+} else {
+	click()
+}`, []string{
+		"if (:: a save dialog is on screen ::)",
+		`  keyPress(return)`,
+		"else if (:: an error dialog is on screen ::)",
+		`  keyPress(escape)`,
+		"else if (false)",
+		"  stop()",
+		"else",
+		"  click()",
+	})
+}
+
+// An else belongs to the if whose block the `}` in front of it closes, which is
+// the nearest one still open.
+func TestParseMacroElseBindsToTheNearestIf(t *testing.T) {
+	checkParse(t, `if (:: a chat window is open ::) {
+	if (:: the message list is empty ::) {
+		typeText("hi")
+	} else {
+		click()
+	}
+} else {
+	stop()
+}`, []string{
+		"if (:: a chat window is open ::)",
+		"  if (:: the message list is empty ::)",
+		`    typeText(hi)`,
+		"  else",
+		"    click()",
+		"else",
+		"  stop()",
+	})
+}
+
+// An else Pob cannot place takes its block with it, the same way a malformed
+// header does: the statements under it were written to run instead of something,
+// and running them either way is the one outcome nobody asked for.
+func TestParseMacroMisplacedElseDropsItsBlock(t *testing.T) {
+	for _, macro := range []string{
+		"click()\n} else {\n\tstop()\n}",                    // no if above it
+		"click()\nelse {\n\tstop()\n}",                      // the same, written the other way
+		"loop (2) {\n\tclick()\n} else {\n\tstop()\n}",      // a loop has no condition left to be the other half of
+		"if (true) {\n} else {\n} else {\n\tstop()\n}",      // one else is all an if has
+		"if (nonsense) {\n} else {\n\tstop()\n}",            // the if it belongs to was dropped
+		"if (true) {\n} else if (nonsense) {\n\tstop()\n}",  // the else if is the one that cannot be read
+		"if (true) {\n} else (:: is it? ::) {\n\tstop()\n}", // an else takes no condition of its own
+	} {
+		nodes := parseMacro(macro)
+		if summary := strings.Join(nodeSummary(nodes, ""), "\n"); strings.Contains(summary, "stop()") {
+			t.Errorf("%q kept the block under the else:\n%s", macro, summary)
+		}
+	}
 }
 
 // A slot goes anywhere in a statement, not only in an if. What the statement
@@ -634,6 +771,9 @@ func TestHasMacroSlot(t *testing.T) {
 		{"an argument", "move(:: the x offset ::, 40)", true},
 		{"inside a string", `typeText("Hi :: the name ::")`, true},
 		{"nested in a block", "if (true) {\n\tif (:: a dialog is open ::) {\n\t\tclick()\n\t}\n}", true},
+		{"in an else block", "if (true) {\n\tclick()\n} else {\n\ttypeText(:: what to say ::)\n}", true},
+		{"an else if condition", "if (true) {\n\tclick()\n} else if (:: a dialog is open ::) {\n\tclick()\n}", true},
+		{"an else written out is not a slot", "if (true) {\n\tclick()\n} else {\n\tclick()\n}", false},
 		{"a loop counted out is not a slot", "loop (3) {\n\tclick()\n}", false},
 		{"a loop condition", "loop (:: another unread message ::, 5) {\n\tclick()\n}", true},
 		{"nested in a loop", "loop (3) {\n\ttypeText(:: what to say ::)\n}", true},
@@ -688,6 +828,22 @@ if (:: something is true ::) {
 }`)
 	if got := countMacroNodes(nodes); got != 5 {
 		t.Errorf("countMacroNodes = %d, want 5", got)
+	}
+}
+
+// An if with an else is one statement holding two blocks, and both of them
+// count: what Execute says it is about to run is the macro as written.
+func TestCountMacroNodesCountsBothBlocks(t *testing.T) {
+	nodes := parseMacro(`if (:: a save dialog is on screen ::) {
+	keyPress("return")
+} else if (:: an error dialog is on screen ::) {
+	keyPress("escape")
+	stop()
+} else {
+	click()
+}`)
+	if got := countMacroNodes(nodes); got != 6 {
+		t.Errorf("countMacroNodes = %d, want 6 — two headers and four statements", got)
 	}
 }
 
@@ -793,6 +949,95 @@ move(:: the x offset ::, 40)`
 	}
 }
 
+// An if with an else always runs one of its two blocks and skips the other, and
+// the one that is skipped is the one whose slots are never asked about. Which of
+// them is spent first is the file's order and not a choice: psl fills the first
+// slot in the file, so what is left live above the statements about to run is
+// what it would reach for instead.
+func TestTheBlockAnIfDidNotRunIsSpent(t *testing.T) {
+	macro := `if (:: a dialog is open ::) {
+	typeText(:: what to say ::)
+} else {
+	keyPress(:: which key ::)
+}
+move(:: the x offset ::, 40)`
+	nodes := parseMacro(macro)
+
+	// The condition did not hold, so the block above the else is spent before the
+	// else asks anything — and what psl reaches for is the else's own statement.
+	no := &macroRun{source: macro}
+	no.record(nodes[0].line, "if (false) {")
+	no.spendBlock(nodes[0].body)
+
+	slot, found := psl.FindCompilerSlot(no.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "which key" {
+		t.Errorf("psl would fill %q, want the else block's statement", slot.Instruction)
+	}
+
+	// The other way round: the condition held, the body ran, and the else is what
+	// is spent — so the next question is the statement under the whole block.
+	yes := &macroRun{source: macro}
+	yes.record(nodes[0].line, "if (true) {")
+	yes.record(nodes[0].body[0].line, `typeText("hi")`)
+	yes.spendBlock(nodes[0].elseBody)
+	yes.spend(nodes[0].line)
+
+	slot, found = psl.FindCompilerSlot(yes.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "the x offset" {
+		t.Errorf("psl would fill %q, want the statement under the block", slot.Instruction)
+	}
+	if !strings.Contains(yes.source, "<which key>") {
+		t.Errorf("the else block still holds a slot: %q", yes.source)
+	}
+}
+
+// A chain is asked one condition at a time. The if that did not hold is spent
+// with its block, and the else if under it is then the first thing in the file
+// still holding a question.
+func TestAnElseIfIsAskedWhenTheIfAboveItDoesNotHold(t *testing.T) {
+	macro := `if (:: a save dialog is on screen ::) {
+	typeText(:: what to say ::)
+} else if (:: an error dialog is on screen ::) {
+	keyPress("escape")
+}`
+	nodes := parseMacro(macro)
+	run := &macroRun{source: macro}
+
+	run.record(nodes[0].line, "if (false) {")
+	run.spendBlock(nodes[0].body)
+
+	slot, found := psl.FindCompilerSlot(run.source, 0)
+	if !found {
+		t.Fatal("no slot psl would fill in the file handed to it")
+	}
+	if slot.Instruction != "an error dialog is on screen" {
+		t.Errorf("psl would fill %q, want the else if's condition", slot.Instruction)
+	}
+}
+
+// The header of an else if is a statement like any other and is found by its
+// line number, so nothing spends its slot ahead of the replay reaching it.
+func TestAnElseIfHeaderIsCoveredByTheParse(t *testing.T) {
+	macro := `if (true) {
+	click()
+} else if (:: an error dialog is on screen ::) {
+	keyPress("escape")
+}`
+	run := &macroRun{source: macro}
+
+	run.spendUncovered(parseMacro(macro))
+
+	if !strings.Contains(run.source, ":: an error dialog is on screen ::") {
+		t.Errorf("the else if's condition was spent before it was asked: %q", run.source)
+	}
+}
+
 // Every pass of a loop puts its statements back the way they were written, so
 // their slots are asked again from the screen as it now is rather than answered
 // once and repeated. The slot psl reaches for is the header's again — the block
@@ -852,6 +1097,38 @@ move(:: the x offset to Send ::, 0)`
 	}
 	if slot.Instruction != "the x offset to Send" {
 		t.Errorf("psl would fill %q, want the statement under the block", slot.Instruction)
+	}
+}
+
+// An if inside a loop has two blocks to put back, since the pass that did not
+// run the else is not the pass that will: the screen the next one is about is
+// the screen this one changed.
+func TestALoopRestoresAnElseBlockToo(t *testing.T) {
+	macro := `loop (2) {
+	if (:: a dialog is open ::) {
+		typeText(:: what to say ::)
+	} else {
+		keyPress(:: which key ::)
+	}
+}`
+	loop := parseMacro(macro)[0]
+	block := loop.body[0]
+	run := newMacroRun("test", "macro.psl", macro, "")
+
+	// The first pass: the condition held, so the body was filled and the else was
+	// spent unasked.
+	run.record(block.line, "if (true) {")
+	run.record(block.body[0].line, `typeText("hi")`)
+	run.spendBlock(block.elseBody)
+
+	run.restore(loop.line)
+	run.restoreBlock(loop.body)
+
+	if !strings.Contains(run.source, ":: which key ::") {
+		t.Errorf("the else block was not put back for the next pass: %q", run.source)
+	}
+	if !strings.Contains(run.source, ":: a dialog is open ::") {
+		t.Errorf("the condition was not put back for the next pass: %q", run.source)
 	}
 }
 

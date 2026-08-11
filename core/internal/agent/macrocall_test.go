@@ -143,6 +143,111 @@ sleep(2ms)`)
 	checkRan(t, m.ran(t), []string{"1"})
 }
 
+// An else is the block that runs when the condition does not hold, and exactly
+// one of the two runs either way. The statements under the whole thing run
+// whichever it was.
+func TestAnElseRunsWhenTheConditionDoesNot(t *testing.T) {
+	for _, tt := range []struct {
+		condition string
+		want      []string
+	}{
+		{"true", []string{"1", "3"}},
+		{"false", []string{"2", "3"}},
+	} {
+		m := newMacroTest(t)
+		m.replay(t, `if (`+tt.condition+`) {
+	sleep(1ms)
+} else {
+	sleep(2ms)
+}
+sleep(3ms)`)
+		checkRan(t, m.ran(t), tt.want)
+	}
+}
+
+// A chain asks one condition at a time and stops at the first that holds: the
+// block under it runs, and nothing below it is asked at all.
+func TestAChainRunsTheFirstBlockWhoseConditionHolds(t *testing.T) {
+	chain := func(a, b string) string {
+		return `if (` + a + `) {
+	sleep(1ms)
+} else if (` + b + `) {
+	sleep(2ms)
+} else {
+	sleep(3ms)
+}
+sleep(4ms)`
+	}
+	for _, tt := range []struct {
+		a, b string
+		want []string
+	}{
+		{"true", "true", []string{"1", "4"}},
+		{"true", "false", []string{"1", "4"}},
+		{"false", "true", []string{"2", "4"}},
+		{"false", "false", []string{"3", "4"}},
+	} {
+		m := newMacroTest(t)
+		m.replay(t, chain(tt.a, tt.b))
+		checkRan(t, m.ran(t), tt.want)
+	}
+}
+
+// A condition Pob cannot read is no verdict at all, and an if written with an
+// else runs neither block rather than reading the non-answer as a no. It is what
+// a filled condition that came back as neither word leaves behind, put into the
+// statement here rather than asked for — the replay reads the two the same way.
+func TestAnUnreadableConditionRunsNeitherBlock(t *testing.T) {
+	m := newMacroTest(t)
+	macro := `if (true) {
+	sleep(1ms)
+} else {
+	sleep(2ms)
+}
+sleep(3ms)`
+	nodes := parseMacro(macro)
+	nodes[0].condition = "probably"
+
+	run := newMacroRun("test", filepath.Join(m.dir, "macro.psl"), macro, "")
+	m.runner.runMacroNodes(context.Background(), run, nodes)
+
+	checkRan(t, m.ran(t), []string{"3"})
+	if !m.logged(t, "is not true or false — skipping both blocks") {
+		t.Error("the log does not say the else was skipped with the block above it")
+	}
+}
+
+// stop() inside an else ends the run where it stands, the same as it does in the
+// block above it.
+func TestStopInsideAnElseEndsTheRun(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, `if (false) {
+	sleep(1ms)
+} else {
+	sleep(2ms)
+	stop()
+	sleep(3ms)
+}
+sleep(4ms)`)
+
+	checkRan(t, m.ran(t), []string{"2"})
+}
+
+// An if inside a loop is asked again on every pass, and the else is the block a
+// pass runs when the answer that pass gave was no.
+func TestAnElseInsideALoopRunsOnEveryPassThatNeedsIt(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, `loop (2) {
+	if (false) {
+		sleep(1ms)
+	} else {
+		sleep(2ms)
+	}
+}`)
+
+	checkRan(t, m.ran(t), []string{"2", "2"})
+}
+
 // call replays another file where it stands, and comes back to the statement
 // under it.
 func TestCallRunsAnotherFile(t *testing.T) {

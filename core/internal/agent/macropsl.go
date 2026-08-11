@@ -17,8 +17,8 @@ import (
 )
 
 // macroNode is one statement of a macro: an action call, an if block whose body
-// only runs when its condition holds, or a loop block whose body runs again and
-// again.
+// only runs when its condition holds — and whose else block runs when it does
+// not — or a loop block whose body runs again and again.
 type macroNode struct {
 	// raw is the statement as written, with any :: … :: slot still in it. It is
 	// the line psl fills, and what is parsed once it has been.
@@ -44,11 +44,22 @@ type macroNode struct {
 	isIf   bool // if only
 	isLoop bool // loop only
 
+	// isElseIf says the if was written on the else of the one above it —
+	// `} else if (…) {`. It is that same if either way, and what this is for is
+	// the log, which names a block the way it is written.
+	isElseIf bool
+
 	// condition is the parenthesised expression, slots unfilled: an if always has
 	// one, a loop only when it was written with one.
 	condition string
 	count     int         // loop only — the most passes it may make
 	body      []macroNode // if and loop — the statements the block holds
+
+	// elseBody is what an if runs when its condition does not hold — the
+	// statements under its else — and is empty in an if written without one. A
+	// chain is one if written into the else of the if above it, so this holds
+	// that single if, which holds its own else in turn.
+	elseBody []macroNode
 
 	line int // 1-based line in macro.psl, for logs and for finding the line back
 }
@@ -333,6 +344,7 @@ func (run *macroRun) spendBlock(nodes []macroNode) {
 	for _, node := range nodes {
 		run.spend(node.line)
 		run.spendBlock(node.body)
+		run.spendBlock(node.elseBody)
 	}
 }
 
@@ -359,6 +371,7 @@ func (run *macroRun) restoreBlock(nodes []macroNode) {
 	for _, node := range nodes {
 		run.restore(node.line)
 		run.restoreBlock(node.body)
+		run.restoreBlock(node.elseBody)
 	}
 }
 
@@ -373,6 +386,7 @@ func (run *macroRun) spendUncovered(nodes []macroNode) {
 		for _, node := range nodes {
 			covered[node.line] = true
 			walk(node.body)
+			walk(node.elseBody)
 		}
 	}
 	walk(nodes)
@@ -487,11 +501,25 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		}
 
 		if node.isIf {
-			if r.evalMacroCondition(ctx, run, node) {
+			// One block runs and the other is spent, since nothing in a block that
+			// does not run is ever asked about. Which of the two is spent first is
+			// the file's order and not a choice: psl fills the first slot in the
+			// file, so the block above the statements about to be replayed has to be
+			// out of the way before they ask anything.
+			//
+			// A condition that was no verdict at all takes both blocks with it. An
+			// else is what runs when the answer is false, and there is no answer.
+			holds, read := r.evalMacroCondition(ctx, run, node)
+			switch {
+			case holds:
 				r.runMacroNodes(ctx, run, node.body)
-			} else {
-				// Nothing in it runs, so nothing in it is asked about.
+				run.spendBlock(node.elseBody)
+			case read:
 				run.spendBlock(node.body)
+				r.runMacroNodes(ctx, run, node.elseBody)
+			default:
+				run.spendBlock(node.body)
+				run.spendBlock(node.elseBody)
 			}
 			run.spend(node.line)
 			continue
@@ -558,9 +586,13 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 			run.restoreBlock(node.body)
 		}
 		// No condition is a condition that always holds, so `loop (3)` and
-		// `loop (true, 3)` are one and the same loop.
-		if node.condition != "" && !r.evalMacroCondition(ctx, run, node) {
-			break
+		// `loop (true, 3)` are one and the same loop. A loop has one block and
+		// nothing to run instead of it, so a condition it could not read ends it
+		// the same way one that read false does.
+		if node.condition != "" {
+			if holds, _ := r.evalMacroCondition(ctx, run, node); !holds {
+				break
+			}
 		}
 		passes++
 		applog.Logf("[%s] Macro %s — pass %d of %d", run.sessionID, label, passes, node.count)
@@ -609,38 +641,49 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 // hand.
 //
 // Anything that goes wrong — psl failing, an answer that is not true or false —
-// reads as false: the block stays unexecuted, or the loop ends, rather than
-// running on a guess.
-func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) bool {
+// is no verdict at all, and the second return is what says so. The block stays
+// unexecuted, or the loop ends, rather than running on a guess.
+//
+// The two returns come apart only where an else is written. False is a verdict
+// and picks the other block; a condition Pob could not read has picked nothing,
+// so neither block runs — an else that ran on a psl that was not installed would
+// be the guess the reading was written to refuse, taken the other way round.
+func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) (holds, read bool) {
 	label := macroBlockLabel(node)
-	// What a condition that does not hold means for the block it heads.
-	no := "skipping block"
-	if node.isLoop {
-		no = "the loop ends here"
+	// What a condition means for the block it heads: the first when it does not
+	// hold, and the second when there was nothing in it to read.
+	no, unread := "skipping block", "skipping block"
+	switch {
+	case node.isLoop:
+		no, unread = "the loop ends here", "the loop ends here"
+	case len(node.elseBody) == 1 && node.elseBody[0].isElseIf:
+		no, unread = "the else if is asked next", "skipping the block and the else if under it"
+	case len(node.elseBody) > 0:
+		no, unread = "the else block runs", "skipping both blocks"
 	}
 
 	expr := node.condition
 	if psl.HasSlot(expr) {
 		filled, ok := r.fillStatement(ctx, run, node)
 		if !ok {
-			applog.Logf("[%s] Macro %s — slot unfilled, %s", run.sessionID, label, no)
-			return false
+			applog.Logf("[%s] Macro %s — slot unfilled, %s", run.sessionID, label, unread)
+			return false, false
 		}
 		// The whole header line comes back, so the condition is read out of it
 		// again rather than assumed to be what replaced the slot.
 		expr = readCondition(node, strings.TrimSpace(filled))
 	}
 
-	holds, read := conditionHolds(expr)
+	holds, read = conditionHolds(expr)
 	switch {
 	case !read:
-		applog.Logf("[%s] Macro %s -> %q is not true or false — %s", run.sessionID, label, expr, no)
+		applog.Logf("[%s] Macro %s -> %q is not true or false — %s", run.sessionID, label, expr, unread)
 	case holds:
 		applog.Logf("[%s] Macro %s -> TRUE", run.sessionID, label)
 	default:
 		applog.Logf("[%s] Macro %s -> FALSE — %s", run.sessionID, label, no)
 	}
-	return holds
+	return holds, read
 }
 
 // readCondition reads the condition back out of a filled-in header line, by the
@@ -652,6 +695,15 @@ func readCondition(node macroNode, header string) string {
 	if node.isLoop {
 		condition, _, _ := parseLoopHeader(header)
 		return condition
+	}
+	// An if written on an else has the } and the keyword of the block before it
+	// in front of the one it opens, and the whole line is what came back from psl.
+	if node.isElseIf {
+		rest, _, isElse := cutElse(header)
+		if !isElse {
+			return ""
+		}
+		header = strings.TrimSpace(rest)
 	}
 	condition, _ := parseIfHeader(header)
 	return condition
@@ -665,6 +717,8 @@ func macroBlockLabel(node macroNode) string {
 		return fmt.Sprintf("loop (%d)", node.count)
 	case node.isLoop:
 		return fmt.Sprintf("loop (%s, %d)", node.condition, node.count)
+	case node.isElseIf:
+		return fmt.Sprintf("else if (%s)", node.condition)
 	default:
 		return fmt.Sprintf("if (%s)", node.condition)
 	}
@@ -1177,10 +1231,18 @@ func resolveCallPath(dir, arg string) (string, error) {
 }
 
 // macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by a
-// line holding nothing but `}`. Matched whatever its case, so `IF` opens a block
-// too: the alternative to recognising it is running the body unguarded, which is
-// the one thing a condition was written to prevent.
+// line holding nothing but `}` — or by the `}` an else is written on, which
+// closes it and opens the block to run instead. Matched whatever its case, so
+// `IF` opens a block too: the alternative to recognising it is running the body
+// unguarded, which is the one thing a condition was written to prevent.
 const macroIfKeyword = "if"
+
+// macroElseKeyword opens the block an if runs when its condition does not hold:
+// `} else {`, or `} else if (<expression>) {` to go on asking. Matched whatever
+// its case, like the two keywords it belongs to and for the same reason — an
+// else Pob failed to recognise would be a block that runs whatever the condition
+// above it said.
+const macroElseKeyword = "else"
 
 // macroLoopKeyword opens a block that runs again and again: `loop (<count>) {`,
 // or `loop (<condition>, <count>) {`, closed the same way. Matched whatever its
@@ -1267,18 +1329,30 @@ func parseMacro(text string) []macroNode {
 // this one would drift from it the first time either changed — see macrocheck.go.
 func parseMacroProblems(text string) ([]macroNode, []macroProblem) {
 	var probs []macroProblem
-	nodes, _ := parseMacroBlock(codeLines(text), 0, 0, 0, &probs)
+	nodes, _, _ := parseMacroBlock(codeLines(text), 0, 0, 0, &probs)
 	return nodes, probs
 }
 
+// blockEnd says what ended a block of statements: the `}` written on a line of
+// its own to close it, an else that closes it and opens the block to run
+// instead, or the end of the file, which closes whatever was still open.
+type blockEnd int
+
+const (
+	blockEOF blockEnd = iota
+	blockClosed
+	blockElse
+)
+
 // parseMacroBlock reads statements from lines[i:] until the `}` that closes the
-// block, or the end of the file at depth 0. It returns the statements and the
-// index just past the block.
+// block, or the end of the file at depth 0. It returns the statements, the index
+// just past the block, and what ended it — since a block an else closes is one
+// the if above it is not finished with.
 //
 // opened is the line the block's header is on, which is what an unclosed block
 // is reported against — the `{` is the half of it that was written, and the line
 // to go back to.
-func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem) ([]macroNode, int) {
+func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem) ([]macroNode, int, blockEnd) {
 	var nodes []macroNode
 	problem := func(line int, format string, a ...any) {
 		*probs = append(*probs, problemf(line, format, a...))
@@ -1298,14 +1372,30 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 				problem(lineNo, "} closes a block that was never opened")
 				continue
 			}
-			return nodes, i
+			return nodes, i, blockClosed
+		}
+
+		if _, braced, isElse := cutElse(trimmed); isElse {
+			// The `}` in front of the keyword closes this block, and what follows it
+			// is the if's to read — see parseIfBlocks. An else written under the `}`
+			// instead has been taken by the if already, so one reaching here belongs
+			// to nothing: there is no block open above it, or none the `}` it needs
+			// has closed.
+			if braced && depth > 0 {
+				return nodes, i, blockElse
+			}
+			problem(lineNo, "else belongs to the if whose block the } above it closes — } else {, or the else on a line of its own under the } — so its whole block is dropped")
+			var dropped []macroNode
+			dropped, i, _ = parseMacroBlock(lines, i, depth+1, lineNo, probs)
+			*probs = append(*probs, checkStatements(dropped)...)
+			continue
 		}
 
 		if condition, isIf := parseIfHeader(trimmed); isIf {
-			// The block is read either way, so that what a broken if was written
+			// The blocks are read either way, so that what a broken if was written
 			// to guard is dropped with it rather than left to run unguarded.
-			var body []macroNode
-			body, i = parseMacroBlock(lines, i, depth+1, lineNo, probs)
+			var node macroNode
+			node, i = parseIfBlocks(macroNode{isIf: true, condition: condition, line: lineNo, raw: trimmed}, lines, i, depth, probs)
 			if condition == "" {
 				problem(lineNo, "if wants a condition in parentheses and a { at the end of the line — if (:: … ::) { — so its whole block is dropped")
 				// The statements inside it are dropped with it and so are never
@@ -1313,10 +1403,11 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 				// be there once the header is fixed. Everything wrong with a macro
 				// goes up at once or the fix takes as many rounds as it has
 				// mistakes.
-				*probs = append(*probs, checkStatements(body)...)
+				*probs = append(*probs, checkStatements(node.body)...)
+				*probs = append(*probs, checkStatements(node.elseBody)...)
 				continue
 			}
-			nodes = append(nodes, macroNode{isIf: true, condition: condition, body: body, line: lineNo, raw: trimmed})
+			nodes = append(nodes, node)
 			continue
 		}
 
@@ -1325,7 +1416,17 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 			// block with it, rather than leaving the body to run once when what was
 			// written asks for it to run until something is true.
 			var body []macroNode
-			body, i = parseMacroBlock(lines, i, depth+1, lineNo, probs)
+			var end blockEnd
+			body, i, end = parseMacroBlock(lines, i, depth+1, lineNo, probs)
+			// A loop has no condition left to be the other half of once its passes
+			// are over, so the block under the else is dropped and the loop stands.
+			if end == blockElse {
+				elseLine := i
+				problem(elseLine, "else belongs to an if, and the block this one closes is a loop — so its whole block is dropped")
+				var dropped []macroNode
+				dropped, i, _ = parseMacroBlock(lines, i, depth+1, elseLine, probs)
+				*probs = append(*probs, checkStatements(dropped)...)
+			}
 			if count < 1 {
 				problem(lineNo, "loop wants a whole count of 1 or more in parentheses and a { at the end of the line — loop (3) { or loop (:: … ::, 3) { — so its whole block is dropped")
 				// Checked though it is dropped, for the same reason an if's body is.
@@ -1360,7 +1461,127 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 	if depth > 0 {
 		problem(opened, "the block opened here is never closed by a } of its own — the end of the file closes it")
 	}
-	return nodes, i
+	return nodes, i, blockEOF
+}
+
+// parseIfBlocks reads the blocks an if is written with — the one its condition
+// guards, and the one under the else that runs when the condition does not hold
+// — and hands back the statement and the index just past the } that closes the
+// last of them.
+//
+// A chain is an if written into the else of the if above it, and is kept that
+// way: `} else if (…) {` becomes an else block holding one if, which holds its
+// own else in turn. A chain of any length is then read, run, spent, restored and
+// checked by everything that already knows what an if is, and nothing has to
+// learn what a chain is.
+//
+// One } closes the whole of it, which is what makes the recursion right: every
+// block in a chain was opened at the depth of the if that starts it, so each is
+// read at depth+1 and the last of them is the one that meets the }.
+func parseIfBlocks(node macroNode, lines []string, i, depth int, probs *[]macroProblem) (macroNode, int) {
+	problem := func(line int, format string, a ...any) {
+		*probs = append(*probs, problemf(line, format, a...))
+	}
+	// drop reads a block that is not going to run and checks what is inside it,
+	// the way a malformed header's is: the statements are still there once the
+	// line above them is fixed.
+	drop := func(i, opened int) int {
+		dropped, next, _ := parseMacroBlock(lines, i, depth+1, opened, probs)
+		*probs = append(*probs, checkStatements(dropped)...)
+		return next
+	}
+
+	var end blockEnd
+	node.body, i, end = parseMacroBlock(lines, i, depth+1, node.line, probs)
+
+	rest, line, next, found := nextElse(lines, i, end)
+	if !found {
+		return node, i
+	}
+	i, rest = next, strings.TrimSpace(rest)
+
+	if condition, isIf := parseIfHeader(rest); isIf {
+		chained := macroNode{isIf: true, isElseIf: true, condition: condition, line: line, raw: strings.TrimSpace(lines[line-1])}
+		chained, i = parseIfBlocks(chained, lines, i, depth, probs)
+		if condition == "" {
+			problem(line, "else if wants a condition in parentheses and a { at the end of the line — } else if (:: … ::) { — so its whole block is dropped")
+			*probs = append(*probs, checkStatements(chained.body)...)
+			*probs = append(*probs, checkStatements(chained.elseBody)...)
+			return node, i
+		}
+		node.elseBody = []macroNode{chained}
+		return node, i
+	}
+
+	// A plain else is the keyword and the { and nothing else. It asks nothing —
+	// the condition it runs on was written above it — so a line with more on it
+	// is one Pob has no reading for.
+	if rest != "{" {
+		problem(line, "else takes no condition of its own and is written } else { or } else if (:: … ::) { — so its whole block is dropped")
+		return node, drop(i, line)
+	}
+
+	node.elseBody, i, end = parseMacroBlock(lines, i, depth+1, line, probs)
+
+	// One else is all an if has: the condition it is the other half of has been
+	// answered by the time the second one is reached.
+	for end == blockElse {
+		extra := i
+		problem(extra, "the if above this one already has an else — so its whole block is dropped")
+		var dropped []macroNode
+		dropped, i, end = parseMacroBlock(lines, i, depth+1, extra, probs)
+		*probs = append(*probs, checkStatements(dropped)...)
+	}
+	return node, i
+}
+
+// nextElse reports whether an else continues the if whose block has just been
+// read, and hands back what follows the keyword — `{`, or the `if (…) {` of a
+// chain — the line it is written on, and the index just past that line.
+//
+// It is written two ways, and they are one statement either way. `} else {`
+// closes one block and opens the next on the one line, which is the shape the
+// language documents and the one C put in everybody's hands; an `else {` under a
+// `}` of its own is the other, and keeps the rule that a } closes a block on a
+// line of its own. Only blank lines may come between the two of them — and a
+// comment is a blank line by the time the parse sees it.
+func nextElse(lines []string, i int, end blockEnd) (rest string, line, next int, found bool) {
+	// The block ended on the else itself, so the line is the one just read: what
+	// parseMacroBlock stopped at, and hands back the index past.
+	if end == blockElse {
+		rest, _, _ = cutElse(lines[i-1])
+		return rest, i, i, true
+	}
+	if end != blockClosed {
+		return "", 0, i, false
+	}
+	for j := i; j < len(lines); j++ {
+		trimmed := strings.TrimSpace(lines[j])
+		if trimmed == "" {
+			continue
+		}
+		// A second } in front of it is one nothing opened, and is left to be
+		// reported as that rather than quietly read as part of an else.
+		rest, braced, isElse := cutElse(trimmed)
+		if !isElse || braced {
+			break
+		}
+		return rest, j + 1, j + 1, true
+	}
+	return "", 0, i, false
+}
+
+// cutElse returns what follows the else on a line that continues an if — `{`, or
+// the `if (…) {` of a chain — whether the } that closes the block before it is
+// written in front of the keyword, and whether the line is an else at all.
+func cutElse(line string) (rest string, braced, isElse bool) {
+	line = strings.TrimSpace(line)
+	if after, closed := strings.CutPrefix(line, "}"); closed {
+		braced = true
+		line = strings.TrimSpace(after)
+	}
+	rest, isElse = cutKeyword(line, macroElseKeyword)
+	return rest, braced, isElse
 }
 
 // parseIfHeader reads `if (<condition>) {` and returns the condition, which is
@@ -1573,7 +1794,7 @@ func statementSlot(line string) bool {
 // hasMacroSlot reports whether any statement holds a :: … :: slot, at any depth.
 func hasMacroSlot(nodes []macroNode) bool {
 	for _, node := range nodes {
-		if node.slots || psl.HasSlot(node.condition) || hasMacroSlot(node.body) {
+		if node.slots || psl.HasSlot(node.condition) || hasMacroSlot(node.body) || hasMacroSlot(node.elseBody) {
 			return true
 		}
 	}
@@ -1599,7 +1820,7 @@ func macroNeedsPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
 
 func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
 	for _, node := range nodes {
-		if calledFilesNeedPSL(node.body, dir, seen) {
+		if calledFilesNeedPSL(node.body, dir, seen) || calledFilesNeedPSL(node.elseBody, dir, seen) {
 			return true
 		}
 		if node.action != macroCallKeyword || len(node.args) == 0 {
@@ -1655,7 +1876,7 @@ func parseCallLines(text string) []macroNode {
 func countMacroNodes(nodes []macroNode) int {
 	n := len(nodes)
 	for _, node := range nodes {
-		n += countMacroNodes(node.body)
+		n += countMacroNodes(node.body) + countMacroNodes(node.elseBody)
 	}
 	return n
 }

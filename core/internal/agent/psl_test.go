@@ -204,6 +204,30 @@ func TestFilledConditionReadsBack(t *testing.T) {
 	}
 }
 
+// An if written on an else is filled as the whole line it is, the } and the
+// keyword of the block above it included, and the condition is read back out of
+// what came back rather than out of the part of it Pob asked about.
+func TestFilledElseIfConditionReadsBack(t *testing.T) {
+	node := macroNode{isIf: true, isElseIf: true, condition: ":: an error dialog is on screen ::"}
+	for _, tt := range []struct {
+		filled string
+		holds  bool
+		read   bool
+	}{
+		{`} else if (true) {`, true, true},
+		{`} else if (false) {`, false, true},
+		{`} else if ("true") {`, true, true},
+		{`else if (true) {`, true, true},
+		{`} else if (probably) {`, false, false},
+		{`} else {`, false, false},
+	} {
+		holds, read := conditionHolds(readCondition(node, tt.filled))
+		if holds != tt.holds || read != tt.read {
+			t.Errorf("%q -> (%v, %v), want (%v, %v)", tt.filled, holds, read, tt.holds, tt.read)
+		}
+	}
+}
+
 // A filled loop header is read back the same way an if's is, so the pass runs on
 // what the compiler answered — and the count the loop was written with is still
 // there afterwards, since nothing was asked about it.
@@ -297,6 +321,60 @@ func TestFillingALoopThroughTheCompiler(t *testing.T) {
 
 	if psl.HasSlot(run.source) {
 		t.Errorf("the finished loop still holds a slot: %q", run.source)
+	}
+}
+
+// The whole way through a chain: the if is answered, its block is spent unrun,
+// and the else if under it is then the first thing in the file still holding a
+// question — so psl fills the header the replay is standing on, and the
+// condition is read back out of the line the } and the keyword are part of.
+func TestFillingAChainThroughTheCompiler(t *testing.T) {
+	compiler, answer := stubCompiler(t)
+
+	macro := `if (:: a save dialog is on screen ::) {
+	typeText(:: what to say ::)
+} else if (:: an error dialog is on screen ::) {
+	keyPress("escape")
+}`
+	node := parseMacro(macro)[0]
+	chained := node.elseBody[0]
+	run := newMacroRun("test", "macro.psl", macro, "")
+
+	fill := func(line int) string {
+		t.Helper()
+		source := run.source
+		if live, ok := liveSlotLine(source); !ok || live != line-1 {
+			t.Fatalf("psl would fill a slot on line %d, want line %d", live+1, line)
+		}
+		result, err := compiler.Fill(context.Background(), psl.Request{Source: source, Name: "macro.psl"})
+		if err != nil {
+			t.Fatalf("line %d: %v", line, err)
+		}
+		filled, ok := extractLine(source, result.Source, line-1)
+		if !ok {
+			t.Fatalf("line %d: could not read the filled statement back", line)
+		}
+		run.record(line, filled)
+		return strings.TrimSpace(filled)
+	}
+
+	answer("false")
+	if got, want := fill(node.line), "if (false) {"; got != want {
+		t.Fatalf("the if filled to %q, want %q", got, want)
+	}
+	// The block it guards did not run, so nothing in it is asked about — which is
+	// what leaves the else if's own question the next one in the file.
+	run.spendBlock(node.body)
+
+	answer("true")
+	if got, want := fill(chained.line), "} else if (true) {"; got != want {
+		t.Fatalf("the else if filled to %q, want %q", got, want)
+	}
+	if holds, read := conditionHolds(readCondition(chained, run.line(chained.line))); !holds || !read {
+		t.Errorf("the filled else if read as (%v, %v), want its block to run", holds, read)
+	}
+	if psl.HasSlot(run.source) {
+		t.Errorf("the chain still holds a question nobody is waiting on: %q", run.source)
 	}
 }
 

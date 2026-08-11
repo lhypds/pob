@@ -170,6 +170,7 @@ func checkStatements(nodes []macroNode) []macroProblem {
 	for _, node := range nodes {
 		if node.isIf || node.isLoop {
 			probs = append(probs, checkStatements(node.body)...)
+			probs = append(probs, checkStatements(node.elseBody)...)
 			continue
 		}
 		if p, bad := checkStatement(node.raw, node.line); bad {
@@ -453,6 +454,7 @@ func checkCalls(nodes []macroNode, dir, name string, chain []string) []MacroProb
 	for _, node := range nodes {
 		if node.isIf || node.isLoop {
 			problems = append(problems, checkCalls(node.body, dir, name, chain)...)
+			problems = append(problems, checkCalls(node.elseBody, dir, name, chain)...)
 			continue
 		}
 		if node.action != macroCallKeyword || len(node.args) != 1 {

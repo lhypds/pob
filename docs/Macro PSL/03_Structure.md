@@ -15,8 +15,8 @@ macro without running it.
 
 There are three kinds of statement: a **[call](06_Calls.md)**, which does something to the machine or
 to the run, an **[if block](07_if%20blocks.md)**, which guards the statements inside it with a
-condition, and a **[loop block](08_loop%20blocks.md)**, which runs the statements inside it again and
-again. Any of them can hold an **[AI slot](05_AI%20slot.md)** — a piece of a statement that is a
+condition and holds the `else` that runs when the condition does not hold, and a
+**[loop block](08_loop%20blocks.md)**, which runs the statements inside it again and again. Any of them can hold an **[AI slot](05_AI%20slot.md)** — a piece of a statement that is a
 prompt rather than a value, filled in as the replay reaches it.
 
 A slot can also stand where a whole statement goes, written on a line of its own. That one is

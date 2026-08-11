@@ -61,6 +61,14 @@ loop (:: another unread message ::, 10) {
 loop (false, 3) {
     stop()
 }
+if (:: a save dialog is on screen ::) {
+    keyPress("return")
+} else if (:: an error dialog is on screen ::) {
+    keyPress("escape")
+}
+else {
+    click()
+}
 takeScreenshot()
 takeScreenshot(0, 0, 100, 100)
 typeText("say \"hi\"")
@@ -288,6 +296,77 @@ if (:: a dialog is up ::) {
 		"line 7: loop wants a whole count",
 		"line 10: } closes a block that was never opened",
 		"line 11: the block opened here is never closed",
+	)
+}
+
+// An else is checked as what it is: the other half of the if above it. What the
+// check has to say is where one has been written that belongs to no if, or to
+// one that has an else already.
+func TestCheckCatchesAMisplacedElse(t *testing.T) {
+	wantProblems(t, `click()
+} else {
+    click()
+}
+loop (2) {
+    click()
+} else {
+    click()
+}
+if (true) {
+    click()
+} else {
+    click()
+} else {
+    click()
+}
+`,
+		"line 2: else belongs to the if whose block the } above it closes",
+		"line 7: else belongs to an if, and the block this one closes is a loop",
+		"line 14: the if above this one already has an else",
+	)
+}
+
+// An else asks nothing — the condition it runs on is the one written above it —
+// so a line with anything between the keyword and the `{` is one Pob has no
+// reading for, and an `else if` is read as the if it is.
+func TestCheckCatchesABrokenElseHeader(t *testing.T) {
+	wantProblems(t, `if (true) {
+    click()
+} else (:: is it? ::) {
+    click()
+}
+if (true) {
+    click()
+} else if (nonsense) {
+    click()
+}
+`,
+		"line 3: else takes no condition of its own",
+		"line 8: else if wants a condition in parentheses",
+	)
+}
+
+// The statements under an else are statements, and are read against the
+// vocabulary the same as the ones above it — at any depth of a chain, and
+// dropped block or not.
+func TestCheckReadsInsideAnElseBlock(t *testing.T) {
+	wantProblems(t, `if (true) {
+    click()
+} else if (true) {
+    clik()
+} else {
+    move(1)
+}
+if (nonsense) {
+    click()
+} else {
+    sleep(500)
+}
+`,
+		`line 4: there is no statement called "clik"`,
+		"line 6: move takes 2 arguments, and 1 was written",
+		"line 8: if wants a condition in parentheses",
+		`line 11: sleep was written with "500"`,
 	)
 }
 

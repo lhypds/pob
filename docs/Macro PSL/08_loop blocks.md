@@ -40,7 +40,9 @@ written without a condition is a loop whose condition always holds, and the coun
 either of them. `loop (false, 3)` is the other end of that, and is how a loop is parked without
 deleting it: the check fails before the first pass and the body never runs.
 
-Inside is ordinary PSL, including another `loop` or an `if`, nested as deep as the macro needs.
+Inside is ordinary PSL, including another `loop` or an `if`, nested as deep as the macro needs. An
+[`else`](07_if%20blocks.md) belongs to an `if` and never to a `loop`: what a loop does when its
+condition stops holding is end, and the statements under the `}` are what happens instead.
 
 Asked again on every pass
 

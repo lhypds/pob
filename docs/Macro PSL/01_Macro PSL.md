@@ -47,7 +47,7 @@ The pages
 | [Comments](04_Comments.md) | `//` and `/* … */`, and why the text stays in the file |
 | [AI slot](05_AI%20slot.md) | `:: … ::` — what it is filled from, and what it has to come back as |
 | [Calls](06_Calls.md) | Every statement, its arguments and what it does |
-| [if blocks](07_if%20blocks.md) | Guarding a block with a condition |
+| [if blocks](07_if%20blocks.md) | Guarding a block with a condition, and the `else` that runs when it does not hold |
 | [loop blocks](08_loop%20blocks.md) | Running a block again and again, with a count and a condition |
 | [stop](09_stop.md) | Ending the run from inside the macro |
 | [call](10_call.md) | Replaying another PSL file where the statement stands |

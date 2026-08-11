@@ -18,9 +18,11 @@ package agent
 const macroPrompt = `This file is a Pob macro: one statement per line, replayed top to bottom to
 drive the screen shown in the image. A statement is a call — name(argument,
 argument) — or a block, closed by a } on a line of its own: if (condition) { }
-runs what it holds when the condition holds, loop (count) { } runs it that many
-times, and loop (condition, count) { } runs it while the condition holds, count
-being the most passes it may make. A value is one of three things: a number,
+runs what it holds when the condition holds, } else { } after it runs what it
+holds when the condition does not, with } else if (condition) { } in between to
+go on asking; loop (count) { } runs it that many times, and
+loop (condition, count) { } runs it while the condition holds, count being the
+most passes it may make. A value is one of three things: a number,
 written plainly (398, -615, 0.5); a string, in double quotes with a backslash
 escaping the character after it; or a time, a number with its unit on the end —
 250ms, 3s, 10m, 5h, and units running together as 10h5m. A time is never written
@@ -75,7 +77,8 @@ what a value would have to be, because it is not a value that goes there. Write
 as many statements as the instruction asks for and no more, and write nothing
 that is not a statement — no prose, no fences, no heading.
 
-An if or loop condition is answered with true or false and nothing else. A loop
+An if, else if or loop condition is answered with true or false and nothing
+else — an else has none of its own and is never written with one. A loop
 asks its condition again before every pass, over a fresh image, and the answer
 is about the screen as that image shows it — nothing in the file says which pass
 is being asked about, and nothing has to.`
