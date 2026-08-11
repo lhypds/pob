@@ -46,7 +46,6 @@ struct InstanceContentView: View {
     @State private var isLocked = false
     @State private var isRecording = false
     @State private var showRecordWarning = false
-    @State private var showResetChoice = false
     @State private var mousePosition: CGPoint? = nil
     @State private var animatedCursorPos: CGPoint = .init(x: 20, y: 20)
     @State private var screenshotFlashOpacity: Double = 0
@@ -195,17 +194,6 @@ struct InstanceContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("macro.psl has recorded actions. Clear them before recording?")
-        }
-        .confirmationDialog("Reset", isPresented: $showResetChoice) {
-            Button("Reset mouse position") {
-                mouseService.resetCursor()
-                showToast("Mouse position reset")
-            }
-            Button("Reset macro.psl") {
-                instance.settings.clearMacro()
-                showToast("macro.psl reset")
-            }
-            Button("Close", role: .cancel) {}
         }
     }
 
@@ -454,10 +442,13 @@ struct InstanceContentView: View {
             .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { showResetChoice = true }) {
+            Button(action: {
+                mouseService.resetCursor()
+                showToast("Mouse position reset")
+            }) {
                 Image(systemName: "arrow.counterclockwise")
             }
-            .help("Reset")
+            .help("Reset Mouse Position")
         }
     }
 

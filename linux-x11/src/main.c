@@ -432,49 +432,6 @@ static void show_record_warning_dialog(void) {
     gtk_widget_show_all(dialog);
 }
 
-enum {
-    RESPONSE_RESET_MOUSE = 1,
-    RESPONSE_RESET_MACRO = 2,
-};
-
-static void on_reset_response(GtkDialog *dialog, gint response, gpointer data) {
-    (void)data;
-    switch (response) {
-    case RESPONSE_RESET_MOUSE:
-        mouse_reset_cursor();
-        content_view_show_message("Mouse position reset");
-        break;
-    case RESPONSE_RESET_MACRO:
-        settings_clear_macro();
-        content_view_show_message("macro.psl reset");
-        break;
-    default: break;
-    }
-    gtk_widget_destroy(GTK_WIDGET(dialog));
-}
-
-static void show_reset_dialog(void) {
-    GtkWidget *dialog = gtk_message_dialog_new(
-        g_state.window, GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-        GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "Reset");
-    GtkDialog *d = GTK_DIALOG(dialog);
-    gtk_dialog_add_button(d, "Reset mouse position", RESPONSE_RESET_MOUSE);
-    gtk_dialog_add_button(d, "Reset macro.psl", RESPONSE_RESET_MACRO);
-    gtk_dialog_add_button(d, "Close", GTK_RESPONSE_CANCEL);
-
-    // Stack the buttons vertically, like the macOS confirmation dialog.
-    GtkWidget *action_area;
-    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-    action_area = gtk_dialog_get_action_area(d);
-    G_GNUC_END_IGNORE_DEPRECATIONS
-    gtk_orientable_set_orientation(GTK_ORIENTABLE(action_area),
-                                   GTK_ORIENTATION_VERTICAL);
-    gtk_button_box_set_layout(GTK_BUTTON_BOX(action_area), GTK_BUTTONBOX_EXPAND);
-
-    g_signal_connect(dialog, "response", G_CALLBACK(on_reset_response), NULL);
-    gtk_widget_show_all(dialog);
-}
-
 static void show_about_dialog(void) {
     GtkWidget *dialog = gtk_dialog_new_with_buttons(
         "", g_state.window, GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -585,7 +542,8 @@ static void on_lock_clicked(GtkButton *b, gpointer d) {
 
 static void on_reset_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    show_reset_dialog();
+    mouse_reset_cursor();
+    content_view_show_message("Mouse position reset");
 }
 
 // ── headerbar (toolbar + context menu + drag lock) ──────────────────────────
@@ -778,7 +736,7 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.clickthrough_btn, "realize",
                      G_CALLBACK(on_clickthrough_realize), NULL);
     g_state.lock_btn = icon_button(ICONS_UNLOCKED, "Window Unlocked (click to lock)");
-    GtkWidget *reset_btn = icon_button(ICONS_RESET, "Reset");
+    GtkWidget *reset_btn = icon_button(ICONS_RESET, "Reset Mouse Position");
     GtkWidget *minimize_btn = icon_button(ICONS_MINIMIZE, "Minimize");
     maximize_btn = icon_button(ICONS_MAXIMIZE, "Maximize");
     GtkWidget *close_btn = icon_button(ICONS_CLOSE, "Close");

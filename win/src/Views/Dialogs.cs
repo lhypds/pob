@@ -1,5 +1,5 @@
 // Modal dialogs mirroring the macOS/Linux shells: the record-over-a-macro
-// warning, the reset menu (stacked buttons) and the About box.
+// warning and the About box.
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -110,42 +110,6 @@ public static class Dialogs
         dialog.Content = panel;
         dialog.ShowDialog();
         return choice;
-    }
-
-    // ── Reset (stacked buttons, like the macOS confirmation) ────────────────
-
-    public static void ShowReset(Window? owner)
-    {
-        Window dialog = MakeDialog(owner, "Reset");
-        ContentView? content = AppState.Overlay?.ContentView;
-
-        var panel = new StackPanel { Margin = new Thickness(20), MinWidth = 220 };
-
-        void AddAction(string label, Action action)
-        {
-            Button button = MakeButton(label, () =>
-            {
-                dialog.Close();
-                action();
-            });
-            button.HorizontalAlignment = HorizontalAlignment.Stretch;
-            panel.Children.Add(button);
-        }
-
-        AddAction("Reset mouse position", () =>
-        {
-            MouseService.ResetCursor();
-            content?.ShowMessage("Mouse position reset");
-        });
-        AddAction("Reset macro.psl", () =>
-        {
-            SettingsService.ClearMacro();
-            content?.ShowMessage("macro.psl reset");
-        });
-        AddAction("Close", () => { });
-
-        dialog.Content = panel;
-        dialog.ShowDialog();
     }
 
     // ── About ───────────────────────────────────────────────────────────────

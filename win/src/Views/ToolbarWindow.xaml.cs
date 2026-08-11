@@ -253,7 +253,11 @@ public partial class ToolbarWindow : Window
         SettingsService.SaveWindowLocked(locked);
     }
 
-    private void OnResetClicked(object sender, RoutedEventArgs e) => Dialogs.ShowReset(this);
+    private void OnResetClicked(object sender, RoutedEventArgs e)
+    {
+        MouseService.ResetCursor();
+        Content2?.ShowMessage("Mouse position reset");
+    }
 
     // ── window controls ─────────────────────────────────────────────────────
 
