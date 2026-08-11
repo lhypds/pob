@@ -98,11 +98,12 @@ func TestOnlyTheAnsweredPartOfAStatementIsScaled(t *testing.T) {
 	}
 }
 
-// Milliseconds, keys and conditions are not distances on the picture, and a
-// slot that answers one comes back exactly as the model wrote it.
+// A length of time, a key and a condition are not distances on the picture, and
+// a slot that answers one comes back exactly as the model wrote it.
 func TestStatementsThatAreNotDistancesAreLeftAlone(t *testing.T) {
 	cases := []struct{ statement, filled string }{
-		{"sleep(::how long to wait::)", "sleep(2000)"},
+		{"sleep(::how long to wait::)", "sleep(2s)"},
+		{"sleep(::how long to wait::)", "sleep(10m)"},
 		{"if (::zed is running::) {", "if (true) {"},
 		{"typeText(::what to type::)", `typeText("120")`},
 		{"scroll(::how far to the bottom::)", "scroll(0, 400)"},

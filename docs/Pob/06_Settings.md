@@ -21,7 +21,7 @@ the rest are left where they are to be copied across by hand.
 |-----|---------|-------------|
 | `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
 | `image_scale` | `0.35` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `0.35` a bit over a third as wide and as tall — an eighth of the pixels, and about a fifth of the input tokens — and `1` the picture as taken (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way. **The default is set aggressively and has no margin in it — read the note below before trusting it on a dense UI.** It applies to filling a slot and nothing else: an [MCP](08_MCP.md) client's `take_screenshot` gets the picture as taken |
-| `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()` |
+| `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()`, which is written as a time — `sleep(3s)` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a macro runs to its end (e.g. `afplay /System/Library/Sounds/Morse.aiff`). A stopped run does not fire it |

@@ -88,8 +88,8 @@ func boxDownscale(src image.Image, w, h int) *image.NRGBA {
 // scaledCalls are the statements whose numbers are distances on the picture the
 // model was shown, and so the ones an answer has to be scaled back out of.
 //
-// Every other call is left alone because its numbers are not pixels: sleep is
-// milliseconds, typeText and keyPress are text. scroll is the near miss — the
+// Every other call is left alone because its numbers are not pixels: sleep is a
+// length of time, typeText and keyPress are text. scroll is the near miss — the
 // macro vocabulary describes it in the same breath as move — and it is left out
 // on purpose: what a shell records there is a wheel delta, which is not a
 // distance across the image and does not scale with one.

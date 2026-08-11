@@ -697,7 +697,7 @@ func TestToolCallsAreRecordedAsMacroLines(t *testing.T) {
 		"scroll(0, 120)",
 		`typeText("say \"hi\"")`,
 		`keyPress("cmd+v")`,
-		"sleep(250)",
+		"sleep(250ms)",
 		"takeScreenshot()",
 	}
 	got := rec.recorded()

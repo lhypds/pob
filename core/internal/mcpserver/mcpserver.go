@@ -758,7 +758,10 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 			ms = maxWaitMillis
 		}
 		time.Sleep(time.Duration(ms) * time.Millisecond)
-		s.record("sleep(%d)", int(ms))
+		// The tool is given milliseconds and the macro statement takes a time, so
+		// the line is recorded in the unit the call was made in: sleep(250ms)
+		// replays the wait that happened rather than a rounding of it.
+		s.record("sleep(%dms)", int(ms))
 		return textResult(id, fmt.Sprintf("Waited %d ms.", int(ms)))
 
 	default:

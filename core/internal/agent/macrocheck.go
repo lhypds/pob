@@ -189,17 +189,18 @@ func checkStatements(nodes []macroNode) []macroProblem {
 // itself comes back as is the replay's question, and is the one thing left to
 // the log.
 func checkStatement(raw string, line int) (macroProblem, bool) {
-	if raw == macroStopKeyword {
-		return macroProblem{}, false
-	}
-
 	name, args, ok := macroArguments(raw)
 	if !ok {
 		switch {
 		case strings.Contains(raw, macroBlockClose):
 			return problemf(line, "%s closes a comment that was never opened, which leaves it in the line — the line is then not a statement", macroBlockClose), true
+		case raw == macroStopKeyword:
+			// The bare word ran once. A macro written then says what it means and is
+			// one pair of parentheses away from saying it here too, so it is worth
+			// naming rather than leaving to the line about calls in general.
+			return problemf(line, "stop is written %s(), with the parentheses every other statement has", macroStopKeyword), true
 		case strings.EqualFold(raw, macroStopKeyword):
-			return problemf(line, "%q is not a statement — stop is spelled lowercase", raw), true
+			return problemf(line, "%q is not a statement — stop is written %s(), lowercase and with parentheses", raw, macroStopKeyword), true
 		}
 		return problemf(line, "%q is not a statement — a call is name(argument, argument), and nothing follows the closing parenthesis", truncate(raw, 60)), true
 	}
@@ -214,7 +215,7 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 
 	shape, known := macroVocabulary[name]
 	if !known {
-		return problemf(line, "there is no statement called %q — see the Calls table in docs/Macro PSL/06_Calls.md%s", name, didYouMean(name)), true
+		return problemf(line, "there is no statement called %q — see the Calls page in docs/Macro PSL/06_Calls.md%s", name, didYouMean(name)), true
 	}
 
 	// A slot written where a whole argument goes can come back as more than one of
@@ -235,30 +236,52 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 		return problemf(line, "%s takes %s, and %s", name, shape.wants(), argsWritten(len(args))), true
 	}
 
-	if !shape.numeric {
-		return macroProblem{}, false
-	}
 	for i, arg := range args {
 		if psl.HasSlot(arg) {
 			continue
 		}
-		if _, err := strconv.ParseFloat(arg, 64); err != nil {
-			return problemf(line, "%s wants numbers, and its %s argument is %q — the statement would do nothing at all", name, ordinal(i), truncate(arg, 40)), true
+		switch {
+		case shape.isTime:
+			if _, ok := macroTime(unquoted(arg)); !ok {
+				return problemf(line, "%s was written with %q, which is not %s", name, truncate(arg, 40), macroTimeWants), true
+			}
+		case shape.numeric:
+			if _, err := strconv.ParseFloat(arg, 64); err != nil {
+				return problemf(line, "%s wants numbers, and its %s argument is %q — the statement would do nothing at all", name, ordinal(i), truncate(arg, 40)), true
+			}
 		}
 	}
 	return macroProblem{}, false
 }
 
-// macroCallShape is what a call has to be written like: how many arguments it
-// takes, and whether those arguments are numbers.
+// unquoted is the value a written argument holds, for the checks that read one.
+// A string argument is quoted where the check sees it — the parse has not been
+// over it yet — and `"10m"` is the same time as the line replaying it will wait,
+// since the parse takes the quotes off before the replay reads it.
 //
-// This is the Calls table of docs/Macro PSL/06_Calls.md, the switch in runMacroAction
-// and the vocabulary in macroPrompt said a fourth way, and moves when they do. A
-// call missing from here is one the check calls unknown and refuses to run; one
-// whose shape is wrong here is a working statement the check would not let past.
+// A quote that opens and never closes is left as it was written, and is then not
+// a length of time or anything else the check can read.
+func unquoted(arg string) string {
+	if inner, ok := strings.CutPrefix(arg, `"`); ok {
+		if inner, ok := strings.CutSuffix(inner, `"`); ok {
+			return inner
+		}
+	}
+	return arg
+}
+
+// macroCallShape is what a call has to be written like: how many arguments it
+// takes, and what those arguments are.
+//
+// This is the Calls page of docs/Macro PSL/06_Calls.md — both tables, the
+// machine's and the run's — the switch in runMacroAction and the vocabulary in
+// macroPrompt said a fourth way, and moves when they do. A call missing from here
+// is one the check calls unknown and refuses to run; one whose shape is wrong
+// here is a working statement the check would not let past.
 type macroCallShape struct {
 	arity   []int // the argument counts it accepts
 	numeric bool  // every argument is a number
+	isTime  bool  // its one argument is a time — see macroTime
 }
 
 func (s macroCallShape) takes(n int) bool {
@@ -282,7 +305,7 @@ func (s macroCallShape) most() int {
 	return n
 }
 
-// wants says how many arguments a call takes, in the words the Calls table uses.
+// wants says how many arguments a call takes, in the words the Calls page uses.
 // takeScreenshot is the one that takes two different numbers of them, and the
 // table's way of putting that — all four or none — is the way it reads here.
 func (s macroCallShape) wants() string {
@@ -308,7 +331,7 @@ var macroVocabulary = map[string]macroCallShape{
 	"doubleClick":    {arity: []int{0}},
 	"typeText":       {arity: []int{1}},
 	"keyPress":       {arity: []int{1}},
-	"sleep":          {arity: []int{1}, numeric: true},
+	"sleep":          {arity: []int{1}, isTime: true},
 	"resetCursor":    {arity: []int{0}},
 	"takeScreenshot": {arity: []int{0, 4}, numeric: true},
 	macroStopKeyword: {arity: []int{0}},

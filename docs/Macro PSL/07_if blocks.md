@@ -9,7 +9,7 @@ and is skipped when it does not.
 ```
 if (:: a save dialog is on screen ::) {
     keyPress("return")
-    sleep(500)
+    sleep(500ms)
 }
 ```
 

@@ -227,10 +227,10 @@ func TestAFilledStatementWithACommentReadsBack(t *testing.T) {
 	}{
 		{`move(-120, 40)   // to the Save button`, "move", []string{"-120", "40"}},
 		{`typeText("Hello")   /* the reply */`, "typeText", []string{"Hello"}},
-		{`stop   // nothing below this is wanted`, "stop", nil},
+		{`stop()   // nothing below this is wanted`, "stop", nil},
 	}
 	for _, tt := range tests {
-		name, args, ok := readMacroStatement(strings.TrimSpace(stripLine(tt.filled)))
+		name, args, ok := parseMacroLine(strings.TrimSpace(stripLine(tt.filled)))
 		if !ok {
 			t.Errorf("%q did not read as a statement", tt.filled)
 			continue
@@ -264,11 +264,11 @@ func TestAFilledConditionWithACommentReadsBack(t *testing.T) {
 // out one cannot turn into a statement it will.
 func TestCommentsDoNotChangeWhatRuns(t *testing.T) {
 	m := newMacroTest(t)
-	m.replay(t, `sleep(1)   // the first
-// sleep(9)
-/* sleep(8)
-   sleep(7) */
-sleep(2)`)
+	m.replay(t, `sleep(1ms)   // the first
+// sleep(9ms)
+/* sleep(8ms)
+   sleep(7ms) */
+sleep(2ms)`)
 
 	checkRan(t, m.ran(t), []string{"1", "2"})
 }
@@ -277,8 +277,8 @@ sleep(2)`)
 // for psl reads.
 func TestACommentedCallIsNotMade(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "shared.psl", "sleep(9)")
-	m.replay(t, "sleep(1)\n// call(\"../shared.psl\")\nsleep(2)")
+	m.write(t, "shared.psl", "sleep(9ms)")
+	m.replay(t, "sleep(1ms)\n// call(\"../shared.psl\")\nsleep(2ms)")
 
 	checkRan(t, m.ran(t), []string{"1", "2"})
 }

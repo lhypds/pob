@@ -14,14 +14,14 @@ import (
 	"pob/core/internal/storage"
 )
 
-// The two statements a macro makes about the run itself — stop and call — are
+// The two statements a macro makes about the run itself — stop() and call() — are
 // the ones that never reach the machine, so they replay under a Runner with no
 // shell behind it. That is what these tests are: the real runMacroNodes over a
 // real macro, with nothing faked but the ~/.pob it works in.
 //
 // What ran is read back out of the log, and a sleep of its own length is how a
-// statement says which one it is: sleep(1) logs `sleep(1ms)` and nothing else in
-// the macro does. One millisecond each, so that a test replaying a dozen of them
+// statement says which one it is: sleep(1ms) logs `sleep(1ms)` and nothing else
+// in the macro does. Milliseconds, so that a test replaying a dozen of them
 // still takes no time.
 
 // macroTest is a Runner over a temporary ~/.pob, the directory its macro.psl
@@ -115,30 +115,30 @@ func checkRan(t *testing.T, got, want []string) {
 	}
 }
 
-// stop ends the run where it stands: not the statements after it, and not the
+// stop() ends the run where it stands: not the statements after it, and not the
 // rest of the block it is in.
 func TestStopEndsTheRun(t *testing.T) {
 	m := newMacroTest(t)
-	m.replay(t, `sleep(1)
+	m.replay(t, `sleep(1ms)
 if (true) {
-	sleep(2)
-	stop
-	sleep(3)
+	sleep(2ms)
+	stop()
+	sleep(3ms)
 }
-sleep(4)`)
+sleep(4ms)`)
 
 	checkRan(t, m.ran(t), []string{"1", "2"})
 }
 
-// A loop is not the exception: stop is immediate inside one too, rather than
+// A loop is not the exception: stop() is immediate inside one too, rather than
 // ending the pass and going round again.
 func TestStopEndsALoop(t *testing.T) {
 	m := newMacroTest(t)
 	m.replay(t, `loop (5) {
-	sleep(1)
-	stop
+	sleep(1ms)
+	stop()
 }
-sleep(2)`)
+sleep(2ms)`)
 
 	checkRan(t, m.ran(t), []string{"1"})
 }
@@ -147,8 +147,8 @@ sleep(2)`)
 // under it.
 func TestCallRunsAnotherFile(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "shared.psl", "sleep(2)\nsleep(3)")
-	m.replay(t, "sleep(1)\ncall(\"../shared.psl\")\nsleep(4)")
+	m.write(t, "shared.psl", "sleep(2ms)\nsleep(3ms)")
+	m.replay(t, "sleep(1ms)\ncall(\"../shared.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"1", "2", "3", "4"})
 }
@@ -157,19 +157,19 @@ func TestCallRunsAnotherFile(t *testing.T) {
 // called file names its own neighbours rather than the macro's.
 func TestACalledFileResolvesItsOwnCalls(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "shared/outer.psl", "sleep(2)\ncall(\"inner.psl\")")
-	m.write(t, "shared/inner.psl", "sleep(3)")
-	m.replay(t, "call(\"../shared/outer.psl\")\nsleep(4)")
+	m.write(t, "shared/outer.psl", "sleep(2ms)\ncall(\"inner.psl\")")
+	m.write(t, "shared/inner.psl", "sleep(3ms)")
+	m.replay(t, "call(\"../shared/outer.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"2", "3", "4"})
 }
 
-// stop ends the replay, not the file the statement is in: the file that called
+// stop() ends the replay, not the file the statement is in: the file that called
 // it does not go on to its next statement.
 func TestStopInACalledFileEndsEverything(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "shared.psl", "sleep(2)\nstop\nsleep(3)")
-	m.replay(t, "sleep(1)\ncall(\"../shared.psl\")\nsleep(4)")
+	m.write(t, "shared.psl", "sleep(2ms)\nstop()\nsleep(3ms)")
+	m.replay(t, "sleep(1ms)\ncall(\"../shared.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"1", "2"})
 }
@@ -178,7 +178,7 @@ func TestStopInACalledFileEndsEverything(t *testing.T) {
 // on every pass.
 func TestCallRunsTheFileOnEveryPass(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "shared.psl", "sleep(2)")
+	m.write(t, "shared.psl", "sleep(2ms)")
 	m.replay(t, "loop (3) {\n\tcall(\"../shared.psl\")\n}")
 
 	checkRan(t, m.ran(t), []string{"2", "2", "2"})
@@ -190,8 +190,8 @@ func TestCallRunsTheFileOnEveryPass(t *testing.T) {
 // not fail; it would never finish.
 func TestCallRefusesAFileThatIsAlreadyRunning(t *testing.T) {
 	m := newMacroTest(t)
-	path := m.write(t, "shared.psl", "sleep(2)\ncall(\"shared.psl\")\nsleep(3)")
-	m.replay(t, "call(\"../shared.psl\")\nsleep(4)")
+	path := m.write(t, "shared.psl", "sleep(2ms)\ncall(\"shared.psl\")\nsleep(3ms)")
+	m.replay(t, "call(\"../shared.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"2", "3", "4"})
 	if !m.logged(t, path+" is already running") {
@@ -202,9 +202,9 @@ func TestCallRefusesAFileThatIsAlreadyRunning(t *testing.T) {
 // A ring of files is the same thing said the long way round.
 func TestCallRefusesARingOfFiles(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "a.psl", "sleep(2)\ncall(\"b.psl\")")
-	m.write(t, "b.psl", "sleep(3)\ncall(\"a.psl\")")
-	m.replay(t, "call(\"../a.psl\")\nsleep(4)")
+	m.write(t, "a.psl", "sleep(2ms)\ncall(\"b.psl\")")
+	m.write(t, "b.psl", "sleep(3ms)\ncall(\"a.psl\")")
+	m.replay(t, "call(\"../a.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"2", "3", "4"})
 }
@@ -213,7 +213,7 @@ func TestCallRefusesARingOfFiles(t *testing.T) {
 // the log and nothing else — the statements around it are still played.
 func TestCallOfAMissingFileIsSkipped(t *testing.T) {
 	m := newMacroTest(t)
-	m.replay(t, "sleep(1)\ncall(\"../nowhere.psl\")\nsleep(2)")
+	m.replay(t, "sleep(1ms)\ncall(\"../nowhere.psl\")\nsleep(2ms)")
 
 	checkRan(t, m.ran(t), []string{"1", "2"})
 	if !m.logged(t, "cannot read") {
@@ -228,7 +228,7 @@ func TestCallStopsAtTheDepthBound(t *testing.T) {
 	// Each file sleeps its own number of milliseconds and calls the next, so the
 	// sleeps that were logged are exactly the files that ran.
 	for i := 1; i <= maxCallDepth+3; i++ {
-		source := fmt.Sprintf("sleep(%d)\ncall(\"f%d.psl\")", i, i+1)
+		source := fmt.Sprintf("sleep(%dms)\ncall(\"f%d.psl\")", i, i+1)
 		m.write(t, fmt.Sprintf("f%d.psl", i), source)
 	}
 	m.replay(t, `call("../f1.psl")`)
@@ -279,7 +279,7 @@ func TestResolveCallPath(t *testing.T) {
 // out about thirty statements in.
 func TestMacroNeedsPSLFollowsCalls(t *testing.T) {
 	m := newMacroTest(t)
-	m.write(t, "plain.psl", "click()\nsleep(1)")
+	m.write(t, "plain.psl", "click()\nsleep(1ms)")
 	m.write(t, "asks.psl", "move(:: the x offset to Save ::, 0)")
 	m.write(t, "hop.psl", `call("asks.psl")`)
 	// A ring, which the check has to walk once rather than round and round.

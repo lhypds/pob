@@ -54,10 +54,12 @@ if (:: the window focus on a wechat user ::) {
 }
 loop (:: another unread message ::, 10) {
     keyPress("return")
-    sleep(500)
+    sleep(500ms)
+    sleep(3s)
+    sleep(10h5m)
 }
 loop (false, 3) {
-    stop
+    stop()
 }
 takeScreenshot()
 takeScreenshot(0, 0, 100, 100)
@@ -122,10 +124,31 @@ sleep()
 	)
 }
 
+// sleep is the one call that takes a time, and a time is a number with its unit
+// on the end. The bare number is the one worth catching: `sleep(500)` is what a
+// macro written before times existed says, and it means half a second — which is
+// not what a number of anything would wait here.
+func TestCheckCatchesASleepThatIsNotATime(t *testing.T) {
+	wantProblems(t, `sleep(3s)
+sleep(250ms)
+sleep(10h5m)
+sleep(500)
+sleep(soon)
+sleep(10 m)
+sleep(-3s)
+sleep(:: how long the upload takes ::)
+`,
+		`line 4: sleep was written with "500", which is not a time`,
+		`line 5: sleep was written with "soon", which is not a time`,
+		`line 6: sleep was written with "10 m", which is not a time`,
+		`line 7: sleep was written with "-3s", which is not a time`,
+	)
+}
+
 func TestCheckCatchesArgumentsThatAreNotNumbers(t *testing.T) {
 	wantProblems(t, `scroll(a, b)
 move(1, "2")
-sleep(0.5)
+sleep(0.5s)
 drag(:: how far left ::, -10)
 `,
 		`scroll wants numbers, and its first argument is "a"`,
@@ -139,7 +162,7 @@ drag(:: how far left ::, -10)
 func TestCheckReadsSlotsAsOneArgument(t *testing.T) {
 	wantProblems(t, `move(:: left, or right, or neither ::, 0)
 loop (:: still loading, not empty ::, 4) {
-    sleep(100)
+    sleep(100ms)
 }
 typeText("Hi :: the name at the top ::, thanks!")
 `)
@@ -152,9 +175,20 @@ STOP
 halt
 `,
 		`there is no statement called "clik"`,
-		`there is no statement called "Move" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean move? Names are camelCase and case-sensitive`,
-		`"STOP" is not a statement — stop is spelled lowercase`,
+		`there is no statement called "Move" — see the Calls page in docs/Macro PSL/06_Calls.md. Did you mean move? Names are camelCase and case-sensitive`,
+		`"STOP" is not a statement — stop is written stop(), lowercase and with parentheses`,
 		`"halt" is not a statement — a call is name(argument, argument)`,
+	)
+}
+
+// stop is written stop(). The bare word ran once, so it is worth its own line:
+// a macro from then is a file of statements that still say what they meant, and
+// what it needs is the parentheses rather than a rewrite.
+func TestCheckCatchesStopWithoutParentheses(t *testing.T) {
+	wantProblems(t, `click()
+stop
+`,
+		"line 2: stop is written stop(), with the parentheses every other statement has",
 	)
 }
 
@@ -166,8 +200,8 @@ func TestCheckPointsSnakeCaseAtTheCamelCaseName(t *testing.T) {
 	wantProblems(t, `take_screenshot()
 reset_cursor()
 `,
-		`there is no statement called "take_screenshot" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean takeScreenshot? Names are camelCase and case-sensitive`,
-		`there is no statement called "reset_cursor" — see the Calls table in docs/Macro PSL/06_Calls.md. Did you mean resetCursor? Names are camelCase and case-sensitive`,
+		`there is no statement called "take_screenshot" — see the Calls page in docs/Macro PSL/06_Calls.md. Did you mean takeScreenshot? Names are camelCase and case-sensitive`,
+		`there is no statement called "reset_cursor" — see the Calls page in docs/Macro PSL/06_Calls.md. Did you mean resetCursor? Names are camelCase and case-sensitive`,
 	)
 }
 

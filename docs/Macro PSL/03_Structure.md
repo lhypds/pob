@@ -19,6 +19,9 @@ condition, and a **[loop block](08_loop%20blocks.md)**, which runs the statement
 again. Any of them can hold an **[AI slot](05_AI%20slot.md)** — a piece of a statement that is a
 prompt rather than a value, filled in as the replay reaches it.
 
+A value is a number (`398`, `0.5`), a string (`"Hello"`) or a time (`250ms`, `3s`, `10h5m`). See
+[Calls](06_Calls.md) for how each is written and which arguments take which.
+
 
 See also
 --------

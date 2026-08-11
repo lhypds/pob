@@ -69,7 +69,7 @@ editing afterwards.
 
 There are three kinds of statement. A **call** does something to the machine —
 `move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep` — or something
-to the run itself: `stop` ends it where it stands, and `call` replays another PSL
+to the run itself: `stop()` ends it where it stands, and `call` replays another PSL
 file before carrying on. An **if block** guards the statements inside it with a
 condition. A **loop block** runs them again and again, up to a count. Any of the
 three can hold an **AI slot**: a prompt written where a value would go,

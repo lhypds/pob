@@ -12,7 +12,7 @@ package agent
 // Unsaid, `move(dx, dy)` reads as a position on screen — the one misreading that
 // puts the cursor somewhere else on every statement that follows.
 //
-// It is the Calls table of docs/Macro PSL/06_Calls.md and the switch in runMacroAction
+// It is the Calls page of docs/Macro PSL/06_Calls.md and the switch in runMacroAction
 // said a third way, and moves when they do: a call this leaves out is one the
 // model has no reason to use, and one it invents is a line Pob logs and skips.
 const macroPrompt = `This file is a Pob macro: one statement per line, replayed top to bottom to
@@ -20,11 +20,13 @@ drive the screen shown in the image. A statement is a call — name(argument,
 argument) — or a block, closed by a } on a line of its own: if (condition) { }
 runs what it holds when the condition holds, loop (count) { } runs it that many
 times, and loop (condition, count) { } runs it while the condition holds, count
-being the most passes it may make. Numbers are written plainly (398, -615, 0.5),
-strings in double quotes with a backslash escaping the character after it. stop
-is the one statement written without parentheses. Comments are C's — // to the
-end of the line, /* … */ across lines — and are notes to read rather than
-statements that run.
+being the most passes it may make. A value is one of three things: a number,
+written plainly (398, -615, 0.5); a string, in double quotes with a backslash
+escaping the character after it; or a time, a number with its unit on the end —
+250ms, 3s, 10m, 5h, and units running together as 10h5m. A time is never written
+without its unit and never in quotes. Every statement has its parentheses, stop()
+included. Comments are C's — // to the end of the line, /* … */ across lines —
+and are notes to read rather than statements that run.
 
 The whole vocabulary:
 
@@ -37,10 +39,10 @@ The whole vocabulary:
   typeText("text")     type one string at the keyboard focus
   keyPress("key")      press one key, modifiers joined in front of it with + —
                        "return", "cmd+v", "ctrl+shift+t"
-  sleep(milliseconds)  pause
+  sleep(time)          pause for a time: sleep(3s), sleep(250ms), sleep(10m)
   resetCursor()        send the cursor back to the origin a replay starts from
   takeScreenshot()     capture the screen; with x, y, w, h, crop to that region
-  stop                 end the replay here; nothing under it runs
+  stop()               end the replay here; nothing under it runs
   call("other.psl")    replay another PSL file here, then carry on below it. The
                        path is relative to the file the call is written in
 

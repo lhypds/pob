@@ -20,6 +20,7 @@ not start.
 | A name that is not one of the statements in [Calls](06_Calls.md) | `there is no statement called "clik"`, and which one it was nearly, since names are case-sensitive |
 | A call written with the wrong number of arguments — `move(1)`, `click(1, 2)`, `typeText("a", "b")`, `call()` | `move takes 2 arguments, and 1 was written`. Counted before the fill, so a slot standing for a whole argument list is counted as the list it may come back as — `move(:: the profile icon ::)` is not one of these, and `move(:: … ::, 40, 60)` is |
 | A call whose numbers are not numbers — `scroll(a, b)` | `scroll wants numbers, and its first argument is "a"` |
+| A `sleep` whose argument is not a time — `sleep(500)`, `sleep(soon)`, `sleep(-3s)` | `sleep was written with "500", which is not a time — a number with its unit on the end: 250ms, 3s, 10m, 5h, 10h5m` |
 | An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | The header, and that its whole block is dropped |
 | A `loop` missing its parentheses or the `{`, or whose count is not a whole number of 1 or more — `loop (:: how many ::)`, `loop (2.5)`, `loop (0)` | The header, and that its whole block is dropped |
 | A `loop` whose condition is neither a slot nor `true`/`false` | The same |
@@ -28,7 +29,8 @@ not start.
 | A `/*` nothing closes | The line it opened on, and that the comment runs to the end of the file |
 | A `*/` with no `/*` above it | Not a comment: it stays in the line, which is then not a statement |
 | A statement and a comment that closes mid-line, leaving two statements on it — `click() /* why */ move(1, 2)` | One line, which is not one statement — read as a call with arguments nobody wrote |
-| `stop` mis-spelled or mis-cased — `STOP`, `halt` | `"STOP" is not a statement — stop is spelled lowercase` |
+| `stop` written without its parentheses | `stop is written stop(), with the parentheses every other statement has` |
+| `stop` mis-spelled or mis-cased — `STOP`, `halt` | `"STOP" is not a statement — stop is written stop(), lowercase and with parentheses` |
 | A `call` naming a file that is not there, or cannot be read | The path it worked out, and that there is no such file |
 | A `call` reaching a file that is already running, directly or round a ring | That it is a replay with no end in it |
 | A `call` nine files deep | How deep it is, and that eight is as far as `call` goes |

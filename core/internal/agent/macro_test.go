@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"pob/core/internal/psl"
 )
@@ -200,39 +201,38 @@ drag(-775, -615)`, []string{
 	})
 }
 
-// stop is written without parentheses, which no other statement is, and stop()
-// is the same statement written the way the rest of the vocabulary is written.
+// stop() is a call like the rest of them — the parentheses hold nothing and are
+// written all the same.
 func TestParseMacroStop(t *testing.T) {
 	checkParse(t, `click()
-stop
+stop()
 move(1, 2)`, []string{
 		"click()",
 		"stop()",
 		"move(1, 2)",
 	})
-	checkParse(t, "stop()", []string{"stop()"})
-	checkParse(t, "  stop  ", []string{"stop()"})
+	checkParse(t, "  stop()  ", []string{"stop()"})
 }
 
-// A name is a name: only the two block keywords are read whatever their case,
-// and a mis-spelled stop is a line that cannot be read rather than one that
-// quietly ends the run.
-func TestParseMacroStopIsSpelledLowercase(t *testing.T) {
+// The bare word is not the statement. It ran once, so a macro written then is
+// dropped a line at a time rather than quietly ending the run at a word that no
+// longer says anything — and the check ahead of the replay names the fix.
+func TestParseMacroStopWantsItsParentheses(t *testing.T) {
+	checkParse(t, "stop\nclick()", []string{"click()"})
 	checkParse(t, "STOP\nclick()", []string{"click()"})
 	checkParse(t, "stopped(1)", []string{"stopped(1)"})
 }
 
 // A line of the macro and a line psl filled to the same text are the same
-// statement, stop's missing parentheses included — the two go through one
-// reader so that they cannot come apart.
-func TestReadMacroStatement(t *testing.T) {
+// statement — the two go through one reader so that they cannot come apart.
+func TestParseMacroLineReadsEveryStatement(t *testing.T) {
 	tests := []struct {
 		line string
 		name string
 		ok   bool
 	}{
-		{"stop", "stop", true},
 		{"stop()", "stop", true},
+		{"stop", "", false},
 		{"STOP", "", false},
 		{"stop now", "", false},
 		{"sleep(500)", "sleep", true},
@@ -240,9 +240,53 @@ func TestReadMacroStatement(t *testing.T) {
 		{"click()", "click", true},
 	}
 	for _, tt := range tests {
-		name, _, ok := readMacroStatement(tt.line)
+		name, _, ok := parseMacroLine(tt.line)
 		if ok != tt.ok || name != tt.name {
-			t.Errorf("readMacroStatement(%q) = (%q, %v), want (%q, %v)", tt.line, name, ok, tt.name, tt.ok)
+			t.Errorf("parseMacroLine(%q) = (%q, %v), want (%q, %v)", tt.line, name, ok, tt.name, tt.ok)
+		}
+	}
+}
+
+// A time is a number with its unit on the end. Both the check and the replay
+// read one here, so a time one of them refuses is one the other would not have
+// waited.
+func TestMacroTime(t *testing.T) {
+	tests := []struct {
+		arg  string
+		want time.Duration
+		ok   bool
+	}{
+		{"3s", 3 * time.Second, true},
+		{"10m", 10 * time.Minute, true},
+		{"5h", 5 * time.Hour, true},
+		{"250ms", 250 * time.Millisecond, true},
+		{"0.5s", 500 * time.Millisecond, true},
+		{"0s", 0, true},
+
+		// Units written one after another add up, which is how a time says what
+		// two of them would have to say together.
+		{"10h5m", 10*time.Hour + 5*time.Minute, true},
+		{"1h30m", 90 * time.Minute, true},
+		{"  3s  ", 3 * time.Second, true},
+
+		// The unit is the type. A bare number is a number — which is what a macro
+		// written before times existed has in it, and what the check now names.
+		{"500", 0, false},
+		{"2", 0, false},
+		{"0", 0, false},
+
+		// And a time is nothing else: no unit that is not one, no space in the
+		// middle of it, and nothing below none at all.
+		{"soon", 0, false},
+		{"10 m", 0, false},
+		{"10 minutes", 0, false},
+		{"-3s", 0, false},
+		{"", 0, false},
+	}
+	for _, tt := range tests {
+		got, ok := macroTime(tt.arg)
+		if ok != tt.ok || (ok && got != tt.want) {
+			t.Errorf("macroTime(%q) = (%v, %v), want (%v, %v)", tt.arg, got, ok, tt.want, tt.ok)
 		}
 	}
 }

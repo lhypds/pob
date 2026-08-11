@@ -18,7 +18,7 @@ last statement before it, as it would be anywhere else.
 
 Stop halts the run between statements, and during a `sleep()` rather than after it. A run that
 reaches the end fires `stop_hook`, if one is set; a stopped run does not. A run that reached a
-`stop` statement did reach its end, and fires it.
+`stop()` statement did reach its end, and fires it.
 
 
 See also

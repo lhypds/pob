@@ -479,7 +479,7 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 
 	// The comment on the end of the statement came back with it, and a statement
 	// is read the same way whether it was written out or filled in.
-	name, args, ok := readMacroStatement(strings.TrimSpace(stripLine(filled)))
+	name, args, ok := parseMacroLine(strings.TrimSpace(stripLine(filled)))
 	if !ok {
 		applog.Logf("[%s] Macro %s: filled to %q, which does not read as a statement — skipping", run.sessionID, run.where(node.line), filled)
 		return "", nil, false
@@ -799,19 +799,23 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		_ = r.br.KeyPress(args[0])
 
 	case "sleep":
-		ms, ok := num(0)
-		if !ok {
+		if len(args) == 0 {
 			return
 		}
-		applog.Logf("[%s] Macro sleep(%dms)", sessionID, int(ms))
-		sleepCtx(ctx, time.Duration(ms)*time.Millisecond)
+		d, ok := macroTime(args[0])
+		if !ok {
+			applog.Logf("[%s] Macro sleep was written with %q, which is not %s — skipping", sessionID, truncate(args[0], 40), macroTimeWants)
+			return
+		}
+		applog.Logf("[%s] Macro sleep(%s)", sessionID, d)
+		sleepCtx(ctx, d)
 
 	case macroStopKeyword:
 		// Nothing under this runs — not the statements after it, not the rest of
 		// the block it is in, and not the file that called the file it is in. What
 		// it leaves behind is a finished run rather than an abandoned one, so the
 		// session is written out and stop_hook fires the way it does at the end.
-		applog.Logf("[%s] Macro stop — the run ends here", sessionID)
+		applog.Logf("[%s] Macro stop() — the run ends here", sessionID)
 		run.halt()
 
 	case macroCallKeyword:
@@ -944,16 +948,58 @@ const macroIfKeyword = "if"
 // the body of the block to run once, unbounded and unguarded.
 const macroLoopKeyword = "loop"
 
-// macroStopKeyword ends the replay where it stands. It is written `stop`, and
-// `stop()` is read too: the empty parentheses say nothing the bare word does not,
-// and a statement that ends a run is the last one to refuse over punctuation.
-// Spelled lowercase like the rest of the vocabulary, and read that way — a name
-// is a name, and the block keywords are the only two that take any case.
+// macroStopKeyword ends the replay where it stands. It is written `stop()`, with
+// the parentheses every other call has: they hold nothing, and what they buy is
+// that a statement is one shape throughout the language rather than one shape and
+// an exception. Spelled lowercase like the rest of the vocabulary, and read that
+// way — a name is a name, and the block keywords are the only two that take any
+// case.
 const macroStopKeyword = "stop"
 
 // macroCallKeyword replays another PSL file where it stands:
 // `call("../shared.psl")`. See runMacroCall.
 const macroCallKeyword = "call"
+
+// macroTimeWants is what a time is, said once. The check puts it in front of the
+// user before the run and the replay logs it at the statement, and the two are
+// the same sentence because they are the same rule.
+const macroTimeWants = "a time — a number with its unit on the end: 250ms, 3s, 10m, 5h, 10h5m"
+
+// macroTime reads a time, which is PSL's third kind of value: a number carrying
+// its own unit, written where the language wants a length rather than a count.
+// `3s` is three seconds, `10m` ten minutes, `5h` five hours, and units written
+// one after another add up — `10h5m` is ten hours and five minutes. The number
+// in front of a unit may be fractional, so `0.5s` and `500ms` are the same time
+// said two ways.
+//
+// The unit is the whole point of the type and is not optional: `sleep(500)` is a
+// count of nothing in particular, and a macro that means half a second says
+// `500ms` rather than leaving the reader — and the language — to guess. A macro
+// written before times existed said `sleep(500)` and meant milliseconds, which is
+// exactly the line this refuses so that the check can name it instead of the
+// replay quietly waiting eight minutes.
+//
+// A quoted one reads the same, because the parse takes the quotes off before
+// anything reads the value: `sleep("10m")` is the same statement as `sleep(10m)`.
+// It is not how the language is written and not what the docs teach, but a model
+// answering a slot sometimes quotes what it writes, and refusing that would cost
+// a run for nothing.
+//
+// Nothing negative: a run cannot wait less than no time.
+func macroTime(arg string) (time.Duration, bool) {
+	arg = strings.TrimSpace(arg)
+	// A number is a number, whichever number it is. Go reads `0` as a duration of
+	// none — the one unit it lets go unwritten — and the language does not, since
+	// a type with an exception in it is two types to learn.
+	if _, err := strconv.ParseFloat(arg, 64); err == nil {
+		return 0, false
+	}
+	d, err := time.ParseDuration(arg)
+	if err != nil || d < 0 {
+		return 0, false
+	}
+	return d, true
+}
 
 // parseMacro turns macro.psl into the statements to execute. Lines it cannot
 // read are logged and dropped, the way a bad action line always has been — a
@@ -1056,7 +1102,7 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 			continue
 		}
 
-		name, args, ok := readMacroStatement(trimmed)
+		name, args, ok := parseMacroLine(trimmed)
 		if !ok {
 			// Why it is not one is checkStatement's to say: it reads the line
 			// against the vocabulary, which is more than the parse knows about.
@@ -1211,20 +1257,11 @@ func cutParens(s string) (string, bool) {
 	return strings.TrimSpace(inner), true
 }
 
-// readMacroStatement reads one line as a call, whichever of the two shapes a
-// statement is written in.
-//
-// It is where `stop` — the one statement written without parentheses — is read,
-// so that a line of the macro and a line psl filled to the same text arrive at
-// the same statement. Everything else goes to parseMacroLine unchanged.
-func readMacroStatement(line string) (string, []string, bool) {
-	if line == macroStopKeyword {
-		return macroStopKeyword, nil, true
-	}
-	return parseMacroLine(line)
-}
-
 // parseMacroLine parses `name(arg1, arg2)` or `name("quoted string")`.
+//
+// Every statement is this shape, `stop()` included, so a line of the macro and a
+// line psl filled to the same text arrive at the same statement by going through
+// the one reader.
 func parseMacroLine(line string) (string, []string, bool) {
 	openParen := strings.Index(line, "(")
 	if openParen < 0 || !strings.HasSuffix(line, ")") {
