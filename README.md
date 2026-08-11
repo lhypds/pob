@@ -91,3 +91,9 @@ Documentation
 | [Pob Keyboard](docs/Pob/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/Pob/14_Development.md) | Building, the dev scripts, and cutting a release |
 | [Windows VM](docs/Pob/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |
+
+
+License
+-------
+
+[MIT](LICENSE) © 2026 Heyang Liu
