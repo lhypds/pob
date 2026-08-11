@@ -299,7 +299,7 @@ public class ContentView : FrameworkElement
         if (AppState.IsTargeting)
         {
             double scale = Scale;
-            string text = $"({(int)(pos.X * scale)}, {(int)(pos.Y * scale)})";
+            string text = $"{(int)(pos.X * scale)}, {(int)(pos.Y * scale)}";
             CopyToClipboard(text);
             ShowMessage($"Copied {text}");
             _hasMousePos = false;
@@ -356,8 +356,8 @@ public class ContentView : FrameworkElement
         if (w > 2 && h > 2)
         {
             double scale = Scale;
-            string text = $"({(int)(minX * scale)}, {(int)(minY * scale)}, " +
-                          $"{(int)(w * scale)}, {(int)(h * scale)})";
+            string text = $"{(int)(minX * scale)}, {(int)(minY * scale)}, " +
+                          $"{(int)(w * scale)}, {(int)(h * scale)}";
             CopyToClipboard(text);
             ShowMessage($"Copied {text}");
             AppState.SetCropping(false);

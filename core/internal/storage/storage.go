@@ -276,9 +276,11 @@ func (s *Storage) SaveScreenshot(png []byte, sessionID string) {
 }
 
 // SaveUserScreenshot writes a toolbar-button capture (outside any session) to
-// logs/screenshots/<unixtime>.png and returns the file path.
+// <instance>/screenshots/<unixtime>.png and returns the file path. These are
+// the user's own captures, so they sit at the instance root rather than under
+// logs/, which is for what a run leaves behind.
 func (s *Storage) SaveUserScreenshot(png []byte) string {
-	dir := filepath.Join(s.LogsDir(), "screenshots")
+	dir := filepath.Join(s.InstanceDir(), "screenshots")
 	_ = os.MkdirAll(dir, 0o755)
 	path := filepath.Join(dir, unixNow()+".png")
 	_ = os.WriteFile(path, png, 0o644)

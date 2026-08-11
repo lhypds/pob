@@ -93,6 +93,7 @@ Everything is under ~/.pob:
     app.log                 what the app did
     <instance>/
         macro.psl           recorded or hand-written actions
+        screenshots/        captures from the Screenshot button
         logs/               sessions, AI slots, screenshots
 
 Uninstalling never touches ~/.pob.

@@ -404,7 +404,7 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *ev, gpointer 
 
     if (g_state.is_targeting) {
         int scale = widget_scale();
-        gchar *text = g_strdup_printf("(%d, %d)", (int)(ev->x * scale),
+        gchar *text = g_strdup_printf("%d, %d", (int)(ev->x * scale),
                                       (int)(ev->y * scale));
         copy_to_clipboard(text);
         gchar *msg = g_strdup_printf("Copied %s", text);
@@ -460,7 +460,7 @@ static gboolean on_button_release(GtkWidget *widget, GdkEventButton *ev, gpointe
     if (w > 2 && h > 2) {
         int scale = widget_scale();
         gchar *text = g_strdup_printf(
-            "(%d, %d, %d, %d)", (int)(min_x * scale), (int)(min_y * scale),
+            "%d, %d, %d, %d", (int)(min_x * scale), (int)(min_y * scale),
             (int)(w * scale), (int)(h * scale));
         copy_to_clipboard(text);
         gchar *msg = g_strdup_printf("Copied %s", text);

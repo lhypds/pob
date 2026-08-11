@@ -63,7 +63,7 @@ struct InstanceContentView: View {
                     onPositionChange: { pos in mousePosition = pos },
                     onTap: { pt in
                         let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-                        let text = "(\(Int(pt.x * scale)), \(Int(pt.y * scale)))"
+                        let text = "\(Int(pt.x * scale)), \(Int(pt.y * scale))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                         showToast("Copied \(text)")
@@ -85,7 +85,7 @@ struct InstanceContentView: View {
                     },
                     onDragEnd: { rect in
                         let scale = instance.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-                        let text = "(\(Int(rect.minX * scale)), \(Int(rect.minY * scale)), \(Int(rect.width * scale)), \(Int(rect.height * scale)))"
+                        let text = "\(Int(rect.minX * scale)), \(Int(rect.minY * scale)), \(Int(rect.width * scale)), \(Int(rect.height * scale))"
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                         showToast("Copied \(text)")

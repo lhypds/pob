@@ -14,10 +14,9 @@ Structure
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and where the shell last left the window (`window_x`, `window_y`, `window_width`, `window_height`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
          +--- macro.psl                           the [macro](03_Macro%20PSL.md) Record writes and Execute replays.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
+         +--- screenshots/                        screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
 
          +--- logs/
-              +--- screenshots/                   screenshots taken with the toolbar Screenshot button.
-
               +--- <session>/                    one replay of macro.psl.
                    +--- session.json              session details, start time and end time.
                    +--- macro.psl                 the macro as it stood when this session ran.
