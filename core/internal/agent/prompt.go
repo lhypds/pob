@@ -31,11 +31,16 @@ and are notes to read rather than statements that run.
 The whole vocabulary:
 
   move(dx, dy)         nudge the cursor by a relative pixel offset
+  moveTo(x, y)         put the cursor at that position in the image
   drag(dx, dy)         drag from the cursor by that offset, ending there
+  dragTo(x, y)         drag from the cursor to that position, ending there
   scroll(dx, dy)       scroll at the cursor: dy > 0 down, dy < 0 up, dx > 0 right
   click()              left-click at the cursor
+  click(x, y)          left-click at that position in the image
   rightClick()         right-click at the cursor
+  rightClick(x, y)     right-click at that position in the image
   doubleClick()        double-click at the cursor
+  doubleClick(x, y)    double-click at that position in the image
   typeText("text")     type one string at the keyboard focus
   keyPress("key")      press one key, modifiers joined in front of it with + —
                        "return", "cmd+v", "ctrl+shift+t"
@@ -46,11 +51,15 @@ The whole vocabulary:
   call("other.psl")    replay another PSL file here, then carry on below it. The
                        path is relative to the file the call is written in
 
-Coordinates are pixels in the image, origin top-left, x to the right, y down.
-move, drag and scroll are relative to where the cursor is now — the arrow
-visible in the image — so a slot in one of them is answered with the distance
-from the cursor to the target, positive or negative, and never with the target's
-own coordinates.
+Coordinates are pixels in the image, origin top-left, x to the right, y down,
+and the vocabulary says which of the two kinds each call takes. move, drag and
+scroll are relative to where the cursor is now — the arrow visible in the image
+— so a slot in one of them is answered with the distance from the cursor to the
+target, positive or negative, and never with the target's own coordinates. The
+calls that take an (x, y) — moveTo, dragTo, and click, rightClick and
+doubleClick written with a target — are the other way round: those are the
+position in the image itself, read off it the way a caption is, and where the
+cursor happens to be does not come into it.
 
 How much of a statement a slot stands for is what is written around it. A slot
 that is one argument of several is answered with that argument alone, and one

@@ -87,10 +87,10 @@ takeScreenshot(:: the region the dialog is in ::)
 // with more than the call can hold is wrong however its slots are answered.
 func TestCheckCatchesTooManyArgumentsAroundASlot(t *testing.T) {
 	wantProblems(t, `move(:: the x offset ::, 40, 60)
-click(:: where ::)
+resetCursor(:: where ::)
 `,
 		"move takes 2 arguments, and 3 were written already",
-		"click takes no arguments, and 1 was written already",
+		"resetCursor takes no arguments, and 1 was written already",
 	)
 }
 
@@ -110,18 +110,43 @@ drag(-775)
 }
 
 func TestCheckCatchesArgumentCounts(t *testing.T) {
-	wantProblems(t, `click(1, 2)
+	wantProblems(t, `resetCursor(1, 2)
 typeText("a", "b")
 call()
 takeScreenshot(1, 2)
 sleep()
+click(398)
+moveTo(398)
 `,
-		"click takes no arguments, and 2 were written",
+		"resetCursor takes no arguments, and 2 were written",
 		"typeText takes 1 argument, and 2 were written",
 		"call takes 1 argument, and none was written",
 		"takeScreenshot takes all 4 arguments or none at all, and 2 were written",
 		"sleep takes 1 argument, and none was written",
+		"click takes both arguments or none at all, and 1 was written",
+		"moveTo takes 2 arguments, and 1 was written",
 	)
+}
+
+// A click is written with a target or with none, and both are the same call:
+// one aims at a position in the screenshot, the other goes where the cursor
+// already is. Half a target is neither, and is the one the check catches — see
+// TestCheckCatchesArgumentCounts.
+func TestCheckPassesTheAbsoluteMouseCalls(t *testing.T) {
+	wantProblems(t, `moveTo(398, 915)
+click(398, 915)
+rightClick(398, 915)
+doubleClick(398, 915)
+dragTo(-775, -615)
+click()
+rightClick()
+doubleClick()
+click(:: the Save button ::)
+doubleClick(:: the file in the list ::)
+moveTo(:: the message box ::)
+dragTo(:: the folder to drop it in ::)
+click(398, :: the y of the Save button ::)
+`)
 }
 
 // sleep is the one call that takes a time, and a time is a number with its unit
@@ -254,7 +279,7 @@ click()
 // line and not one statement. It reads as a call with arguments nobody wrote.
 func TestCheckCatchesTwoStatementsOnALine(t *testing.T) {
 	wantProblems(t, `click() /* why */ move(1, 2)
-`, "line 1: click takes no arguments, and 2 were written")
+`, `line 1: click wants numbers, and its first argument is ")  move(1"`)
 }
 
 // A marker that is part of what is being typed is not a slot, and the statement

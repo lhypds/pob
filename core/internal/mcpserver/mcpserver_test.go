@@ -169,18 +169,14 @@ func TestEveryAdvertisedToolIsDispatched(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	args := map[string]map[string]any{
-		"move_cursor":           {"dx": 10.0, "dy": 10.0},
-		"move_cursor_to":        {"x": 100.0, "y": 120.0},
-		"move_and_click":        {"x": 100.0, "y": 120.0},
-		"move_and_right_click":  {"x": 100.0, "y": 120.0},
-		"move_and_double_click": {"x": 100.0, "y": 120.0},
-		"drag":                  {"dx": 5.0, "dy": 5.0},
-		"drag_to":               {"x": 50.0, "y": 60.0},
-		"scroll":                {"dx": 0.0, "dy": 120.0},
-		"move_and_scroll":       {"x": 100.0, "y": 120.0, "dx": 0.0, "dy": 120.0},
-		"type_text":             {"text": "hello"},
-		"key_press":             {"key": "return"},
-		"wait":                  {"milliseconds": 1.0},
+		"move":      {"dx": 10.0, "dy": 10.0},
+		"move_to":   {"x": 100.0, "y": 120.0},
+		"drag":      {"dx": 5.0, "dy": 5.0},
+		"drag_to":   {"x": 50.0, "y": 60.0},
+		"scroll":    {"dx": 0.0, "dy": 120.0},
+		"type_text": {"text": "hello"},
+		"key_press": {"key": "return"},
+		"sleep":     {"seconds": 0.001},
 	}
 
 	for _, name := range ToolNames() {
@@ -575,14 +571,14 @@ func TestAbsoluteMoveLandsOnTarget(t *testing.T) {
 		t.Fatalf("seed move: %v", err)
 	}
 
-	got := resultText(t, srv.callTool(1, "move_cursor_to", map[string]any{"x": 400.0, "y": 300.0}))
+	got := resultText(t, srv.callTool(1, "move_to", map[string]any{"x": 400.0, "y": 300.0}))
 	if want := "Cursor moved. Cursor at (400, 300)."; got != want {
-		t.Errorf("move_cursor_to: got %q, want %q", got, want)
+		t.Errorf("move_to: got %q, want %q", got, want)
 	}
 
-	got = resultText(t, srv.callTool(1, "move_and_double_click", map[string]any{"x": 640.0, "y": 480.0}))
+	got = resultText(t, srv.callTool(1, "double_click", map[string]any{"x": 640.0, "y": 480.0}))
 	if want := "Moved and double-clicked. Cursor at (640, 480)."; got != want {
-		t.Errorf("move_and_double_click: got %q, want %q", got, want)
+		t.Errorf("double_click: got %q, want %q", got, want)
 	}
 
 	if pos := shell.posNow(); pos.X != 640 || pos.Y != 480 {
@@ -597,7 +593,41 @@ func TestAbsoluteMoveLandsOnTarget(t *testing.T) {
 		}
 	}
 	if !sawDoubleClick {
-		t.Error("move_and_double_click never issued mouse.doubleClick")
+		t.Error("an aimed double_click never issued mouse.doubleClick")
+	}
+}
+
+// A click takes its target or does without it: with one it moves there and
+// clicks, with none it clicks where the cursor already stands. One tool, told
+// apart by what it was handed — which is why there is no move_to_and_click
+// beside it.
+func TestAClickTakesItsTargetOrDoesWithout(t *testing.T) {
+	srv, shell := newTestServer(t)
+
+	if _, err := srv.br.MoveCursorTo(300, 200); err != nil {
+		t.Fatalf("seed move: %v", err)
+	}
+
+	got := resultText(t, srv.callTool(1, "click", map[string]any{}))
+	if want := "Clicked. Cursor at (300, 200)."; got != want {
+		t.Errorf("bare click: got %q, want %q", got, want)
+	}
+	if pos := shell.posNow(); pos.X != 300 || pos.Y != 200 {
+		t.Errorf("a bare click moved the cursor to (%d, %d), want it left at (300, 200)", pos.X, pos.Y)
+	}
+
+	got = resultText(t, srv.callTool(1, "click", map[string]any{"x": 640.0, "y": 480.0}))
+	if want := "Moved and clicked. Cursor at (640, 480)."; got != want {
+		t.Errorf("aimed click: got %q, want %q", got, want)
+	}
+	if pos := shell.posNow(); pos.X != 640 || pos.Y != 480 {
+		t.Errorf("shell cursor at (%d, %d), want (640, 480)", pos.X, pos.Y)
+	}
+
+	// Half a target is neither, and clicking on it would aim at a position half
+	// of which was guessed.
+	if resp := srv.callTool(1, "click", map[string]any{"x": 100.0}); resp["error"] == nil {
+		t.Errorf("click accepted an x with no y: %v", resp)
 	}
 }
 
@@ -606,7 +636,7 @@ func TestAbsoluteMoveLandsOnTarget(t *testing.T) {
 func TestAbsoluteToolsRejectMissingCoordinates(t *testing.T) {
 	srv, shell := newTestServer(t)
 
-	for _, name := range []string{"move_cursor_to", "move_and_click", "drag_to", "move_and_scroll"} {
+	for _, name := range []string{"move_to", "drag_to"} {
 		resp := srv.callTool(1, name, map[string]any{"dx": 1.0})
 		if _, ok := resp["error"].(map[string]any); !ok {
 			t.Errorf("%s accepted a call with no x/y: %v", name, resp)
@@ -625,7 +655,7 @@ func TestAbsoluteToolsRejectMissingCoordinates(t *testing.T) {
 func TestNumericArgumentsAcceptStrings(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	got := resultText(t, srv.callTool(1, "move_and_click", map[string]any{"x": "250", "y": "175"}))
+	got := resultText(t, srv.callTool(1, "click", map[string]any{"x": "250", "y": "175"}))
 	if want := "Moved and clicked. Cursor at (250, 175)."; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -683,11 +713,11 @@ func TestToolCallsAreRecordedAsMacroLines(t *testing.T) {
 	srv.SetRecorder(rec)
 
 	srv.callTool(1, "reset_cursor", map[string]any{}) // cursor is now at (20, 20)
-	srv.callTool(1, "move_and_click", map[string]any{"x": 100.0, "y": 120.0})
+	srv.callTool(1, "click", map[string]any{"x": 100.0, "y": 120.0})
 	srv.callTool(1, "scroll", map[string]any{"dx": 0.0, "dy": 120.0})
 	srv.callTool(1, "type_text", map[string]any{"text": `say "hi"`})
 	srv.callTool(1, "key_press", map[string]any{"key": "cmd+v"})
-	srv.callTool(1, "wait", map[string]any{"milliseconds": 250.0})
+	srv.callTool(1, "sleep", map[string]any{"seconds": 0.25})
 	srv.callTool(1, "take_screenshot", map[string]any{})
 
 	want := []string{
@@ -697,7 +727,7 @@ func TestToolCallsAreRecordedAsMacroLines(t *testing.T) {
 		"scroll(0, 120)",
 		`typeText("say \"hi\"")`,
 		`keyPress("cmd+v")`,
-		"sleep(250ms)",
+		"sleep(0.25s)",
 		"takeScreenshot()",
 	}
 	got := rec.recorded()
@@ -719,18 +749,14 @@ func TestRecordedActionNamesAreReplayable(t *testing.T) {
 	srv.SetRecorder(rec)
 
 	args := map[string]map[string]any{
-		"move_cursor":           {"dx": 10.0, "dy": 10.0},
-		"move_cursor_to":        {"x": 100.0, "y": 120.0},
-		"move_and_click":        {"x": 100.0, "y": 120.0},
-		"move_and_right_click":  {"x": 100.0, "y": 120.0},
-		"move_and_double_click": {"x": 100.0, "y": 120.0},
-		"drag":                  {"dx": 5.0, "dy": 5.0},
-		"drag_to":               {"x": 50.0, "y": 60.0},
-		"scroll":                {"dx": 0.0, "dy": 120.0},
-		"move_and_scroll":       {"x": 100.0, "y": 120.0, "dx": 0.0, "dy": 120.0},
-		"type_text":             {"text": "hello"},
-		"key_press":             {"key": "return"},
-		"wait":                  {"milliseconds": 1.0},
+		"move":      {"dx": 10.0, "dy": 10.0},
+		"move_to":   {"x": 100.0, "y": 120.0},
+		"drag":      {"dx": 5.0, "dy": 5.0},
+		"drag_to":   {"x": 50.0, "y": 60.0},
+		"scroll":    {"dx": 0.0, "dy": 120.0},
+		"type_text": {"text": "hello"},
+		"key_press": {"key": "return"},
+		"sleep":     {"seconds": 0.001},
 	}
 	for _, name := range ToolNames() {
 		srv.callTool(1, name, args[name])
@@ -757,7 +783,7 @@ func TestNothingIsRecordedWhileRecordingIsOff(t *testing.T) {
 	rec := &fakeRecorder{on: false}
 	srv.SetRecorder(rec)
 
-	srv.callTool(1, "move_and_click", map[string]any{"x": 100.0, "y": 120.0})
+	srv.callTool(1, "click", map[string]any{"x": 100.0, "y": 120.0})
 	srv.callTool(1, "type_text", map[string]any{"text": "hello"})
 
 	if lines := rec.recorded(); len(lines) != 0 {
@@ -775,7 +801,7 @@ func TestNothingIsRecordedWhileRecordingIsOff(t *testing.T) {
 // A server with no recorder attached (the CLI path) must not panic.
 func TestToolCallsSurviveWithoutARecorder(t *testing.T) {
 	srv, _ := newTestServer(t)
-	if resp := srv.callTool(1, "move_and_click", map[string]any{"x": 10.0, "y": 10.0}); resp["error"] != nil {
+	if resp := srv.callTool(1, "click", map[string]any{"x": 10.0, "y": 10.0}); resp["error"] != nil {
 		t.Errorf("call failed without a recorder: %v", resp["error"])
 	}
 }

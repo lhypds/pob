@@ -4,26 +4,7 @@ Pob
 ===
 
 
-Perception & Operation Bridge.  
-
-
-Purpose
--------
-
-Pob is designed to connect AI with desktop applications.
-
-It allows AI to:
-
-- View the current desktop or application window
-- Move and click the mouse
-- Type text and press keys
-- Record and replay operation macros, with the AI reading the screen where a step varies
-- Work with MCP-compatible AI clients
-
-The same bridge works for people, not only for AI: every instance runs a
-server, so there is a web page you can open on your phone, and a desktop app
-with a full-size keyboard and a trackpad — see [Pob Server](docs/Pob/09_Server.md),
-[Web UI](docs/Pob/12_Web%20UI.md) and [Pob Keyboard](docs/Pob/13_Keyboard.md).
+Pob (Perception & Operation Bridge) is designed to connect AI with desktop applications.  
 
 
 Getting started
@@ -68,7 +49,8 @@ that a recording is readable and readable enough that the recording is worth
 editing afterwards.
 
 There are three kinds of statement. A **call** does something to the machine —
-`move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep` — or something
+`move`, `click`, `drag`, `scroll`, `typeText`, `keyPress`, `sleep`, and `moveTo`,
+`dragTo` and `click(x, y)` for the same things said in absolute coordinates — or something
 to the run itself: `stop()` ends it where it stands, and `call` replays another PSL
 file before carrying on. An **if block** guards the statements inside it with a
 condition. A **loop block** runs them again and again, up to a count. Any of the

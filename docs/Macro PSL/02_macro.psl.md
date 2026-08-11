@@ -15,8 +15,10 @@ starts at.
 Recording captures every action that drives the machine, whichever one of the three is driving it:
 your own mouse and keyboard, the AI's tool calls, and the tools an [MCP](../Pob/08_MCP.md) client calls.
 They all append to the same `macro.psl`, in the order things happened. The MCP tools that take an
-absolute `(x, y)` are written down as the relative `move(dx, dy)` this vocabulary replays, so a
-recording made through MCP plays back like any other.
+absolute `(x, y)` are written down as the relative `move(dx, dy)` from wherever the cursor was, so a
+recording made through MCP plays back like any other — the language has
+[absolute calls](06_Calls.md) too, and they are there for writing a macro by hand rather than for
+recording one.
 
 Your own mouse and keyboard are recorded on macOS only, for now — watching the input of other
 applications is a different mechanism on each system, and the Linux and Windows shells do not have

@@ -86,6 +86,27 @@ func TestAnAnswerIsGrownBackToScreenPixels(t *testing.T) {
 	}
 }
 
+// A position read off a half-size picture is half the position it means on the
+// screen, the same as a distance is — so the calls that take an absolute (x, y)
+// are grown back exactly like the relative ones.
+func TestAnAbsoluteAnswerIsGrownBackToScreenPixels(t *testing.T) {
+	cases := []struct{ statement, filled, want string }{
+		{"moveTo(::the profile icon::)", "moveTo(378, 245)", "moveTo(756, 490)"},
+		{"click(::the Save button::)", "click(378, 245)", "click(756, 490)"},
+		{"rightClick(::the file in the list::)", "rightClick(378, 245)", "rightClick(756, 490)"},
+		{"doubleClick(::the file in the list::)", "doubleClick(378, 245)", "doubleClick(756, 490)"},
+		{"dragTo(::the folder to drop it in::)", "dragTo(378, 245)", "dragTo(756, 490)"},
+	}
+	for _, c := range cases {
+		start := strings.IndexByte(c.statement, '(') + 1
+		end := strings.LastIndexByte(c.statement, ')')
+		got, done := rescaleFilled(c.statement, start, end, c.filled, 0.5)
+		if !done || got != c.want {
+			t.Errorf("rescaleFilled(%q) = %q, %v; want %q", c.statement, got, done, c.want)
+		}
+	}
+}
+
 // A statement can hold a recorded offset beside an asked-for one, and the
 // recorded one was never in the model's coordinates: only the slot's own text
 // is grown.

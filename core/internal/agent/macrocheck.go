@@ -264,11 +264,11 @@ func checkStatement(raw string, line int) (macroProblem, bool) {
 // macroCallShape is what a call has to be written like: how many arguments it
 // takes, and what those arguments are.
 //
-// This is the Calls page of docs/Macro PSL/06_Calls.md — both tables, the
-// machine's and the run's — the switch in runMacroAction and the vocabulary in
-// macroPrompt said a fourth way, and moves when they do. A call missing from here
-// is one the check calls unknown and refuses to run; one whose shape is wrong
-// here is a working statement the check would not let past.
+// This is the Calls page of docs/Macro PSL/06_Calls.md — every table on it, the
+// machine's three and the run's — the switch in runMacroAction and the
+// vocabulary in macroPrompt said a fourth way, and moves when they do. A call
+// missing from here is one the check calls unknown and refuses to run; one whose
+// shape is wrong here is a working statement the check would not let past.
 type macroCallShape struct {
 	arity   []int // the argument counts it accepts
 	numeric bool  // every argument is a number
@@ -297,11 +297,15 @@ func (s macroCallShape) most() int {
 }
 
 // wants says how many arguments a call takes, in the words the Calls page uses.
-// takeScreenshot is the one that takes two different numbers of them, and the
-// table's way of putting that — all four or none — is the way it reads here.
+// Some take two different numbers of them — a click is written with a target or
+// with none, takeScreenshot with a region or with none — and the table's way of
+// putting that, both or none and all four or none, is the way it reads here.
 func (s macroCallShape) wants() string {
 	if len(s.arity) > 1 {
-		return fmt.Sprintf("all %d arguments or none at all", s.arity[len(s.arity)-1])
+		if s.most() == 2 {
+			return "both arguments or none at all"
+		}
+		return fmt.Sprintf("all %d arguments or none at all", s.most())
 	}
 	switch s.arity[0] {
 	case 0:
@@ -315,11 +319,13 @@ func (s macroCallShape) wants() string {
 
 var macroVocabulary = map[string]macroCallShape{
 	"move":           {arity: []int{2}, numeric: true},
+	"moveTo":         {arity: []int{2}, numeric: true},
 	"drag":           {arity: []int{2}, numeric: true},
+	"dragTo":         {arity: []int{2}, numeric: true},
 	"scroll":         {arity: []int{2}, numeric: true},
-	"click":          {arity: []int{0}},
-	"rightClick":     {arity: []int{0}},
-	"doubleClick":    {arity: []int{0}},
+	"click":          {arity: []int{0, 2}, numeric: true},
+	"rightClick":     {arity: []int{0, 2}, numeric: true},
+	"doubleClick":    {arity: []int{0, 2}, numeric: true},
 	"typeText":       {arity: []int{1}},
 	"keyPress":       {arity: []int{1}},
 	"sleep":          {arity: []int{1}, isTime: true},

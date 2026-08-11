@@ -5,10 +5,14 @@ How it runs
 The cursor starts at the origin — a replay resets it there first — and every `move` and `drag` is
 relative to where it already is. That is why `resetCursor()` is recorded when something sent the
 cursor home mid-sequence: skip the jump back and every move after it starts from the wrong place.
+The absolute calls — `moveTo`, `dragTo`, and a click written with a target — are measured from the
+corner of the screenshot instead, so where the cursor got to does not reach them.
 
 All coordinates are screenshot pixels, origin top-left, x right, y down. The cursor is held inside
 the Pob window: a move that would take it past an edge stops at the edge, since everything the
 macro addresses — what the screenshots show, what the clicks go through — is inside that window.
+That holds for an absolute position too: `moveTo` past an edge stops at the edge, and the log says
+where the cursor actually ended up.
 
 Between one call and the next Pob waits `macro_default_delay` milliseconds, one second by default
 (see [Settings](../Pob/06_Settings.md)). A UI that needs longer gets an explicit `sleep()`. Judging an `if`

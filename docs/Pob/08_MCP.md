@@ -158,8 +158,14 @@ All coordinates are **screenshot pixels**, origin at the top-left of the image
 returned by `take_screenshot` — the client never deals with screen-level
 positions. `take_screenshot` reports the image size alongside the PNG, so the
 model can read a target's coordinates off the image and pass them straight to
-the `*_to` / `move_and_*` tools. Every action returns the resulting cursor
-position.
+the tools that take an absolute position. Every action returns the resulting
+cursor position.
+
+The name says which kind of coordinate a tool takes: `move`, `drag` and `scroll`
+are measured from wherever the cursor is now, and `move_to` and `drag_to` are
+measured from the top-left corner of the image. A click is both, and there is no
+separate move-and-click tool because of it — hand `click` an `x` and `y` and it
+goes there first, leave them out and it clicks where the cursor already is.
 
 The cursor is held inside the Pob window: a move that would take it past an
 edge stops at the edge, since everything it addresses — what the screenshots
@@ -181,16 +187,12 @@ Pointer:
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `reset_cursor` | — | Return the cursor to its home position. |
-| `move_cursor` | `dx`, `dy`: number | Nudge the cursor by a relative offset. |
-| `move_cursor_to` | `x`, `y`: number | Move the cursor to an absolute position. |
-| `click` / `right_click` / `double_click` | — | Click at the current cursor position. |
-| `move_and_click` | `x`, `y`: number | Move to an absolute position and left-click there, in one step. |
-| `move_and_right_click` | `x`, `y`: number | Move and right-click — e.g. to open a context menu. |
-| `move_and_double_click` | `x`, `y`: number | Move and double-click — e.g. to open an item. |
+| `move` | `dx`, `dy`: number | Nudge the cursor by a relative offset. |
+| `move_to` | `x`, `y`: number | Move the cursor to an absolute position. |
+| `click` / `right_click` / `double_click` | `x?`, `y?`: number, both or neither | Click. With `x` and `y`, move to that absolute position and click there, in one step; with neither, click where the cursor already is. |
 | `drag` | `dx`, `dy`: number | Drag from the cursor position by a relative offset. |
 | `drag_to` | `x`, `y`: number | Drag from the cursor position to an absolute position. |
-| `scroll` | `dx`, `dy`: number | Scroll at the cursor position. `dy > 0` scrolls down, `dx > 0` scrolls right. |
-| `move_and_scroll` | `x`, `y`, `dx`, `dy`: number | Move to an absolute position and scroll there, to target one pane. |
+| `scroll` | `dx`, `dy`: number | Scroll at the cursor position. `dy > 0` scrolls down, `dx > 0` scrolls right. To scroll one pane, `move_to` it first. |
 
 Keyboard and timing:
 
@@ -198,7 +200,7 @@ Keyboard and timing:
 |------|------------|-------------|
 | `type_text` | `text`: string | Type text at the current keyboard focus (click the field first). |
 | `key_press` | `key`: string | Press a key or shortcut — e.g. `return`, `escape`, `cmd+v`, `ctrl+shift+t`. See [Key names](04_Keys.md). |
-| `wait` | `milliseconds`: number | Pause to let the UI settle. Capped at 10000 ms. |
+| `sleep` | `seconds`: number | Pause to let the UI settle — fractions are fine, `0.25` is a quarter of a second. Capped at 10 s. |
 
 
 While the record button (⏺) is on, tool calls made over MCP are appended to `macro.psl`

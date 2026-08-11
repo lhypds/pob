@@ -39,19 +39,59 @@ The machine
 These are also the tools the AI calls and the actions the [MCP](../Pob/08_MCP.md) server exposes:
 one vocabulary, whoever is driving.
 
+Perception:
+
 | Statement | Arguments | What it does |
 |-----------|-----------|--------------|
+| `takeScreenshot(x?, y?, w?, h?)` | numbers, all four or none | Capture a screenshot into the session's `screenshots/`. With all four, crop to that region |
+
+Pointer:
+
+| Statement | Arguments | What it does |
+|-----------|-----------|--------------|
+| `resetCursor()` | — | Send the cursor back to the origin it starts at. By default it's (20, 20). |
 | `move(dx, dy)` | numbers | Nudge the cursor by a relative pixel offset. Positive `dx` right, positive `dy` down |
-| `click()` | — | Left-click at the cursor |
-| `rightClick()` | — | Right-click at the cursor |
-| `doubleClick()` | — | Double-click at the cursor |
+| `moveTo(x, y)` | numbers | Put the cursor at an absolute position, measured from the top-left of the screenshot |
+| `click(x?, y?)` | numbers, both or none | Left-click at the cursor. With `(x, y)`, go to that absolute position and click there |
+| `rightClick(x?, y?)` | numbers, both or none | Right-click, the same two ways |
+| `doubleClick(x?, y?)` | numbers, both or none | Double-click, the same two ways |
 | `drag(dx, dy)` | numbers | Drag from the cursor by `(dx, dy)`. The cursor ends at the new position |
+| `dragTo(x, y)` | numbers | Drag from the cursor to an absolute position. The cursor ends there |
 | `scroll(dx, dy)` | numbers | Scroll at the cursor. `dy > 0` down, `dy < 0` up, `dx > 0` right |
+
+Keyboard and timing:
+
+| Statement | Arguments | What it does |
+|-----------|-----------|--------------|
 | `typeText(text)` | one string | Type text at the current keyboard focus |
 | `keyPress(key)` | one string | Press a key, with `+`-joined modifiers in front of it — `return`, `cmd+v`, `ctrl+shift+t`. See [Key names](../Pob/04_Keys.md) |
 | `sleep(time)` | one time | Pause — `sleep(250ms)`, `sleep(3s)`, `sleep(10m)`, `sleep(10h5m)` |
-| `resetCursor()` | — | Send the cursor back to the origin it starts at |
-| `takeScreenshot(x?, y?, w?, h?)` | numbers, all four or none | Capture a screenshot into the session's `screenshots/`. With all four, crop to that region |
+
+
+Relative and absolute
+---------------------
+
+The pointer calls come in pairs, and the name says which kind of coordinate each one takes. `move`
+and `drag` are measured from wherever the cursor is now; `moveTo` and `dragTo` are measured from the
+top-left corner of the screenshot, and take no notice of where the cursor was. A click is both in
+one call: written bare it clicks where the cursor already is, and written with a target it goes
+there and clicks, which is a `moveTo` and a `click` said as one statement.
+
+```
+moveTo(398, 915)
+click()
+
+click(398, 915)     // the same two things, one statement
+```
+
+Both are screenshot pixels either way, and the cursor is left where it ended up, so the two kinds
+mix freely — `click(398, 915)` followed by `move(0, -40)` moves forty pixels up from the click.
+
+[Recording](02_macro.psl.md) writes the relative pair — that is what the shells watch happen, and
+what an MCP tool's absolute `(x, y)` is written down as. The absolute calls are the ones to reach
+for when writing or editing a macro by hand, and when an [AI slot](05_AI%20slot.md) is what fills in
+the numbers: a model looking at a screenshot can read a position off it directly, while an offset is
+that position minus wherever the cursor got to.
 
 
 The run

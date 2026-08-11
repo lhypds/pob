@@ -744,6 +744,19 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			applog.Logf("[%s] Macro move(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
 		}
 
+	case "moveTo":
+		x, okX := num(0)
+		y, okY := num(1)
+		if !okX || !okY {
+			return
+		}
+		// The position, not the distance to it. What comes back is where the
+		// cursor ended up, which is the position asked for unless the window
+		// edge stopped it short — so it is logged rather than assumed.
+		if pos, err := r.br.MoveCursorTo(x, y); err == nil {
+			applog.Logf("[%s] Macro moveTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
+		}
+
 	case "resetCursor":
 		// Recorded when something sent the cursor home mid-sequence. Replaying
 		// it matters because every move around it is a relative offset: skip the
@@ -753,19 +766,45 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			applog.Logf("[%s] Macro resetCursor -> (%d, %d)", sessionID, pos.X, pos.Y)
 		}
 
-	case "click":
-		if pos, err := r.br.Click(); err == nil {
-			applog.Logf("[%s] Macro click at (%d, %d)", sessionID, pos.X, pos.Y)
+	case "click", "rightClick", "doubleClick":
+		press := r.br.Click
+		switch name {
+		case "rightClick":
+			press = r.br.RightClick
+		case "doubleClick":
+			press = r.br.DoubleClick
 		}
-
-	case "rightClick":
-		if pos, err := r.br.RightClick(); err == nil {
-			applog.Logf("[%s] Macro rightClick at (%d, %d)", sessionID, pos.X, pos.Y)
+		// Half a target is neither of the two statements, and is the one worth
+		// saying so about rather than skipping quietly: read as the bare click
+		// it is one argument short of, it would put a real click somewhere
+		// nobody aimed it. The check catches a statement written that way, and
+		// this catches the one a slot filled to it.
+		if len(args) != 0 && len(args) != 2 {
+			applog.Logf("[%s] Macro %s takes %s, and %s — skipping", sessionID, name,
+				macroVocabulary[name].wants(), argsWritten(len(args)))
+			return
 		}
-
-	case "doubleClick":
-		if pos, err := r.br.DoubleClick(); err == nil {
-			applog.Logf("[%s] Macro doubleClick at (%d, %d)", sessionID, pos.X, pos.Y)
+		// Written with a target, the click aims first: the cursor goes to that
+		// absolute position and the button goes down where it landed, so the
+		// two halves of a click on a thing are one statement rather than a move
+		// whose next line has to be trusted to still be pointing at it. Written
+		// without one it is the click it always was — wherever the cursor is.
+		if len(args) == 2 {
+			x, okX := num(0)
+			y, okY := num(1)
+			if !okX || !okY {
+				return
+			}
+			if _, err := r.br.MoveCursorTo(x, y); err != nil {
+				return
+			}
+			if pos, err := press(); err == nil {
+				applog.Logf("[%s] Macro %s(%d, %d) at (%d, %d)", sessionID, name, int(x), int(y), pos.X, pos.Y)
+			}
+			return
+		}
+		if pos, err := press(); err == nil {
+			applog.Logf("[%s] Macro %s at (%d, %d)", sessionID, name, pos.X, pos.Y)
 		}
 
 	case "drag":
@@ -776,6 +815,19 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		if pos, err := r.br.Drag(dx, dy); err == nil {
 			applog.Logf("[%s] Macro drag(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
+		}
+
+	case "dragTo":
+		x, okX := num(0)
+		y, okY := num(1)
+		if !okX || !okY {
+			return
+		}
+		// Where the drop goes, not how far it is from the grab. The button goes
+		// down where the cursor already is, so a dragTo is still written under
+		// whatever put the cursor on the thing being dragged.
+		if pos, err := r.br.DragTo(x, y); err == nil {
+			applog.Logf("[%s] Macro dragTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
 		}
 
 	case "scroll":

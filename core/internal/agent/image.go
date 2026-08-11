@@ -85,8 +85,11 @@ func boxDownscale(src image.Image, w, h int) *image.NRGBA {
 	return dst
 }
 
-// scaledCalls are the statements whose numbers are distances on the picture the
-// model was shown, and so the ones an answer has to be scaled back out of.
+// scaledCalls are the statements whose numbers are measured on the picture the
+// model was shown, and so the ones an answer has to be scaled back out of. A
+// distance across a half-size picture and a position on one are both half of
+// what they mean on the screen, so the relative calls and the absolute ones
+// scale by the same factor and are in here together.
 //
 // Every other call is left alone because its numbers are not pixels: sleep is a
 // length of time, typeText and keyPress are text. scroll is the near miss — the
@@ -95,7 +98,12 @@ func boxDownscale(src image.Image, w, h int) *image.NRGBA {
 // distance across the image and does not scale with one.
 var scaledCalls = map[string]bool{
 	"move":           true,
+	"moveTo":         true,
 	"drag":           true,
+	"dragTo":         true,
+	"click":          true,
+	"rightClick":     true,
+	"doubleClick":    true,
 	"takeScreenshot": true,
 }
 

@@ -65,6 +65,7 @@ leave a statement that reads as PSL:
 |---------|-----------------------------------|
 | `move(:: … ::, 40)` | a bare number — `-120` |
 | `move(:: … ::)` | both numbers, commas and all — `-120, 40` |
+| `click(:: … ::)` | both numbers again, this time the position in the picture — `398, 915` |
 | `typeText(:: … ::)` | a quoted string — `"Hello"` |
 | `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
 | `sleep(:: … ::)` | a time, unit and all — `3s` |
@@ -82,17 +83,23 @@ What a slot cannot do is take arguments away. `move(:: the x offset ::, 40, 60)`
 before anything is filled and at least three after, and `move` takes two — so that one is refused
 before the run, while `move(:: the profile icon ::)` is not.
 
-Coordinates come back as screenshot pixels, and `move` and `drag` are relative to where the cursor
-is now — the arrow the model can see in the screenshot — so what it answers is an offset from there,
-not a position on the screen.
+Coordinates come back as screenshot pixels, and which kind is what the statement around the slot
+asks for. `move` and `drag` are relative to where the cursor is now — the arrow the model can see in
+the screenshot — so what it answers there is an offset from that arrow, not a position on the
+screen. `moveTo`, `dragTo` and a `click`, `rightClick` or `doubleClick` written with a target are
+the other way round: the answer is the position in the picture itself. That is the easier question
+of the two to ask about a screenshot, so `click(:: the Save button ::)` is usually the better line
+to write than `move(:: the offset to the Save button ::)` followed by a `click()`.
 
 They are screenshot pixels whatever `image_scale` is set to (see [Settings](../Pob/06_Settings.md)), and it
 is below `1` by default. So the model is shown a smaller picture than the screen and answers in that
 picture's pixels, and Pob grows the answer back before it goes into the macro: a `move` filled from a
 third-size screenshot and one filled from a whole one write the same line. Only the part the model wrote is grown — a
 number already in the statement was never in the model's coordinates — and only where the numbers
-are distances across the picture: `move`, `drag` and `takeScreenshot`. `sleep` is a time and
-`scroll` is a wheel delta, so neither is touched.
+are measured on the picture: `move`, `moveTo`, `drag`, `dragTo`, the three clicks and
+`takeScreenshot`. A position on a third-size picture is a third of the position on the screen, the
+same as a distance is, so both kinds grow back by the same factor. `sleep` is a time and `scroll` is
+a wheel delta, so neither is touched.
 
 A statement that does not read as PSL once its slots are filled is logged with what it was filled to
 and skipped. Nothing is retried: the macro goes on to the next statement. A psl run that fails

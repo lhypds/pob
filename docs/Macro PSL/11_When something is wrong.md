@@ -18,7 +18,7 @@ not start.
 |---------|--------------------|
 | A line that is not a call — no parentheses, nothing after the `)` | `"halt" is not a statement — a call is name(argument, argument)` |
 | A name that is not one of the statements in [Calls](06_Calls.md) | `there is no statement called "clik"`, and which one it was nearly, since names are case-sensitive |
-| A call written with the wrong number of arguments — `move(1)`, `click(1, 2)`, `typeText("a", "b")`, `call()` | `move takes 2 arguments, and 1 was written`. Counted before the fill, so a slot standing for a whole argument list is counted as the list it may come back as — `move(:: the profile icon ::)` is not one of these, and `move(:: … ::, 40, 60)` is |
+| A call written with the wrong number of arguments — `move(1)`, `click(398)`, `typeText("a", "b")`, `call()` | `move takes 2 arguments, and 1 was written`, and for the calls written with a target or with none, `click takes both arguments or none at all, and 1 was written`. Counted before the fill, so a slot standing for a whole argument list is counted as the list it may come back as — `move(:: the profile icon ::)` is not one of these, and `move(:: … ::, 40, 60)` is |
 | A call whose numbers are not numbers — `scroll(a, b)` | `scroll wants numbers, and its first argument is "a"` |
 | A `sleep` whose argument is not a time — `sleep(500)`, `sleep(soon)`, `sleep(-3s)` | `sleep was written with "500", which is not a time — a number with its unit on the end: 250ms, 3s, 10m, 5h, 10h5m` |
 | A time written in quotes — `sleep("10m")` | `sleep was written with "10m" — a time is not a string, so it goes in without the quotes: 10m` |

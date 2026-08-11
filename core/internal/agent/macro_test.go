@@ -244,7 +244,10 @@ func TestParseMacroLineReadsEveryStatement(t *testing.T) {
 		{`sleep("3s")`, "sleep", true, true},
 		{`call("../shared.psl")`, "call", true, true},
 		{"click()", "click", false, true},
+		{"click(398, 915)", "click", false, true},
 		{"move(1, 2)", "move", false, true},
+		{"moveTo(398, 915)", "moveTo", false, true},
+		{"dragTo(398, 915)", "dragTo", false, true},
 	}
 	for _, tt := range tests {
 		name, _, quoted, ok := parseMacroLine(tt.line)
@@ -269,6 +272,12 @@ func TestMacroTime(t *testing.T) {
 		{"250ms", 250 * time.Millisecond, true},
 		{"0.5s", 500 * time.Millisecond, true},
 		{"0s", 0, true},
+
+		// Fractional seconds are what the MCP sleep tool records: it is asked in
+		// seconds and writes the line in seconds, so these are the times a
+		// recording made through it puts in the file.
+		{"0.25s", 250 * time.Millisecond, true},
+		{"0.001s", time.Millisecond, true},
 
 		// Units written one after another add up, which is how a time says what
 		// two of them would have to say together.
