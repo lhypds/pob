@@ -8,15 +8,17 @@ import (
 	"testing"
 )
 
-func TestInstanceSinkReceivesAppMessages(t *testing.T) {
+func TestInstanceSinkReceivesEveryLevel(t *testing.T) {
 	Init(t.TempDir())
 	var got []string
-	SetInstanceSink(func(message string) { got = append(got, message) })
+	SetInstanceSink(func(level, message string) { got = append(got, level+" "+message) })
 
 	Log("one")
 	Logf("two %d", 2)
+	Event("started")
+	Errorf("broke: %v", "why")
 
-	want := []string{"one", "two 2"}
+	want := []string{"INFO one", "INFO two 2", "INFO started", "ERROR broke: why"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("instance sink got %q, want %q", got, want)
 	}
@@ -25,7 +27,7 @@ func TestInstanceSinkReceivesAppMessages(t *testing.T) {
 func TestInitClearsThePreviousInstanceSink(t *testing.T) {
 	Init(t.TempDir())
 	called := false
-	SetInstanceSink(func(string) { called = true })
+	SetInstanceSink(func(string, string) { called = true })
 	Init(t.TempDir())
 
 	Log("after reinitialising")
@@ -34,18 +36,45 @@ func TestInitClearsThePreviousInstanceSink(t *testing.T) {
 	}
 }
 
+// app.log is the short record: the app and its instances coming up and going
+// down, and what failed. Detail is the instance log's job.
+func TestAppLogKeepsOnlyEventsAndErrors(t *testing.T) {
+	root := t.TempDir()
+	Init(root)
+
+	Log("a step ran")
+	Event("pob-core started")
+	Error("listen failed")
+
+	lines := readAppLog(t, root)
+	if len(lines) != 2 {
+		t.Fatalf("app.log has %d lines, want 2: %q", len(lines), lines)
+	}
+	if !strings.HasSuffix(lines[0], "] pob-core started") {
+		t.Errorf("first app.log line is %q", lines[0])
+	}
+	if !strings.HasSuffix(lines[1], "] ERROR listen failed") {
+		t.Errorf("second app.log line is %q", lines[1])
+	}
+}
+
 func TestAppLogTimestampHasFixedMicrosecondWidth(t *testing.T) {
 	root := t.TempDir()
 	Init(root)
-	Log("fixed width")
+	Event("fixed width")
 
+	lines := readAppLog(t, root)
+	want := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] fixed width$`)
+	if len(lines) != 1 || !want.MatchString(lines[0]) {
+		t.Errorf("app.log timestamp is not fixed-width microseconds: %q", lines)
+	}
+}
+
+func readAppLog(t *testing.T, root string) []string {
+	t.Helper()
 	data, err := os.ReadFile(root + "/app.log")
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := strings.TrimSpace(string(data))
-	want := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] fixed width$`)
-	if !want.MatchString(line) {
-		t.Errorf("app.log timestamp is not fixed-width microseconds: %q", line)
-	}
+	return strings.Split(strings.TrimSpace(string(data)), "\n")
 }

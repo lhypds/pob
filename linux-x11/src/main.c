@@ -484,9 +484,9 @@ static void on_logs_clicked(GtkButton *b, gpointer d) {
     settings_open_logs_folder();
 }
 
-static void on_applog_clicked(GtkButton *b, gpointer d) {
+static void on_inslog_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    settings_open_app_log();
+    settings_open_instance_log();
 }
 
 static void on_macro_clicked(GtkButton *b, gpointer d) {
@@ -581,17 +581,17 @@ static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpoi
     return FALSE;
 }
 
-static GtkWidget *build_applog_button(void) {
+static GtkWidget *build_inslog_button(void) {
     GtkWidget *btn = gtk_button_new();
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    GtkWidget *l1 = gtk_label_new("app");
+    GtkWidget *l1 = gtk_label_new("ins");
     GtkWidget *l2 = gtk_label_new(".log");
-    gtk_style_context_add_class(gtk_widget_get_style_context(l1), "pob-applog-label");
-    gtk_style_context_add_class(gtk_widget_get_style_context(l2), "pob-applog-label");
+    gtk_style_context_add_class(gtk_widget_get_style_context(l1), "pob-inslog-label");
+    gtk_style_context_add_class(gtk_widget_get_style_context(l2), "pob-inslog-label");
     gtk_box_pack_start(GTK_BOX(box), l1, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), l2, FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(btn), box);
-    gtk_widget_set_tooltip_text(btn, "App Log");
+    gtk_widget_set_tooltip_text(btn, "Instance Log");
     gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     return btn;
 }
@@ -732,7 +732,7 @@ static void build_headerbar(void) {
 
     GtkWidget *settings_btn = icon_button(ICONS_SETTINGS, "Settings");
     GtkWidget *logs_btn = icon_button(ICONS_LOGS, "Logs");
-    GtkWidget *applog_btn = build_applog_button();
+    GtkWidget *inslog_btn = build_inslog_button();
     GtkWidget *macro_btn = icon_button(ICONS_MACRO, "Macro PSL");
     g_state.record_btn = icon_button(ICONS_RECORD, "Record Macro");
     g_state.play_btn = icon_button(ICONS_PLAY, "Execute");
@@ -755,7 +755,7 @@ static void build_headerbar(void) {
 
     g_signal_connect(settings_btn, "clicked", G_CALLBACK(on_settings_clicked), NULL);
     g_signal_connect(logs_btn, "clicked", G_CALLBACK(on_logs_clicked), NULL);
-    g_signal_connect(applog_btn, "clicked", G_CALLBACK(on_applog_clicked), NULL);
+    g_signal_connect(inslog_btn, "clicked", G_CALLBACK(on_inslog_clicked), NULL);
     g_signal_connect(macro_btn, "clicked", G_CALLBACK(on_macro_clicked), NULL);
     g_signal_connect(g_state.record_btn, "clicked", G_CALLBACK(on_record_clicked), NULL);
     g_signal_connect(g_state.play_btn, "clicked", G_CALLBACK(on_play_clicked), NULL);
@@ -793,7 +793,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.play_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.record_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), macro_btn);
-    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), applog_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), inslog_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), logs_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), settings_btn);
 
@@ -855,7 +855,7 @@ static void install_css(void) {
         "}\n"
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
-        ".pob-applog-label { font-family: monospace; font-size: 6pt; }\n"
+        ".pob-inslog-label { font-family: monospace; font-size: 6pt; }\n"
         // App name at the leading edge: bare text like the instance id beside
         // it, a touch larger and in the UI font. Same qualified selector, for
         // the same reason — the compact-button rule below would otherwise win.
@@ -937,7 +937,7 @@ static void disable_compositor_shadow(GdkWindow *gw) {
                     PropModeReplace, (unsigned char *)&value, 1);
 }
 
-// Logs the facts transparency depends on, so app.log answers "why is the
+// Logs the facts transparency depends on, so instance.log answers "why is the
 // window opaque" without guesswork.
 static void on_window_realize(GtkWidget *w, gpointer data) {
     (void)data;
@@ -993,11 +993,11 @@ static void on_activate(GtkApplication *app, gpointer data) {
     if (visual)
         gtk_widget_set_visual(win, visual);
     else
-        app_logger_log("Warning: no RGBA visual — the overlay will not be transparent");
+        app_logger_error("no RGBA visual — the overlay will not be transparent");
     if (!gdk_screen_is_composited(screen))
-        app_logger_log("Warning: no compositor detected — the overlay will not be transparent "
-                       "(on Raspberry Pi OS: raspi-config → Advanced Options → Compositor, "
-                       "or install picom)");
+        app_logger_error("no compositor detected — the overlay will not be transparent "
+                         "(on Raspberry Pi OS: raspi-config → Advanced Options → Compositor, "
+                         "or install picom)");
     g_signal_connect(screen, "composited-changed",
                      G_CALLBACK(on_composited_changed), NULL);
     g_signal_connect(win, "draw", G_CALLBACK(on_window_draw), NULL);
@@ -1035,7 +1035,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
 
     gtk_widget_show_all(win);
 
-    app_logger_log("Pob started");
+    app_logger_event("Pob started");
     mouse_service_init();
     core_bridge_start();
 }
@@ -1049,6 +1049,9 @@ static void on_shutdown(GApplication *app, gpointer data) {
     }
     core_bridge_stop();
     mouse_service_shutdown();
+    // The other half of "Pob started": app.log is the record of the app coming
+    // up and going down, so the way out is written too.
+    app_logger_event("Pob stopped");
 }
 
 int main(int argc, char **argv) {

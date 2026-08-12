@@ -481,11 +481,11 @@ static gpointer worker_main(gpointer data) {
     (void)data;
     Display *dpy = XOpenDisplay(NULL);
     if (!dpy) {
-        app_logger_log("MouseService: cannot open X display in worker");
+        app_logger_error("MouseService: cannot open X display in worker");
     } else {
         int ev, err, major, minor;
         if (!XTestQueryExtension(dpy, &ev, &err, &major, &minor))
-            app_logger_log("MouseService: XTest extension not available");
+            app_logger_error("MouseService: XTest extension not available");
     }
 
     for (;;) {

@@ -1,6 +1,19 @@
-// Package applog appends timestamped lines to <root>/app.log, matching the
-// Swift AppLogger format. Both processes append to the same file; each write
-// is a single O_APPEND line so entries interleave without corruption.
+// Package applog decides which of Pob's two logs a message belongs in.
+//
+// <root>/app.log is the machine's record across instances, and it is kept
+// short on purpose: the app starting and stopping, an instance starting and
+// stopping, and errors. Read on its own it should answer "did it come up, and
+// did anything break" without scrolling.
+//
+// Everything else is detail — every step, every psl call, every frame — and
+// detail belongs to the running instance, in <instance>/instance.log. The
+// storage package writes that file; applog reaches it through the sink set
+// here, so every message logged lands there whatever its level.
+//
+// So: Log for detail (instance.log only), Event for the lifecycle lines and
+// Error for failures (both, in app.log too). Both processes append to app.log;
+// each write is a single O_APPEND line so entries interleave without
+// corruption.
 package applog
 
 import (
@@ -14,7 +27,7 @@ import (
 var (
 	mu           sync.Mutex
 	path         string
-	instanceSink func(string)
+	instanceSink func(level, message string)
 )
 
 func Init(root string) {
@@ -24,26 +37,44 @@ func Init(root string) {
 	instanceSink = nil
 }
 
-// SetInstanceSink mirrors subsequent app messages into the running
-// instance's own log. A callback keeps applog independent of the storage
-// package and lets tests initialise the global app log without retaining a
-// sink from the test before them.
-func SetInstanceSink(sink func(string)) {
+// SetInstanceSink mirrors subsequent messages into the running instance's own
+// log, under the level given. A callback keeps applog independent of the
+// storage package and lets tests initialise the global app log without
+// retaining a sink from the test before them.
+func SetInstanceSink(sink func(level, message string)) {
 	mu.Lock()
 	defer mu.Unlock()
 	instanceSink = sink
 }
 
-func Logf(format string, args ...any) {
-	Log(fmt.Sprintf(format, args...))
-}
+// Log records detail: it goes to the instance log alone.
+func Log(message string) { write("INFO", false, message) }
 
-func Log(message string) {
+func Logf(format string, args ...any) { Log(fmt.Sprintf(format, args...)) }
+
+// Event records a line app.log is kept for — the app or an instance starting
+// or stopping. It goes to both logs.
+func Event(message string) { write("INFO", true, message) }
+
+func Eventf(format string, args ...any) { Event(fmt.Sprintf(format, args...)) }
+
+// Error records a failure. It goes to both logs, marked ERROR, so app.log
+// answers what went wrong and instance.log keeps it beside the detail that
+// led there.
+func Error(message string) { write("ERROR", true, message) }
+
+func Errorf(format string, args ...any) { Error(fmt.Sprintf(format, args...)) }
+
+func write(level string, toAppLog bool, message string) {
 	mu.Lock()
-	if path != "" {
+	if toAppLog && path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 			timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
-			_, _ = fmt.Fprintf(f, "[%s] %s\n", timestamp, message)
+			line := message
+			if level != "INFO" {
+				line = level + " " + message
+			}
+			_, _ = fmt.Fprintf(f, "[%s] %s\n", timestamp, line)
 			_ = f.Close()
 		}
 	}
@@ -54,6 +85,6 @@ func Log(message string) {
 	// different file today, and keeping it outside the lock also makes that
 	// separation impossible to accidentally deadlock later.
 	if sink != nil {
-		sink(message)
+		sink(level, message)
 	}
 }

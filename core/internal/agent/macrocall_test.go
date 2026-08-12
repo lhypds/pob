@@ -25,12 +25,13 @@ import (
 // still takes no time.
 
 // macroTest is a Runner over a temporary ~/.pob, the directory its macro.psl
-// would sit in, and the log everything it does is written to.
+// would sit in, and the log everything it does is written to — instance.log,
+// which is where a replay's detail goes. app.log keeps only the app and its
+// instances starting, stopping and failing.
 type macroTest struct {
 	runner      *Runner
 	dir         string // the instance directory, where macro.psl lives
 	root        string // ~/.pob itself, which is one up — where call("../x.psl") lands
-	log         string
 	instanceLog string
 }
 
@@ -48,11 +49,15 @@ func newMacroTest(t *testing.T) *macroTest {
 
 	cfg := config.New(root, "pob-test")
 	store := storage.New(root, "pob-test", cfg.SettingsDict, cfg.Macro)
+	// The same sink pob-core sets: what the runner logs is the instance's, so
+	// it lands in instance.log whatever its level.
+	applog.SetInstanceSink(func(level, message string) {
+		store.LogInstance(level, message)
+	})
 	return &macroTest{
 		runner:      NewRunner(cfg, store, psl.Compiler{}, nil),
 		dir:         cfg.InstanceDir(),
 		root:        root,
-		log:         filepath.Join(root, "app.log"),
 		instanceLog: store.InstanceLogFile(),
 	}
 }
@@ -91,7 +96,7 @@ func (m *macroTest) replay(t *testing.T, source string) *macroRun {
 // test can state the path it expects the run to have taken.
 func (m *macroTest) ran(t *testing.T) []string {
 	t.Helper()
-	data, err := os.ReadFile(m.log)
+	data, err := os.ReadFile(m.instanceLog)
 	if err != nil {
 		t.Fatalf("nothing was logged: %v", err)
 	}
@@ -106,7 +111,7 @@ func (m *macroTest) ran(t *testing.T) []string {
 
 func (m *macroTest) logged(t *testing.T, want string) bool {
 	t.Helper()
-	data, err := os.ReadFile(m.log)
+	data, err := os.ReadFile(m.instanceLog)
 	return err == nil && strings.Contains(string(data), want)
 }
 

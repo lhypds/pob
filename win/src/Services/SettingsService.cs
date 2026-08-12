@@ -320,7 +320,7 @@ public static class SettingsService
         }
         catch (Exception e)
         {
-            AppLogger.Log($"Failed to launch {fileName}: {e.Message}");
+            AppLogger.Error($"Failed to launch {fileName}: {e.Message}");
         }
     }
 
@@ -423,9 +423,12 @@ public static class SettingsService
         SpawnDetached("explorer.exe", SrcDir);
     }
 
-    public static void OpenAppLog()
+    // The instance log, not the app log: what someone reaches for a log for is
+    // what a run did, and that is written here in full. app.log keeps only the
+    // app and its instances starting, stopping and failing.
+    public static void OpenInstanceLog()
     {
-        string path = RootPath("app.log");
+        string path = InstancePath("instance.log");
         EnsureFile(path);
         OpenWithEditor(path);
     }

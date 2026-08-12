@@ -90,7 +90,7 @@ func (r *Runner) TakeScreenshot() {
 	r.br.FlashScreenshot()
 	shot, err := r.br.CaptureScreenshot(true, nil)
 	if err != nil {
-		applog.Log("Screenshot button: capture failed")
+		applog.Error("Screenshot button: capture failed")
 		return
 	}
 	r.store.SaveUserScreenshot(shot)

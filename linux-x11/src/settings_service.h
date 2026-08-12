@@ -41,7 +41,7 @@ void settings_save_window_locked(gboolean locked);
 
 void settings_open_settings_file(void);
 void settings_open_src_folder(void);
-void settings_open_app_log(void);
+void settings_open_instance_log(void);
 void settings_open_logs_folder(void);
 
 // Contents of src/main.macro.psl ("" when missing); caller frees.

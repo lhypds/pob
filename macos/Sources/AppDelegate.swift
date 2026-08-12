@@ -42,6 +42,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
+        // The other half of "Pob started": app.log is the record of the app
+        // coming up and going down, so the way out is written too.
+        AppLogger.event("Pob stopped")
     }
 
     /// The version this copy of Pob was built as.

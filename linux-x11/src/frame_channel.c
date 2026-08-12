@@ -45,7 +45,7 @@ void frame_channel_connect(int port, const char *token) {
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
-        app_logger_log("FrameChannel: cannot open a socket (%s)", g_strerror(errno));
+        app_logger_error("FrameChannel: cannot open a socket (%s)", g_strerror(errno));
         return;
     }
 
@@ -56,8 +56,8 @@ void frame_channel_connect(int port, const char *token) {
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        app_logger_log("FrameChannel: cannot connect on port %d (%s); frames stay on "
-                "the JSON-RPC line", port, g_strerror(errno));
+        app_logger_error("FrameChannel: cannot connect on port %d (%s); frames stay on "
+                         "the JSON-RPC line", port, g_strerror(errno));
         close(fd);
         return;
     }

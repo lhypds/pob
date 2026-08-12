@@ -65,8 +65,8 @@ func main() {
 	applog.Init(*root)
 	cfg := config.New(*root, instanceID)
 	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Macro)
-	applog.SetInstanceSink(func(message string) {
-		store.LogInstance("INFO", message)
+	applog.SetInstanceSink(func(level, message string) {
+		store.LogInstance(level, message)
 	})
 	store.WriteInstanceStart()
 	store.LogInstancef("INSTANCE START", "id=%s pid=%d", store.InstanceID(), os.Getpid())
@@ -77,7 +77,7 @@ func main() {
 	// one. A shell that does not take up the offer keeps answering the old
 	// way, so this failing is not worth refusing to start over.
 	if err := client.ServeFrames(); err != nil {
-		applog.Logf("IPC: no frame channel (%v); frames will come down the JSON-RPC line", err)
+		applog.Errorf("IPC: no frame channel (%v); frames will come down the JSON-RPC line", err)
 	}
 	br := bridge.New(client)
 	// The psl compiler is what fills the :: … :: slots in a macro. It runs in
@@ -109,7 +109,7 @@ func main() {
 	mcp.SetRecorder(macroRecorder{runner: runner, cfg: cfg})
 	if cfg.MCPEnabled() {
 		if err := mcp.Start(cfg.MCPHost(), cfg.MCPPort()); err != nil {
-			applog.Logf("MCPServer: not started: %v", err)
+			applog.Errorf("MCPServer: not started: %v", err)
 		}
 	}
 
@@ -138,7 +138,7 @@ func main() {
 	})
 	if cfg.ServerEnabled() {
 		if err := srv.Start(cfg.ServerPort()); err != nil {
-			applog.Logf("Server: not started: %v", err)
+			applog.Errorf("Server: not started: %v", err)
 		}
 	}
 	// Told once, here: the server is started with the instance and runs for as
@@ -150,7 +150,7 @@ func main() {
 	ctl := ctlserver.New(cfg, store, runner, mcp, srv, br, compiler)
 	_ = ctl.Start()
 
-	applog.Logf("pob-core started (instance %s)", store.InstanceID())
+	applog.Eventf("pob-core started (instance %s)", store.InstanceID())
 
 	// Both ways out use the same once-only shutdown record: the shell closing
 	// stdin, or a direct signal from stop.sh / the operating system.
@@ -164,7 +164,7 @@ func main() {
 			if !runner.StopAndWait(5 * time.Second) {
 				store.LogInstancef("MACRO STOP", "session=%s status=%q", sessionID, "forced by instance shutdown timeout")
 			}
-			applog.Logf("pob-core stopping (instance %s, %s)", store.InstanceID(), reason)
+			applog.Eventf("pob-core stopping (instance %s, %s)", store.InstanceID(), reason)
 			ctl.Stop()
 			srv.Stop()
 			store.WriteInstanceEnd()

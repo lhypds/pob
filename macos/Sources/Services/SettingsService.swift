@@ -48,6 +48,22 @@ class SettingsService {
         projectRoot.appendingPathComponent(instanceID)
     }
 
+    /// This instance's log — what the toolbar's ins.log button opens, and what
+    /// pob-core writes every step and psl call to. Resolved statically and
+    /// cached, because AppLogger writes to it from anywhere in the shell,
+    /// including before any SettingsService has been built.
+    static let instanceLogFile: URL = {
+        let fileManager = FileManager.default
+        let root = resolveProjectRoot(fileManager)
+        let dir = root.appendingPathComponent(resolveInstanceID(fileManager, root: root))
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("instance.log")
+    }()
+
+    var instanceLogFile: URL {
+        instanceDir.appendingPathComponent("instance.log")
+    }
+
     /// The machine's settings, shared by every instance: the API key, the model
     /// and the port are how this machine works whichever instance it is
     /// running, so moving ~/.pob/INSTANCE does not mean setting them again.
@@ -324,9 +340,15 @@ class SettingsService {
         NSWorkspace.shared.open(logsFolder)
     }
 
-    func openAppLog() {
-        let appLog = projectRoot.appendingPathComponent("app.log")
-        openWithEditor(appLog)
+    /// The instance log, not the app log: what someone reaches for a log for is
+    /// what a run did, and that is written here in full. app.log keeps only the
+    /// app and its instances starting, stopping and failing.
+    func openInstanceLog() {
+        let log = instanceLogFile
+        if !fileManager.fileExists(atPath: log.path) {
+            fileManager.createFile(atPath: log.path, contents: Data())
+        }
+        openWithEditor(log)
     }
 
     private func openWithEditor(_ url: URL) {
@@ -369,7 +391,7 @@ class SettingsService {
         do {
             try process.run()
         } catch {
-            AppLogger.log("Settings: cannot run \(process.launchPath ?? editor): \(error.localizedDescription)")
+            AppLogger.error("Settings: cannot run \(process.launchPath ?? editor): \(error.localizedDescription)")
             openWithSystemEditor(url)
         }
     }

@@ -71,7 +71,7 @@ final class CoreBridge: ObservableObject {
         let root = settings.projectRoot
 
         guard let binary = locateCoreBinary() else {
-            AppLogger.log("CoreBridge: pob-core binary not found — run ./setup.sh")
+            AppLogger.error("CoreBridge: pob-core binary not found — run ./setup.sh")
             return
         }
 
@@ -93,7 +93,7 @@ final class CoreBridge: ObservableObject {
         }
 
         process.terminationHandler = { [weak self] _ in
-            AppLogger.log("CoreBridge: pob-core exited")
+            AppLogger.event("CoreBridge: pob-core exited")
             DispatchQueue.main.async { self?.isExecuting = false }
         }
 
@@ -101,9 +101,9 @@ final class CoreBridge: ObservableObject {
             try process.run()
             self.process = process
             stdinHandle = stdinPipe.fileHandleForWriting
-            AppLogger.log("CoreBridge: pob-core started (\(binary.path))")
+            AppLogger.event("CoreBridge: pob-core started (\(binary.path))")
         } catch {
-            AppLogger.log("CoreBridge: failed to start pob-core: \(error)")
+            AppLogger.error("CoreBridge: failed to start pob-core: \(error)")
         }
     }
 

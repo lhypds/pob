@@ -120,7 +120,7 @@ win/
     src/
         App.xaml(.cs)              lifecycle, window glue, frame persistence
         AppState.cs                shared state + mode transitions
-        AppLogger.cs               app.log writer
+        AppLogger.cs               app.log / instance.log writer
         Interop/NativeMethods.cs   Win32: SendInput, BitBlt, window styles
         Services/
             CoreBridge.cs          pob-core process + JSON-RPC dispatch

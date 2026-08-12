@@ -73,9 +73,9 @@
                 <Button x:Name="LogsBtn" Style="{StaticResource ToolButton}" ToolTip="Logs" Click="OnLogsClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8A5;"/>
                 </Button>
-                <Button x:Name="AppLogBtn" Style="{StaticResource ToolButton}" ToolTip="App Log" Click="OnAppLogClicked">
+                <Button x:Name="InsLogBtn" Style="{StaticResource ToolButton}" ToolTip="Instance Log" Click="OnInsLogClicked">
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Text="app" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
+                        <TextBlock Text="ins" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
                         <TextBlock Text=".log" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
                     </StackPanel>
                 </Button>

@@ -410,7 +410,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	// has nothing for it to say.
 	if problems := checkMacroSource(source, path); len(problems) > 0 {
 		r.store.LogInstancef("MACRO NOT STARTED", "reason=%q problems=%d", "macro check failed", len(problems))
-		applog.Logf("Macro not run: %d problem(s) in %s", len(problems), filepath.Base(path))
+		applog.Errorf("Macro not run: %d problem(s) in %s", len(problems), filepath.Base(path))
 		for _, p := range problems {
 			applog.Logf("Macro %s", p)
 		}
@@ -433,7 +433,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 			"the psl compiler. psl was not found — install it (see https://github.com/pob/psl), or set " +
 			"\"psl\" in settings.json to the path of the executable, and run the macro again."
 		r.store.LogInstancef("MACRO NOT STARTED", "reason=%q", "psl is not available")
-		applog.Logf("Macro not run: %s", message)
+		applog.Errorf("Macro not run: %s", message)
 		r.br.ShowAlert("psl needed", message)
 		return
 	}
@@ -929,7 +929,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		}
 		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q duration=%s error=%q",
 			run.sessionID, seq, "error", responseDuration.Round(time.Millisecond), err)
-		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
+		applog.Errorf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, responseOutput, shot)
 		return "", false
 	}

@@ -125,7 +125,7 @@ func (s *Server) Start(host string, port int) error {
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
-		applog.Logf("MCPServer: listen failed: %v", err)
+		applog.Errorf("MCPServer: listen failed: %v", err)
 		return err
 	}
 	// The old listener goes only once the new port is held, so a move to a port
@@ -143,7 +143,7 @@ func (s *Server) Start(host string, port int) error {
 	go func() {
 		applog.Logf("MCPServer: listening on %s", net.JoinHostPort(host, strconv.Itoa(bound)))
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			applog.Logf("MCPServer: listener failed: %v", err)
+			applog.Errorf("MCPServer: listener failed: %v", err)
 		}
 	}()
 	return nil

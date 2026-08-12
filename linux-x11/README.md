@@ -33,15 +33,15 @@ Requirements
 
   Make it permanent with `echo '@xcompmgr' >> ~/.config/lxsession/LXDE-pi/autostart`.
   The app self-diagnoses: when transparency can't work, the content area
-  shows what is missing (compositor / ARGB visual), and `app.log` records
+  shows what is missing (compositor / ARGB visual), and `instance.log` records
   `Window realized: visual depth=…, composited=…`.
 
 - A text editor and a file manager. The toolbar buttons that open
-  `settings.json`, `src/` and `app.log` hand the file
+  `settings.json`, `src/` and `instance.log` hand the file
   to an editor; the Logs button hands `logs/` to a file manager. Mainstream
   desktops ship both, but a bare X session, a container or a trimmed-down
   install can have neither — the content area then says `Cannot open it — no
-  text editor / file manager on this machine` and `app.log` records the same.
+  text editor / file manager on this machine` and the logs record the same.
   `xdg-open` and `gio open` are tried first, then these, by name:
 
   ```
@@ -158,7 +158,7 @@ src/
   mouse_service.c        virtual cursor + XTest mouse/keyboard (≈ MouseService.swift)
   screenshot_service.c   root-window capture + cursor compositing (≈ ScreenshotService.swift)
   settings_service.c     settings.json, editor launching, clears (≈ SettingsService.swift)
-  app_logger.c           app.log (≈ AppLogger.swift)
+  app_logger.c           app.log / instance.log (≈ AppLogger.swift)
 ```
 
 

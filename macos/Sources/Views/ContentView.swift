@@ -171,7 +171,7 @@ struct InstanceContentView: View {
             updateClickThrough()
         }
         .onAppear {
-            AppLogger.log("Pob started")
+            AppLogger.event("Pob started")
             // The lock the window was left with, so an instance set up for a
             // macro comes back the way it was rather than loose again.
             isLocked = instance.settings.getWindowLocked()
@@ -346,7 +346,7 @@ struct InstanceContentView: View {
             .help("Logs")
         }
         ToolbarItem(placement: .automatic) {
-            AppLogButton { instance.settings.openAppLog() }
+            InstanceLogButton { instance.settings.openInstanceLog() }
         }
         ToolbarItem(placement: .automatic) {
             Button(action: { instance.settings.openSrcFolder() }) {
@@ -544,14 +544,14 @@ struct InstanceContentView: View {
     }
 }
 
-private struct AppLogButton: View {
+private struct InstanceLogButton: View {
     let action: () -> Void
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 0) {
-                Text("app")
+                Text("ins")
                 Text(".log")
             }
             .font(.system(size: 6, design: .monospaced))
@@ -564,7 +564,7 @@ private struct AppLogButton: View {
                 .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
         )
         .overlay(HoverDetectorView(isHovered: $isHovered))
-        .help("App Log")
+        .help("Instance Log")
     }
 }
 

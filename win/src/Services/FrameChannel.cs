@@ -71,7 +71,7 @@ public static class FrameChannel
         }
         catch (Exception e)
         {
-            AppLogger.Log($"FrameChannel: cannot connect on port {port} ({e.Message}); frames stay on the JSON-RPC line");
+            AppLogger.Error($"FrameChannel: cannot connect on port {port} ({e.Message}); frames stay on the JSON-RPC line");
         }
     }
 

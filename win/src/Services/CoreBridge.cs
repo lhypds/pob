@@ -310,7 +310,7 @@ public static class CoreBridge
         string? binary = LocateCoreBinary();
         if (binary == null)
         {
-            AppLogger.Log("CoreBridge: pob-core binary not found — run win\\setup.ps1");
+            AppLogger.Error("CoreBridge: pob-core binary not found — run win\\setup.ps1");
             return;
         }
 
@@ -332,7 +332,7 @@ public static class CoreBridge
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         process.Exited += (_, _) =>
         {
-            AppLogger.Log("CoreBridge: pob-core exited");
+            AppLogger.Event("CoreBridge: pob-core exited");
             Application.Current?.Dispatcher.BeginInvoke(() => AppState.SetExecuting(false));
         };
 
@@ -342,7 +342,7 @@ public static class CoreBridge
         }
         catch (Exception e)
         {
-            AppLogger.Log($"CoreBridge: failed to start pob-core: {e.Message}");
+            AppLogger.Error($"CoreBridge: failed to start pob-core: {e.Message}");
             return;
         }
 
@@ -352,7 +352,7 @@ public static class CoreBridge
         var reader = new Thread(() => ReadLoop(process)) { IsBackground = true, Name = "pob-core-reader" };
         reader.Start();
 
-        AppLogger.Log($"CoreBridge: pob-core started ({binary})");
+        AppLogger.Event($"CoreBridge: pob-core started ({binary})");
     }
 
     private static void ReadLoop(Process process)

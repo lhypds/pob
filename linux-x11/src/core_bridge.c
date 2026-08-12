@@ -363,7 +363,7 @@ static gboolean on_stdout(GIOChannel *channel, GIOCondition cond, gpointer data)
 static void on_child_exit(GPid pid, gint status, gpointer data) {
     (void)status;
     (void)data;
-    app_logger_log("CoreBridge: pob-core exited");
+    app_logger_event("CoreBridge: pob-core exited");
     g_spawn_close_pid(pid);
     core_pid = 0;
     app_set_executing(FALSE);
@@ -407,7 +407,7 @@ void core_bridge_start(void) {
     const char *root = settings_project_root();
     gchar *binary = locate_core_binary();
     if (!binary) {
-        app_logger_log("CoreBridge: pob-core binary not found — run ./linux-x11/setup.sh");
+        app_logger_error("CoreBridge: pob-core binary not found — run ./linux-x11/setup.sh");
         return;
     }
 
@@ -420,8 +420,8 @@ void core_bridge_start(void) {
         &child_stdin, &child_stdout, NULL, &error);
 
     if (!ok) {
-        app_logger_log("CoreBridge: failed to start pob-core: %s",
-                       error ? error->message : "unknown error");
+        app_logger_error("CoreBridge: failed to start pob-core: %s",
+                         error ? error->message : "unknown error");
         g_clear_error(&error);
         g_free(binary);
         return;
@@ -435,7 +435,7 @@ void core_bridge_start(void) {
                                   on_stdout, NULL);
     child_watch = g_child_watch_add(core_pid, on_child_exit, NULL);
 
-    app_logger_log("CoreBridge: pob-core started (%s)", binary);
+    app_logger_event("CoreBridge: pob-core started (%s)", binary);
     g_free(binary);
 }
 

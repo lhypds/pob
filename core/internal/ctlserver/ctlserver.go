@@ -65,7 +65,7 @@ func (s *Server) Start() error {
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		applog.Logf("CtlServer: listen failed: %v", err)
+		applog.Errorf("CtlServer: listen failed: %v", err)
 		return err
 	}
 	s.port = listener.Addr().(*net.TCPAddr).Port
@@ -76,7 +76,7 @@ func (s *Server) Start() error {
 	go func() {
 		applog.Logf("CtlServer: listening on port %d", s.port)
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			applog.Logf("CtlServer: listener failed: %v", err)
+			applog.Errorf("CtlServer: listener failed: %v", err)
 		}
 	}()
 	return nil

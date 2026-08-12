@@ -141,7 +141,7 @@ public partial class App : Application
 
         toolbar.Closed += (_, _) => Shutdown();
 
-        AppLogger.Log("Pob started");
+        AppLogger.Event("Pob started");
         MouseService.Init();
         CoreBridge.Start();
     }
@@ -152,6 +152,9 @@ public partial class App : Application
         SaveFrameNow();
         CoreBridge.Stop();
         MouseService.Shutdown();
+        // The other half of "Pob started": app.log is the record of the app
+        // coming up and going down, so the way out is written too.
+        AppLogger.Event("Pob stopped");
         base.OnExit(e);
     }
 

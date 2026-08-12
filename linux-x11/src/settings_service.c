@@ -495,8 +495,8 @@ static void run_open_attempt(open_attempt *attempt) {
         g_free(program);
 
         if (!spawned) {
-            app_logger_log("Settings: cannot run %s: %s", cmd->program,
-                           error ? error->message : "unknown error");
+            app_logger_error("Settings: cannot run %s: %s", cmd->program,
+                             error ? error->message : "unknown error");
             if (error) g_error_free(error);
             continue;
         }
@@ -512,8 +512,8 @@ static void run_open_attempt(open_attempt *attempt) {
 
     // Nothing on this machine could open the file. A toolbar button that does
     // nothing at all just looks broken, so say so on screen and in the log.
-    app_logger_log("Settings: no %s on this machine — cannot open %s",
-                   attempt->what, attempt->path);
+    app_logger_error("Settings: no %s on this machine — cannot open %s",
+                     attempt->what, attempt->path);
     gchar *msg = g_strdup_printf("Cannot open it — no %s on this machine", attempt->what);
     content_view_show_message(msg);
     g_free(msg);
@@ -594,8 +594,11 @@ void settings_open_src_folder(void) {
     g_free(path);
 }
 
-void settings_open_app_log(void) {
-    gchar *path = root_path("app.log");
+// The instance log, not the app log: what someone reaches for a log for is
+// what a run did, and that is written here in full. app.log keeps only the app
+// and its instances starting, stopping and failing.
+void settings_open_instance_log(void) {
+    gchar *path = instance_path("instance.log");
     ensure_file(path);
     open_with_editor(path);
     g_free(path);

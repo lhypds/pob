@@ -140,7 +140,7 @@ public partial class ToolbarWindow : Window
 
     private void OnLogsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenLogsFolder();
 
-    private void OnAppLogClicked(object sender, RoutedEventArgs e) => SettingsService.OpenAppLog();
+    private void OnInsLogClicked(object sender, RoutedEventArgs e) => SettingsService.OpenInstanceLog();
 
     private void OnMacroClicked(object sender, RoutedEventArgs e) => SettingsService.OpenSrcFolder();
 
