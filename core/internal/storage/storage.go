@@ -252,11 +252,22 @@ func (s *Storage) CreateSession() string {
 	return sessionID
 }
 
-// SaveMacro copies the macro a session ran into logs/<session>/macro.psl, so
-// what happened can still be read against the lines it happened from after the
-// instance's own macro.psl has been edited or re-recorded.
+// SessionMacroName is the copy of the macro a session ran, kept in its log
+// directory. It carries the entry point's own name so that it matches the `file`
+// each slot.json records — the name the replay knew the file by — rather than
+// making a reader hold two names for one file.
+const SessionMacroName = "main.macro.psl"
+
+// LegacySessionMacroName is what that copy was called in sessions logged before
+// the instance kept its macros in src/. Sessions are read long after they are
+// written, so the old name is still one to look under — see cmdSession.
+const LegacySessionMacroName = "macro.psl"
+
+// SaveMacro copies the macro a session ran into logs/<session>/main.macro.psl,
+// so what happened can still be read against the lines it happened from after
+// the instance's own copy has been edited or re-recorded.
 func (s *Storage) SaveMacro(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.psl"), []byte(s.macro()), 0o644)
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), SessionMacroName), []byte(s.macro()), 0o644)
 }
 
 // SaveCompiledMacro writes the macro as the session left it to

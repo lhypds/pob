@@ -142,7 +142,7 @@ public partial class ToolbarWindow : Window
 
     private void OnAppLogClicked(object sender, RoutedEventArgs e) => SettingsService.OpenAppLog();
 
-    private void OnMacroClicked(object sender, RoutedEventArgs e) => SettingsService.OpenMacroFile();
+    private void OnMacroClicked(object sender, RoutedEventArgs e) => SettingsService.OpenSrcFolder();
 
     private void OnRecordClicked(object sender, RoutedEventArgs e)
     {
@@ -156,7 +156,7 @@ public partial class ToolbarWindow : Window
             StartRecording(clearingMacro: false);
             return;
         }
-        // Recording appends, so whatever is in macro.psl already would replay
+        // Recording appends, so whatever is in main.macro.psl already would replay
         // in front of everything recorded next.
         switch (Dialogs.ShowRecordWarning(this))
         {
@@ -169,7 +169,7 @@ public partial class ToolbarWindow : Window
         }
     }
 
-    // Starts macro recording, either over an emptied macro.psl or appending to
+    // Starts macro recording, either over an emptied main.macro.psl or appending to
     // what is already in it.
     private void StartRecording(bool clearingMacro)
     {

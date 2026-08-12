@@ -72,11 +72,11 @@ func TestInstanceOwnsItsWorkAndTheRootHoldsTheSettings(t *testing.T) {
 	root := t.TempDir()
 	New(root, "pb-aaaa")
 
-	if _, err := os.Stat(filepath.Join(root, "pb-aaaa", "macro.psl")); err != nil {
-		t.Errorf("macro.psl is missing from the instance directory: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "pb-aaaa", "src", MainMacroName)); err != nil {
+		t.Errorf("%s is missing from the instance's src/: %v", MainMacroName, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "macro.psl")); err == nil {
-		t.Error("macro.psl was written at the root")
+	if _, err := os.Stat(filepath.Join(root, MainMacroName)); err == nil {
+		t.Errorf("%s was written at the root", MainMacroName)
 	}
 	if _, err := os.Stat(filepath.Join(root, "settings.json")); err != nil {
 		t.Errorf("settings.json is missing from the root: %v", err)
@@ -109,7 +109,8 @@ func TestALegacyMacroIsCarriedOverToPSL(t *testing.T) {
 
 // An instance that has a macro.psl already keeps it: the macro.txt beside it is
 // then a leftover from a Pob that ran before the rename, and letting it win
-// would lose whatever has been recorded since.
+// would lose whatever has been recorded since. It goes on down into src/ from
+// there — the two renames are one chain, walked in one run.
 func TestALegacyMacroDoesNotOverwriteAnExistingPSL(t *testing.T) {
 	root := t.TempDir()
 	instanceDir := filepath.Join(root, "pb-aaaa")
@@ -357,5 +358,48 @@ func TestImageScaleIsAThirdByDefaultAndClamped(t *testing.T) {
 		if got := New(dir, "pb-aaaa").ImageScale(); got != c.want {
 			t.Errorf("ImageScale() = %v with image_scale %v, want %v", got, c.set, c.want)
 		}
+	}
+}
+
+// A macro written while an instance kept exactly one file is carried down into
+// src/ under the name the entry point has now. It is the same rule as the rename
+// before it: work someone did with the app moves rather than being left behind
+// under a name nothing reads any more.
+func TestAMacroIsCarriedDownIntoSrc(t *testing.T) {
+	root := t.TempDir()
+	instanceDir := filepath.Join(root, "pb-aaaa")
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "macro.psl"), []byte("click()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if macro := New(root, "pb-aaaa").Macro(); macro != "click()\n" {
+		t.Errorf("Macro() = %q, want the lines that were in macro.psl", macro)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, "macro.psl")); err == nil {
+		t.Error("macro.psl is still there — it should have been moved, not copied")
+	}
+}
+
+// A src/main.macro.psl that is already there wins: the macro.psl above it is
+// then a leftover from a Pob that ran before the move, and what Execute has been
+// running is what someone has been editing.
+func TestTheMacroInSrcWinsOverTheOneAboveIt(t *testing.T) {
+	root := t.TempDir()
+	instanceDir := filepath.Join(root, "pb-aaaa")
+	if err := os.MkdirAll(filepath.Join(instanceDir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "macro.psl"), []byte("click()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, "src", MainMacroName), []byte("doubleClick()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if macro := New(root, "pb-aaaa").Macro(); macro != "doubleClick()\n" {
+		t.Errorf("Macro() = %q, want the %s that was already there", macro, MainMacroName)
 	}
 }

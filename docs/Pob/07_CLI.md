@@ -23,7 +23,7 @@ The dev scripts build the CLI to `core/bin/pob` next to `pob-core` instead
 
 Everything lives in `~/.pob`, created on first use and shared by the app and
 the CLI: `settings.json` is the machine's, `INSTANCE` names the instance
-directory, and that directory holds its `macro.psl`, `instance.json` and
+directory, and that directory holds its `src/` macros, `instance.json` and
 `logs/`.
 
 A running Pob serves a small control API on an ephemeral localhost port,
@@ -42,11 +42,11 @@ Flags:
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
-| `new [name]` | Create an instance — its own `macro.psl` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
+| `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
-| `macro` | Execute [`macro.psl`](03_Macro%20PSL.md) (same as the toolbar Execute button) |
-| `macro --check` | Read `macro.psl` and the files it `call`s, print what is wrong with them line by line, and run nothing. The same check Execute refuses a run over, so a macro this passes is one that will start. It reads the file and talks to no one, which makes it the one `macro` command that works with Pob closed; exits `1` when there is anything to fix |
+| `macro` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) (same as the toolbar Execute button) |
+| `macro --check` | Read `src/main.macro.psl` and the files it `call`s, print what is wrong with them line by line, and run nothing. The same check Execute refuses a run over, so a macro this passes is one that will start. It reads the file and talks to no one, which makes it the one `macro` command that works with Pob closed; exits `1` when there is anything to fix |
 | `stop` | Stop the running session |
 | `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
@@ -62,7 +62,7 @@ pob                                      # what's running?
 pob new "Work laptop"                    # create an instance and switch to it
 pob launch                               # start the app (asks which, if there are several)
 pob launch "Work laptop"                 # start that one
-pob macro                                # replay macro.psl
+pob macro                                # replay src/main.macro.psl
 pob macro --check                        # read it and say what is wrong with it
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
@@ -95,7 +95,7 @@ file without a `port` is a stopped instance. `status`, `macro`, `stop`,
 `screenshot` and the `mcp` commands are each one call to that
 API; the rest read the `logs/` tree directly, which is why they still work
 with the app closed. `macro --check` is the odd one of that first group: it
-reads `macro.psl` itself rather than asking the instance about it, so a macro
+reads `src/main.macro.psl` itself rather than asking the instance about it, so a macro
 can be checked while it is being written and before anything is running.
 
 `kill` uses the API for one thing only — asking the instance which process it

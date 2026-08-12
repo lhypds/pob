@@ -63,7 +63,7 @@ reimplementing only the shell — the brain is shared.
 See also
 --------
 
-- [Macro PSL](03_Macro%20PSL.md) — `macro.psl` and the language the engine runs
+- [Macro PSL](03_Macro%20PSL.md) — `src/main.macro.psl` and the language the engine runs
 - [Pob Server](09_Server.md) — the HTTP server started with every instance
 - [MCP Server](08_MCP.md) — the other one started with it, for MCP clients
 - [Control API](11_Control%20API.md) — the other server, loopback only, for the CLI

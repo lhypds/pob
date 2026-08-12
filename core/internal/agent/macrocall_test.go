@@ -471,9 +471,9 @@ func TestMacroNeedsPSLFollowsCalls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := filepath.Join(m.dir, "macro.psl")
+			path := filepath.Join(m.dir, "main.macro.psl")
 			nodes := parseMacro(tt.macro)
-			got := macroNeedsPSL(nodes, m.dir, map[string]bool{path: true})
+			got := macroNeedsPSL(nodes, path, map[string]bool{path: true})
 			if got != tt.want {
 				t.Errorf("macroNeedsPSL = %v, want %v", got, tt.want)
 			}

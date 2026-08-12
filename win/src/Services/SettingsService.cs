@@ -1,6 +1,6 @@
 // UI-side view of the files Pob works with, mirroring the macOS/Linux
-// SettingsService. The Go core owns settings.json defaults, macro.psl and
-// the logs tree; this service only resolves the project root,
+// SettingsService. The Go core owns settings.json defaults, the src/ macros
+// and the logs tree; this service only resolves the project root,
 // opens files in the user's editor, persists the window frame and clears
 // user files on request.
 //
@@ -39,7 +39,7 @@ public static class SettingsService
 
     /// <summary>
     /// ~/.pob/&lt;InstanceId&gt;, everything this instance owns: its
-    /// macro.psl and logs/. Passed to pob-core via
+    /// src/ and logs/. Passed to pob-core via
     /// --instance.
     /// </summary>
     public static string InstanceId => _instanceId ??= AllocateInstance();
@@ -78,6 +78,24 @@ public static class SettingsService
     public static string InstanceDir => Path.Combine(ProjectRoot, InstanceId);
 
     private static string InstancePath(string name) => Path.Combine(InstanceDir, name);
+
+    /// <summary>
+    /// This instance's macros, ~/.pob/&lt;instance&gt;/src. A macro of any size
+    /// is written across several files — the entry point calls the pieces — so
+    /// they are kept together in one directory, which is what the Macro PSL
+    /// button opens.
+    /// </summary>
+    private static string SrcDir => InstancePath("src");
+
+    /// <summary>
+    /// The entry point of this instance's macro. `.macro.psl` says psl fills
+    /// its slots; a `.macro` beside it is replayed without the compiler.
+    /// </summary>
+    private static string MacroPath => Path.Combine(SrcDir, "main.macro.psl");
+
+    // The core makes src/ at startup; this is for the writes that can land
+    // before it has, and costs a stat on a directory that is already there.
+    private static void EnsureSrcDir() => Directory.CreateDirectory(SrcDir);
 
     /// <summary>
     /// The machine's instance id — the same one on every run, recorded in
@@ -396,11 +414,13 @@ public static class SettingsService
         OpenWithEditor(path);
     }
 
-    public static void OpenMacroFile()
+    // Opens the whole src/ directory rather than the entry point alone: what
+    // someone reaches for the Macro PSL button to do is edit the macro, and a
+    // macro is the set of files, not the one that happens to be called first.
+    public static void OpenSrcFolder()
     {
-        string path = InstancePath("macro.psl");
-        EnsureFile(path);
-        OpenWithEditor(path);
+        EnsureSrcDir();
+        SpawnDetached("explorer.exe", SrcDir);
     }
 
     public static void OpenAppLog()
@@ -423,7 +443,7 @@ public static class SettingsService
     {
         try
         {
-            return File.ReadAllText(InstancePath("macro.psl"));
+            return File.ReadAllText(MacroPath);
         }
         catch
         {
@@ -432,7 +452,7 @@ public static class SettingsService
     }
 
     // Appends one action line, keeping the file newline-terminated. Read-
-    // modify-write like the macOS shell's appendToMacro: macro.psl is small
+    // modify-write like the macOS shell's appendToMacro: the macro is small
     // and the core is the only other writer.
     public static void AppendToMacro(string line)
     {
@@ -440,14 +460,15 @@ public static class SettingsService
         if (content.Length > 0 && !content.EndsWith("\n")) content += "\n";
         try
         {
-            File.WriteAllText(InstancePath("macro.psl"), content + line + "\n");
+            EnsureSrcDir();
+            File.WriteAllText(MacroPath, content + line + "\n");
         }
         catch (IOException)
         {
         }
     }
 
-    public static void ClearMacro() => TryTruncate(InstancePath("macro.psl"));
+    public static void ClearMacro() => TryTruncate(MacroPath);
 
     /// <summary>
     /// Takes the lock handle, or reports that someone else has it. Already

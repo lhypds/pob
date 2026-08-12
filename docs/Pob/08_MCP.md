@@ -203,7 +203,7 @@ Keyboard and timing:
 | `sleep` | `seconds`: number | Pause to let the UI settle — fractions are fine, `0.25` is a quarter of a second. Capped at 10 s. |
 
 
-While the record button (⏺) is on, tool calls made over MCP are appended to `macro.psl`
+While the record button (⏺) is on, tool calls made over MCP are appended to `src/main.macro.psl`
 alongside the actions the AI and your own hand perform — see
 [Macro PSL](03_Macro%20PSL.md).
 

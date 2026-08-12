@@ -51,7 +51,7 @@ still needs psl, and Pob reads the called files before the cursor moves rather t
 partway down. A `call` whose path is itself a slot cannot be read ahead — but a macro with a slot in
 it needs psl anyway, which is the same answer.
 
-`logs/<session>/macro.psl` and `macro.txt` are the macro, as they have always been. A called file is
+`logs/<session>/main.macro.psl` and `macro.txt` are the macro, as they have always been. A called file is
 not copied into the session; what the run made of it is in the log and in the slots it filled.
 
 

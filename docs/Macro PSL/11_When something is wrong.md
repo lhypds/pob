@@ -77,7 +77,7 @@ Checking it without running it
 pob macro --check
 ```
 
-is the same reading Execute does, said in the terminal: it reads `macro.psl` and the files it calls,
+is the same reading Execute does, said in the terminal: it reads `src/main.macro.psl` and the files it calls,
 prints what is wrong with them and runs nothing. It talks to no one, so it is the one macro command
 that works with Pob closed — which is the point of it, since a hand-edited macro is worth checking
 before it is ever loaded. It exits `1` when there is anything to fix, so a commit hook can hold the

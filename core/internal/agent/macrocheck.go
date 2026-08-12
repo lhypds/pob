@@ -126,6 +126,7 @@ func checkFile(source, path, name string, chain []string) []MacroProblem {
 	problems := label(name, probs)
 	problems = append(problems, label(name, checkComments(source))...)
 	problems = append(problems, label(name, checkStatements(nodes))...)
+	problems = append(problems, label(name, checkDeterministic(nodes, path))...)
 	problems = append(problems, checkCalls(nodes, filepath.Dir(path), name, chain)...)
 	return sortByLine(problems)
 }
@@ -158,6 +159,36 @@ func sortByLine(problems []MacroProblem) []MacroProblem {
 		}
 	}
 	return problems
+}
+
+// checkDeterministic refuses a `:: … ::` written in a file whose name says it
+// holds none. A `.macro` is replayed without the compiler — that is what the
+// extension is for — so a slot in one is not a slot that fills late, it is a
+// slot that never fills, and every statement it is part of would be skipped.
+//
+// It is caught here rather than left to the replay because the file's name is
+// the fix and the file's name is not something a log line halfway down a run
+// gets anyone to. Either the slot goes, or the file is a `.macro.psl` and psl
+// fills it; both are one edit, and both want saying before the cursor moves.
+func checkDeterministic(nodes []macroNode, path string) []macroProblem {
+	if !psl.Deterministic(path) {
+		return nil
+	}
+	return deterministicProblems(nodes, filepath.Base(path))
+}
+
+func deterministicProblems(nodes []macroNode, name string) []macroProblem {
+	var probs []macroProblem
+	for _, node := range nodes {
+		if node.slots || psl.HasSlot(node.condition) {
+			probs = append(probs, problemf(node.line,
+				"%s is a %s, which is replayed without psl, so this :: … :: would never be filled — remove the slot, or rename the file to %s",
+				name, psl.MacroExt, strings.TrimSuffix(name, psl.MacroExt)+psl.MacroPSLExt))
+		}
+		probs = append(probs, deterministicProblems(node.body, name)...)
+		probs = append(probs, deterministicProblems(node.elseBody, name)...)
+	}
+	return probs
 }
 
 // checkStatements reads every statement as the call it claims to be, at every

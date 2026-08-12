@@ -2,13 +2,13 @@ import AppKit
 import Foundation
 
 /// UI-side view of the files Pob works with. The Go core (pob-core) owns
-/// settings.json defaults, macro.psl and the logs tree; this service only
+/// settings.json defaults, the src/ macros and the logs tree; this service only
 /// resolves the project root, opens files in the user's editor, persists the
 /// window frame and clears user files on request.
 ///
 /// A machine has one instance and it keeps its id for good: the same
-/// ~/.pob/<instance>/ directory every run, holding that instance's macro.psl
-/// and logs/. settings.json sits above them at ~/.pob and is shared — pointing
+/// ~/.pob/<instance>/ directory every run, holding that instance's src/ and
+/// logs/. settings.json sits above them at ~/.pob and is shared — pointing
 /// ~/.pob/INSTANCE at another id starts Pob on a clean macro, on a machine
 /// that is already set up.
 class SettingsService {
@@ -64,10 +64,18 @@ class SettingsService {
         instanceDir.appendingPathComponent("instance.json")
     }
 
-    /// This instance's Prompt Script Language program — what Record writes and
-    /// Execute replays.
+    /// This instance's macros. A macro of any size is written across several
+    /// files — the entry point calls the pieces — so they are kept together in
+    /// one directory, which is what the Macro PSL button opens.
+    private var srcFolder: URL {
+        instanceDir.appendingPathComponent("src")
+    }
+
+    /// The entry point of this instance's Prompt Script Language program — what
+    /// Record writes and Execute replays. `.macro.psl` says psl fills its
+    /// slots; a `.macro` beside it is replayed without the compiler.
     private var macroFile: URL {
-        instanceDir.appendingPathComponent("macro.psl")
+        srcFolder.appendingPathComponent("main.macro.psl")
     }
 
     private var logsFolder: URL {
@@ -243,8 +251,12 @@ class SettingsService {
         openWithEditor(settingsFile)
     }
 
-    func openMacroFile() {
-        openWithEditor(macroFile)
+    /// Opens the whole src/ directory rather than the entry point alone: what
+    /// someone reaches for the Macro PSL button to do is edit the macro, and a
+    /// macro is the set of files, not the one that happens to be called first.
+    func openSrcFolder() {
+        try? fileManager.createDirectory(at: srcFolder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(srcFolder)
     }
 
     func getMacro() -> String {
@@ -252,13 +264,21 @@ class SettingsService {
     }
 
     func clearMacro() {
+        ensureSrcFolder()
         try? "".write(to: macroFile, atomically: true, encoding: .utf8)
     }
 
-    /// Appends one action line to macro.psl (same format as the Go core's
+    /// The core makes src/ at startup; this is for the writes that can land
+    /// before it has, and costs a stat on a directory that is already there.
+    private func ensureSrcFolder() {
+        try? fileManager.createDirectory(at: srcFolder, withIntermediateDirectories: true)
+    }
+
+    /// Appends one action line to main.macro.psl (same format as the Go core's
     /// AppendToMacro). Only called while no session is executing, so it never
     /// races with the Go core's own appends.
     func appendToMacro(_ line: String) {
+        ensureSrcFolder()
         var content = getMacro()
         if !content.isEmpty, !content.hasSuffix("\n") { content += "\n" }
         content += line + "\n"

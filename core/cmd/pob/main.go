@@ -13,8 +13,8 @@
 //	pob new "Work laptop"            create an instance and switch to it
 //	pob launch                       start the app (asks which, with several)
 //	pob --session Y                  show one session's details
-//	pob macro                        run macro.psl
-//	pob macro --check                read macro.psl and say what is wrong with it
+//	pob macro                        run src/main.macro.psl
+//	pob macro --check                read the macro and say what is wrong with it
 //	pob mcp start                    register the MCP server with the agent CLIs
 package main
 
@@ -34,7 +34,7 @@ const usage = `pob — control and inspect Pob from the command line
 
 Everything lives in ~/.pob, created on first use and shared with the Pob app:
 settings.json is the machine's, INSTANCE names the instance directory, and that
-directory holds its macro.psl and logs/.
+directory holds its src/ macros and logs/.
 
 Usage: pob [flags] [command] [args]
 
@@ -47,12 +47,12 @@ Commands:
   launch [instance]  Start the app. With more than one instance and nothing
                      named, lists them and asks which to start — arrow keys to
                      move, enter to start. <instance> is a name or an id
-  new [name]         Create an instance — its own macro.psl and logs — and make
+  new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
   sessions           List the instance's sessions
-  macro              Execute macro.psl (the toolbar Execute button)
-  macro --check      Read macro.psl and the files it calls, print what is wrong
+  macro              Execute src/main.macro.psl (the toolbar Execute button)
+  macro --check      Read that macro and the files it calls, print what is wrong
                      with them, and run nothing. Works with nothing running,
                      and exits 1 when there is anything to fix
   stop               Stop the running session
@@ -70,7 +70,7 @@ Examples:
   pob                          # what's running?
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
-  pob macro                    # replay this instance's macro.psl
+  pob macro                    # replay this instance's main macro
   pob macro --check            # read it and print what is wrong with it
   pob --session 1752712400
   pob mcp start

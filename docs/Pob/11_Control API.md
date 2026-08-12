@@ -51,7 +51,7 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | `GET /server` | — | The [Pob server](09_Server.md): `running`, `port`, `url`, `urls` — one per network the machine is on. `pob status` reads the same block out of `/status` |
 | `POST /mcp/start` | `mcp start` | Body `{"port": 8032}` optional, defaulting to the `mcp_port` setting — which is the port it is already on, so this is a no-op unless another one is asked for, and then the server moves there. 409 when the port will not bind |
 | `POST /mcp/stop` | `mcp stop` | Always succeeds |
-| `POST /run/macro` | `macro` | Replays [`macro.psl`](03_Macro%20PSL.md). 409 when a session is already running |
+| `POST /run/macro` | `macro` | Replays [`src/main.macro.psl`](03_Macro%20PSL.md). 409 when a session is already running |
 | `POST /run/stop` | `stop` | Idempotent |
 | `POST /screenshot` | `screenshot` | Returns `{"path": "..."}`. 409 while a session is running — it owns the capture pipeline |
 

@@ -193,7 +193,7 @@ struct InstanceContentView: View {
             Button("Keep") { startRecording(clearingMacro: false) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("macro.psl has recorded actions. Clear them before recording?")
+            Text("main.macro.psl has recorded actions. Clear them before recording?")
         }
     }
 
@@ -349,7 +349,7 @@ struct InstanceContentView: View {
             AppLogButton { instance.settings.openAppLog() }
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { instance.settings.openMacroFile() }) {
+            Button(action: { instance.settings.openSrcFolder() }) {
                 Image(systemName: "wand.and.rays")
             }
             .help("Macro PSL")
@@ -361,7 +361,7 @@ struct InstanceContentView: View {
                 } else if instance.settings.getMacro().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     startRecording(clearingMacro: false)
                 } else {
-                    // Recording appends, so whatever is in macro.psl already
+                    // Recording appends, so whatever is in main.macro.psl already
                     // would replay in front of everything recorded next.
                     showRecordWarning = true
                 }
@@ -456,7 +456,7 @@ struct InstanceContentView: View {
 
     // MARK: - Helpers
 
-    /// Starts macro recording, either over an emptied macro.psl or appending to
+    /// Starts macro recording, either over an emptied main.macro.psl or appending to
     /// what is already in it.
     private func startRecording(clearingMacro: Bool) {
         if clearingMacro {
@@ -490,7 +490,7 @@ struct InstanceContentView: View {
     }
 
     /// Shows a transient bottom-centered message (black pill, white text) that
-    /// fades out after ~2 s — action feedback like "macro.psl reset".
+    /// fades out after ~2 s — action feedback like "main.macro.psl reset".
     private func showToast(_ message: String) {
         toastMessage = message
         toastToken += 1
@@ -505,7 +505,7 @@ struct InstanceContentView: View {
     }
 
     /// Running and recording both make the window's frame part of the result:
-    /// every coordinate written to macro.psl is relative to it, so a resize
+    /// every coordinate written to main.macro.psl is relative to it, so a resize
     /// partway through aims the replay at the wrong pixels. Play and Record
     /// turn the lock on themselves; turning it back off stays the user's call,
     /// as it was before.

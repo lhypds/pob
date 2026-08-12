@@ -11,7 +11,7 @@
 //	POST /mcp/start        — start the MCP server; optional body {"port": 8032}
 //	                         moves a running one to that port
 //	POST /mcp/stop         — stop the MCP server
-//	POST /run/macro        — run macro.psl
+//	POST /run/macro        — run src/main.macro.psl
 //	POST /run/stop         — stop the running session
 //	POST /screenshot       — capture and save a screenshot, returns its path
 package ctlserver

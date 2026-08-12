@@ -158,7 +158,7 @@ always had — `sleep(2s)` above is still on line 3 afterwards.
 
 Everything that follows from that is what follows from a `call`:
 
-- **It is named for where it came from.** `macro.psl` line 2 generates `macro-line2.psl`, which is
+- **It is named for where it came from.** `main.macro.psl` line 2 generates `main.macro-line2.psl`, which is
   what psl is told the file is called and what the log puts in front of the block's own line
   numbers — so `macro-line2.psl line 3` is the third statement of the block, not of the macro.
 - **A slot inside the block is the block's own.** The model may leave one, and it is filled when the
@@ -180,7 +180,7 @@ The whole block is kept under `logs/<session>/slots/<n>/` with the screenshot it
 is in `logs/<session>/macro.txt` too — opened back out into lines, under the indentation of the line
 that asked for it, so that what the session writes down is a program that reads as PSL and runs a
 statement to a line. That file's line numbers are its own from then on: a block is more lines than the
-one line it came from, and the line each `slot.json` names is a line of `macro.psl`, which has not
+one line it came from, and the line each `slot.json` names is a line of `main.macro.psl`, which has not
 moved.
 
 Writing one

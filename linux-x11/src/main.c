@@ -363,7 +363,7 @@ static void sync_record_button(void) {
                                                      : "Record Macro");
 }
 
-// Starts macro recording, either over an emptied macro.psl or appending to
+// Starts macro recording, either over an emptied main.macro.psl or appending to
 // what is already in it.
 static void start_recording(gboolean clearing_macro) {
     if (clearing_macro) {
@@ -435,7 +435,7 @@ static void show_record_warning_dialog(void) {
         GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE, "Warning");
     gtk_message_dialog_format_secondary_text(
         GTK_MESSAGE_DIALOG(dialog),
-        "macro.psl has recorded actions. Clear them before recording?");
+        "main.macro.psl has recorded actions. Clear them before recording?");
     gtk_dialog_add_button(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL);
     gtk_dialog_add_button(GTK_DIALOG(dialog), "Keep", RESPONSE_RECORD_KEEP);
     gtk_dialog_add_button(GTK_DIALOG(dialog), "Clear", RESPONSE_RECORD_CLEAR);
@@ -491,7 +491,7 @@ static void on_applog_clicked(GtkButton *b, gpointer d) {
 
 static void on_macro_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    settings_open_macro_file();
+    settings_open_src_folder();
 }
 
 static void on_record_clicked(GtkButton *b, gpointer d) {
@@ -505,8 +505,8 @@ static void on_record_clicked(GtkButton *b, gpointer d) {
     if (*macro == '\0')
         start_recording(FALSE);
     else
-        // Recording appends, so whatever is in macro.psl already would replay
-        // in front of everything recorded next.
+        // Recording appends, so whatever is in main.macro.psl already would
+        // replay in front of everything recorded next.
         show_record_warning_dialog();
     g_free(macro);
 }

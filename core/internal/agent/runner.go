@@ -1,4 +1,4 @@
-// Package agent runs an instance's macro.psl — the Prompt Script Language
+// Package agent runs an instance's main macro — the Prompt Script Language
 // program the Play button, `pob macro` and the control API all replay. All
 // screen perception and operation goes through the bridge to the native shell,
 // and the :: … :: slots in the program are filled by running the psl compiler.
@@ -43,9 +43,9 @@ func (r *Runner) SetRecording(recording bool) {
 		return
 	}
 	if recording {
-		r.store.LogInstance("RECORDING START", "macro.psl recording enabled")
+		r.store.LogInstance("RECORDING START", "macro recording enabled")
 	} else {
-		r.store.LogInstance("RECORDING STOP", "macro.psl recording disabled")
+		r.store.LogInstance("RECORDING STOP", "macro recording disabled")
 	}
 }
 

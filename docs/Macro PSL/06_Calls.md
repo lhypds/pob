@@ -87,7 +87,7 @@ click(398, 915)     // the same two things, one statement
 Both are screenshot pixels either way, and the cursor is left where it ended up, so the two kinds
 mix freely — `click(398, 915)` followed by `move(0, -40)` moves forty pixels up from the click.
 
-[Recording](02_macro.psl.md) writes the relative pair — that is what the shells watch happen, and
+[Recording](02_src.md) writes the relative pair — that is what the shells watch happen, and
 what an MCP tool's absolute `(x, y)` is written down as. The absolute calls are the ones to reach
 for when writing or editing a macro by hand, and when an [AI slot](05_AI%20slot.md) is what fills in
 the numbers: a model looking at a screenshot can read a position off it directly, while an offset is

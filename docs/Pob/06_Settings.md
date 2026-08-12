@@ -10,7 +10,7 @@ It sits at the root rather than inside an instance directory because it is how
 the machine works, not what one instance is doing with it: where psl is and
 which port the server takes are the same whichever instance is running. Pointing
 [`~/.pob/INSTANCE`](05_Logs.md) at another id therefore starts Pob on a clean
-`macro.psl`, on a machine that is already set up.
+`src/main.macro.psl`, on a machine that is already set up.
 
 A settings file from an older Pob — one per instance, inside its directory — is
 moved up to the root on the next run, so a machine that was set up stays set
@@ -21,7 +21,7 @@ the rest are left where they are to be copied across by hand.
 |-----|---------|-------------|
 | `psl` | `psl` | The [psl](03_Macro%20PSL.md) compiler Pob runs to fill a macro's `:: … ::` slots — a name to find on the `PATH`, or a path to the executable. **Which model it uses and what key that takes are psl's own, kept in its `.pslrc`; Pob holds no API key.** |
 | `image_scale` | `0.35` | How much of the screenshot a [`:: … ::`](03_Macro%20PSL.md) slot is filled from the model is shown: `0.35` a bit over a third as wide and as tall — an eighth of the pixels, and about a fifth of the input tokens — and `1` the picture as taken (`0.1`–`1`, clamped). Pob grows the answer back, so the macro is written in screen pixels either way. **The default is set aggressively and has no margin in it — read the note below before trusting it on a dense UI.** It applies to filling a slot and nothing else: an [MCP](08_MCP.md) client's `take_screenshot` gets the picture as taken |
-| `macro_default_delay` | `1000` | Milliseconds Pob waits between one [`macro.psl`](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()`, which is written as a time — `sleep(3s)` |
+| `macro_default_delay` | `1000` | Milliseconds Pob waits between one [macro](03_Macro%20PSL.md) statement and the next. A UI that needs longer gets an explicit `sleep()`, which is written as a time — `sleep(3s)` |
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a macro runs to its end (e.g. `afplay /System/Library/Sounds/Morse.aiff`). A stopped run does not fire it |

@@ -119,12 +119,16 @@ if (Test-Path (Join-Path $Src "VERSION")) {
     Copy-Item (Join-Path $Src "VERSION") (Join-Path $InstallDir "VERSION") -Force
 }
 
-# The installer and the guide go along too, so uninstalling later — or reading
-# what any of this was — does not mean finding the zip again.
+# The installer, the guide and the license go along too, so uninstalling later
+# — or reading what any of this was, or what it may be used for — does not mean
+# finding the zip again.
 if ($Src -ne $InstallDir) {
     Copy-Item $PSCommandPath (Join-Path $InstallDir "install.ps1") -Force
     if (Test-Path (Join-Path $Src "README.txt")) {
         Copy-Item (Join-Path $Src "README.txt") (Join-Path $InstallDir "README.txt") -Force
+    }
+    if (Test-Path (Join-Path $Src "LICENSE")) {
+        Copy-Item (Join-Path $Src "LICENSE") (Join-Path $InstallDir "LICENSE") -Force
     }
 }
 

@@ -29,7 +29,7 @@ import (
 	"pob/server"
 )
 
-// macroRecorder lets the MCP server write to macro.psl under the one toggle
+// macroRecorder lets the MCP server write to the main macro under the one toggle
 // everything else obeys — the shell's record button, which flips
 // runner.SetRecording. An MCP client drives the same machine a replay does, so
 // what it did belongs in the same recording.
@@ -43,7 +43,7 @@ func (m macroRecorder) AppendToMacro(line string) { m.cfg.AppendToMacro(line) }
 
 func main() {
 	root := flag.String("root", "", "project root holding INSTANCE and the <instance>/ directories")
-	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's macro.psl and logs/")
+	instance := flag.String("instance", "", "<instance> directory resolved by the shell; holds this instance's src/ macros and logs/")
 	flag.Parse()
 	if *root == "" {
 		home, err := os.UserHomeDir()

@@ -13,14 +13,17 @@ Structure
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
          +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, psl request source, and response summaries and answers.
-         +--- macro.psl                           the [macro](03_Macro%20PSL.md) Record writes and Execute replays.
+         +--- src/                                this instance's [macros](03_Macro%20PSL.md).
+         |    +--- main.macro.psl                 the entry point: what Record writes and Execute replays. `.macro.psl` says psl fills its `:: … ::` slots.
+         |    +--- <name>.macro.psl               anything `main` calls that has slots of its own.
+         |    +--- <name>.macro                   anything it calls that has none — replayed as written, without psl.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
 
          +--- logs/
-              +--- <session>/                    one replay of macro.psl.
+              +--- <session>/                    one replay of main.macro.psl.
                    +--- session.json              session details, start time and end time.
-                   +--- macro.psl                 the macro as it stood when this session ran.
+                   +--- main.macro.psl            the macro as it stood when this session ran.
                    +--- macro.txt                 the same macro compiled: every `:: … ::` replaced by what psl filled it with, the ones never asked about written out as `<instruction>`, and a slot that stood for statements opened out into the block it filled to.
                    +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
                         +--- <n>/
@@ -66,7 +69,7 @@ can include text typed by a macro or other sensitive screen-related instructions
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
 `<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`) — a `loop` asks the slots inside it once per pass, and each of those is one of these.  
-A slot written on a line of its own is filled with statements rather than with a value, and `slot.json` holds the whole block it filled to. `macro.txt` holds it too, opened out into lines where the one line that asked for it was — so its line numbers are its own from that point, while the `line` in each `slot.json` is a line of `macro.psl`.  
+A slot written on a line of its own is filled with statements rather than with a value, and `slot.json` holds the whole block it filled to. `macro.txt` holds it too, opened out into lines where the one line that asked for it was — so its line numbers are its own from that point, while the `line` in each `slot.json` is a line of `main.macro.psl`.  
 
 
 See also
@@ -76,4 +79,4 @@ See also
 - [CLI](07_CLI.md) — `pob` reads it directly, so it works with the app closed
 - [Control API](11_Control%20API.md) — what `instance.json` advertises while it runs
 - [Settings](06_Settings.md) — the `settings.json` kept at the root, and where psl keeps its own
-- [Macro PSL](03_Macro%20PSL.md) — the `macro.psl` a session replays
+- [Macro PSL](03_Macro%20PSL.md) — the `main.macro.psl` a session replays

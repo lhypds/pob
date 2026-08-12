@@ -37,7 +37,7 @@ Requirements
   `Window realized: visual depth=…, composited=…`.
 
 - A text editor and a file manager. The toolbar buttons that open
-  `settings.json`, `macro.psl` and `app.log` hand the file
+  `settings.json`, `src/` and `app.log` hand the file
   to an editor; the Logs button hands `logs/` to a file manager. Mainstream
   desktops ship both, but a bare X session, a container or a trimmed-down
   install can have neither — the content area then says `Cannot open it — no
@@ -101,7 +101,7 @@ The command that lands on the `PATH` is the CLI from `Helpers/` — `pob` to
 see what is running, `pob launch` to start the app. See
 [CLI](../docs/Pob/07_CLI.md).
 
-On first run the working files (`settings.json`, `macro.psl`, `logs/`,
+On first run the working files (`settings.json`, `src/`, `logs/`,
 `app.log`) are created in `~/.pob/`. A macro with a `:: … ::` slot
 in it also needs [psl](https://github.com/pob/psl) installed and given a key —
 Pob holds none of its own.
@@ -139,7 +139,7 @@ side, the `pob` CLI in `Helpers/`, plus `install.sh` and the `README.txt`
 users read first — the copy in this folder) and
 `Pob-<version>-linux-<arch>.zip` at the project root.
 
-Project files (`settings.json`, `macro.psl`, `logs/`)
+Project files (`settings.json`, `src/`, `logs/`)
 always live in `~/.pob` (same rule as macOS).
 
 

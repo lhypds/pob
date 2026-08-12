@@ -1,5 +1,5 @@
 // Package config reads and maintains the machine's settings.json and an
-// instance's macro.psl. It mirrors the behavior of the old Swift
+// instance's macro. It mirrors the behavior of the old Swift
 // SettingsService: defaults are created on first run and missing keys are
 // backfilled into an existing settings file. Values are re-read from disk on
 // every access so edits take effect without restarting.
@@ -7,7 +7,7 @@
 // settings.json sits at <root>, shared by every instance: the API key, the
 // model and the port are how a machine works, not what one instance is doing
 // with it, so moving <root>/INSTANCE to another id does not mean setting them
-// again. What an instance owns is its own — macro.psl and its logs/ tree,
+// again. What an instance owns is its own — its src/ tree and its logs/ tree,
 // under <root>/<instance>/ — and pointing INSTANCE at a new id gives a machine
 // a clean set of those, which is what changing it is for.
 package config
@@ -82,26 +82,49 @@ func (c *Config) legacySettingsFile() string {
 	return filepath.Join(c.InstanceDir(), "settings.json")
 }
 
-// MacroFile is <root>/<instance>/macro.psl, the Prompt Script Language program
-// Play and `pob macro` run. It is the path and not only the text because a
-// call() in the macro names another file relative to the directory this one is
-// in — see runMacroCall.
-func (c *Config) MacroFile() string { return filepath.Join(c.InstanceDir(), "macro.psl") }
+// MainMacroName is what an instance's own macro is called. The `.macro.psl`
+// says psl fills its slots — see psl.MacroPSLExt — and `main` says it is the one
+// the toolbar's Execute and `pob macro` start from, out of however many files
+// are in src/ beside it.
+const MainMacroName = "main" + psl.MacroPSLExt
+
+// SrcDir is <root>/<instance>/src, where an instance's macros are kept. It is a
+// directory rather than the single file it used to be because a macro of any
+// size is written across several: the entry point calls the pieces, and the
+// pieces are edited, renamed and read as a set. It is what the toolbar's Macro
+// PSL button opens, so what someone gets is the whole set and not one file with
+// its callees hidden a directory listing away.
+func (c *Config) SrcDir() string { return filepath.Join(c.InstanceDir(), "src") }
+
+// MacroFile is <root>/<instance>/src/main.macro.psl, the Prompt Script Language
+// program Execute and `pob macro` run. It is the path and not only the text
+// because a call() in the macro names another file relative to the directory
+// this one is in — which is src/, so the files beside it are named by their bare
+// names. See runMacroCall.
+func (c *Config) MacroFile() string { return filepath.Join(c.SrcDir(), MainMacroName) }
 
 // legacyMacroFile is macro.txt, where the macro used to be kept before it had
 // a language and an extension of its own. See migrateMacroToPSL.
 func (c *Config) legacyMacroFile() string { return filepath.Join(c.InstanceDir(), "macro.txt") }
 
+// legacyMacroPSLFile is <root>/<instance>/macro.psl, where the macro sat while
+// an instance had exactly one. See migrateMacroToSrc.
+func (c *Config) legacyMacroPSLFile() string { return filepath.Join(c.InstanceDir(), "macro.psl") }
+
 func (c *Config) ensureFiles() {
 	// The instance directory must exist before any file below is written —
 	// the CLI resolves to a not-yet-created ~/.pob. Making it makes the root.
-	_ = os.MkdirAll(c.InstanceDir(), 0o755)
+	_ = os.MkdirAll(c.SrcDir(), 0o755)
 
 	// Before the settings move up: the frame belongs to this instance, and
 	// only one instance's settings can become the machine's.
 	c.migrateWindowFrame(c.legacySettingsFile())
 	c.migrateSettingsToRoot()
+	// In the order the file was renamed: macro.txt became macro.psl, and
+	// macro.psl became src/main.macro.psl. A directory left behind by a Pob old
+	// enough to have the first name is carried the whole way in one run.
 	c.migrateMacroToPSL()
+	c.migrateMacroToSrc()
 
 	if _, err := os.Stat(c.settingsFile()); os.IsNotExist(err) {
 		c.writeSettings(defaults)
@@ -126,7 +149,7 @@ func (c *Config) ensureFiles() {
 }
 
 // migrateMacroToPSL carries an instance's macro over to macro.psl, the name it
-// has now that the vocabulary it is written in is a language with a name of its
+// took once the vocabulary it is written in was a language with a name of its
 // own. A recording is work someone did with the app, so it is moved rather than
 // left behind under a name nothing reads any more.
 //
@@ -137,10 +160,26 @@ func (c *Config) migrateMacroToPSL() {
 	if _, err := os.Stat(c.legacyMacroFile()); err != nil {
 		return
 	}
+	if _, err := os.Stat(c.legacyMacroPSLFile()); err == nil {
+		return
+	}
+	_ = os.Rename(c.legacyMacroFile(), c.legacyMacroPSLFile())
+}
+
+// migrateMacroToSrc carries the macro down into src/ under the name the entry
+// point has now that an instance keeps a directory of them rather than one file.
+//
+// The same rule as the rename before it: a src/main.macro.psl that is already
+// there wins, since it is what Execute has been running and the file up in the
+// instance directory is what a Pob from before the move left behind.
+func (c *Config) migrateMacroToSrc() {
+	if _, err := os.Stat(c.legacyMacroPSLFile()); err != nil {
+		return
+	}
 	if _, err := os.Stat(c.MacroFile()); err == nil {
 		return
 	}
-	_ = os.Rename(c.legacyMacroFile(), c.MacroFile())
+	_ = os.Rename(c.legacyMacroPSLFile(), c.MacroFile())
 }
 
 // migrateLegacyKeys rewrites settings that have been renamed, keeping the

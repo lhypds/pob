@@ -124,11 +124,15 @@ else
     if [ -f "$SRC/VERSION" ]; then
         install -m 644 "$SRC/VERSION" "$PREFIX/VERSION"
     fi
-    # The installer and the guide go along too, so uninstalling later — or
-    # reading what any of this was — does not mean finding the zip again.
+    # The installer, the guide and the license go along too, so uninstalling
+    # later — or reading what any of this was, or what it may be used for —
+    # does not mean finding the zip again.
     install -m 755 "$0" "$PREFIX/install.sh"
     if [ -f "$SRC/README.txt" ]; then
         install -m 644 "$SRC/README.txt" "$PREFIX/README.txt"
+    fi
+    if [ -f "$SRC/LICENSE" ]; then
+        install -m 644 "$SRC/LICENSE" "$PREFIX/LICENSE"
     fi
 fi
 

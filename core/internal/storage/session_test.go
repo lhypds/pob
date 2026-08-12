@@ -23,8 +23,8 @@ func TestSessionKeepsBothTheWrittenAndTheCompiledMacro(t *testing.T) {
 	store.SaveCompiledMacro(sessionID, "move(-120, 40)\nclick()\n")
 
 	dir := filepath.Join(root, info.ID, "logs", sessionID)
-	if text, err := os.ReadFile(filepath.Join(dir, "macro.psl")); err != nil || string(text) != written {
-		t.Errorf("macro.psl = %q (%v), want the macro as it was written", text, err)
+	if text, err := os.ReadFile(filepath.Join(dir, SessionMacroName)); err != nil || string(text) != written {
+		t.Errorf("%s = %q (%v), want the macro as it was written", SessionMacroName, text, err)
 	}
 	if text, err := os.ReadFile(filepath.Join(dir, "macro.txt")); err != nil || string(text) != "move(-120, 40)\nclick()\n" {
 		t.Errorf("macro.txt = %q (%v), want the macro with its slot filled", text, err)

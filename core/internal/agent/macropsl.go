@@ -423,13 +423,13 @@ func (r *Runner) runMacro(ctx context.Context) {
 	}
 
 	nodes := parseMacro(source)
-	hasSlots := macroNeedsPSL(nodes, filepath.Dir(path), map[string]bool{path: true})
+	hasSlots := macroNeedsPSL(nodes, path, map[string]bool{path: true})
 
 	// Checked before anything moves: a macro whose slots cannot be filled is one
 	// Pob cannot run as written, and finding that out halfway through would
 	// leave the statements above the slot already played.
 	if hasSlots && !r.psl.Available() {
-		message := "macro.psl, or a file it calls, has a :: … :: slot, and Pob fills those by running " +
+		message := filepath.Base(path) + ", or a file it calls, has a :: … :: slot, and Pob fills those by running " +
 			"the psl compiler. psl was not found — install it (see https://github.com/pob/psl), or set " +
 			"\"psl\" in settings.json to the path of the executable, and run the macro again."
 		r.store.LogInstancef("MACRO NOT STARTED", "reason=%q", "psl is not available")
@@ -835,6 +835,19 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	slot, found := psl.FindSlot(statement, 0)
 	if !found {
 		return statement, true
+	}
+
+	// A `.macro` says in its name that it is replayed without the compiler, so a
+	// slot in one is never filled — whatever it asks for. The check names this
+	// before the run starts and is the message someone acts on; this is the same
+	// rule where the fill would have happened, so that a file reached by a route
+	// the check did not walk still cannot start psl behind the name's back.
+	if psl.Deterministic(run.name) {
+		applog.Logf("[%s] Macro %s: %s holds a :: %s :: and %s files are replayed without psl — skipping the statement",
+			run.sessionID, run.where(node.line), run.name, slot.Instruction, psl.MacroExt)
+		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
+			"a "+psl.MacroExt+" file is replayed without psl, so its slots are never filled", nil)
+		return "", false
 	}
 
 	// psl fills the first slot in the file, and the file is handed over whole,
@@ -1350,9 +1363,9 @@ func (r *Runner) runMacroCall(ctx context.Context, run *macroRun, arg string) {
 // resolveCallPath works out which file a call() names.
 //
 // A relative path is relative to the directory of the file the call is written
-// in, not to wherever Pob happens to be running: `call("../shared.psl")` in
-// ~/.pob/<instance>/macro.psl is ~/.pob/shared.psl, and means that whoever
-// started the replay. A path beginning with ~/ is under the home directory, the
+// in, not to wherever Pob happens to be running: `call("shared.macro.psl")` in
+// ~/.pob/<instance>/src/main.macro.psl is ~/.pob/<instance>/src/shared.macro.psl,
+// and means that whoever started the replay. A path beginning with ~/ is under the home directory, the
 // way it is everywhere else it is written down.
 func resolveCallPath(dir, arg string) (string, error) {
 	path := strings.TrimSpace(arg)
@@ -1944,20 +1957,25 @@ func hasMacroSlot(nodes []macroNode) bool {
 }
 
 // macroNeedsPSL reports whether replaying these statements would run psl: a
-// slot in one of them, or in a file one of their call()s brings in. seen holds
-// the files already accounted for, the macro itself included, so a ring of calls
-// is walked once.
+// slot in one of them, or in a file one of their call()s brings in. path is the
+// file the statements were read from, and seen holds the files already accounted
+// for, that one included, so a ring of calls is walked once.
 //
 // The called files are read here rather than found out about at the call,
 // because the point of the check is saying so before the cursor moves: a macro
 // whose second file cannot be filled is one to refuse at the start, not thirty
 // statements in. A call whose path is itself a slot cannot be followed and does
 // not need to be — that slot is one of its own, and hasMacroSlot has it already.
-func macroNeedsPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
-	if hasMacroSlot(nodes) {
+//
+// A `.macro` is a macro with no compiler behind it, so nothing in one is counted
+// however it is written: a slot in a file that says in its name it holds none is
+// a contradiction for the check to name, not a reason to go asking for psl. See
+// psl.Deterministic and checkDeterministic.
+func macroNeedsPSL(nodes []macroNode, path string, seen map[string]bool) bool {
+	if !psl.Deterministic(path) && hasMacroSlot(nodes) {
 		return true
 	}
-	return calledFilesNeedPSL(nodes, dir, seen)
+	return calledFilesNeedPSL(nodes, filepath.Dir(path), seen)
 }
 
 func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) bool {
@@ -1987,7 +2005,7 @@ func calledFilesNeedPSL(nodes []macroNode, dir string, seen map[string]bool) boo
 		// The comments go first, so a statement someone commented out rather than
 		// deleted is not what says psl is needed.
 		text := neutralizeComments(string(data))
-		if psl.HasSlot(text) {
+		if !psl.Deterministic(path) && psl.HasSlot(text) {
 			return true
 		}
 		if calledFilesNeedPSL(parseCallLines(text), filepath.Dir(path), seen) {

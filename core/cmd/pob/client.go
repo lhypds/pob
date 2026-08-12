@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"pob/core/internal/agent"
+	"pob/core/internal/config"
 	"pob/core/internal/storage"
 )
 
@@ -27,9 +28,9 @@ type Instance struct {
 	// Name is what `pob new` called it, "" for an instance that was never
 	// given one.
 	Name string
-	// Dir is <root>/<id>, holding instance.json and macro.psl — settings.json
-	// is the machine's, at the root beside INSTANCE. LogsDir is its logs/
-	// subdirectory, holding the sessions.
+	// Dir is <root>/<id>, holding instance.json and the src/ tree —
+	// settings.json is the machine's, at the root beside INSTANCE. LogsDir is
+	// its logs/ subdirectory, holding the sessions.
 	Dir       string
 	LogsDir   string
 	StartTime int64
@@ -198,7 +199,7 @@ func showStatus(inst *Instance) {
 	}
 }
 
-// cmdMacro replays the instance's macro.psl. After starting it polls briefly
+// cmdMacro replays the instance's main macro. After starting it polls briefly
 // so it can print the new session's ID.
 func cmdMacro(inst *Instance) {
 	if _, err := inst.post("/run/macro", nil, 5*time.Second); err != nil {
@@ -211,9 +212,9 @@ func cmdMacro(inst *Instance) {
 	}
 }
 
-// cmdMacroCheck reads the instance's macro.psl and prints everything wrong with
-// it and with the files it calls — the check Execute runs before the cursor
-// moves, said in the terminal instead of in a dialog.
+// cmdMacroCheck reads the instance's main macro and prints everything wrong
+// with it and with the files it calls — the check Execute runs before the
+// cursor moves, said in the terminal instead of in a dialog.
 //
 // It reads the file and talks to nothing, which is what makes it the macro
 // command that works with Pob closed. A macro is checked while it is being
@@ -222,7 +223,7 @@ func cmdMacro(inst *Instance) {
 // The exit status is what a script goes by: 0 when there is nothing to fix, 1
 // when there is, which is the same answer Execute acts on.
 func cmdMacroCheck(inst *Instance) {
-	path := filepath.Join(inst.Dir, "macro.psl")
+	path := filepath.Join(inst.Dir, "src", config.MainMacroName)
 	problems, err := agent.CheckMacroFile(path)
 	if err != nil {
 		fail("cannot read %s: %v", path, err)

@@ -137,7 +137,7 @@ gboolean settings_claim_instance(void) {
     return claimed;
 }
 
-// This instance's ~/.pob/<instance>/ directory, holding its macro.psl and
+// This instance's ~/.pob/<instance>/ directory, holding its src/ and
 // logs/. The machine's settings.json sits above them, at the
 // root, and is the one thing every id shares.
 const char *settings_instance_id(void) {
@@ -163,6 +163,30 @@ const char *settings_instance_id(void) {
 // Path of a file in this instance's directory (~/.pob/<instance>/<name>).
 static gchar *instance_path(const char *name) {
     return g_build_filename(settings_project_root(), settings_instance_id(), name, NULL);
+}
+
+// This instance's macros (~/.pob/<instance>/src). A macro of any size is
+// written across several files — the entry point calls the pieces — so they are
+// kept together in one directory, which is what the Macro PSL button opens.
+static gchar *src_path(void) {
+    return instance_path("src");
+}
+
+// The entry point of this instance's macro. `.macro.psl` says psl fills its
+// slots; a `.macro` beside it is replayed without the compiler.
+static gchar *macro_path(void) {
+    gchar *src = src_path();
+    gchar *path = g_build_filename(src, "main.macro.psl", NULL);
+    g_free(src);
+    return path;
+}
+
+// The core makes src/ at startup; this is for the writes that can land before
+// it has, and costs a stat on a directory that is already there.
+static void ensure_src_dir(void) {
+    gchar *src = src_path();
+    g_mkdir_with_parents(src, 0755);
+    g_free(src);
 }
 
 // The machine's settings, shared by every instance: the API key, the model and
@@ -560,10 +584,13 @@ void settings_open_settings_file(void) {
     g_free(path);
 }
 
-void settings_open_macro_file(void) {
-    gchar *path = instance_path("macro.psl");
-    ensure_file(path);
-    open_with_editor(path);
+// Opens the whole src/ directory rather than the entry point alone: what
+// someone reaches for the Macro PSL button to do is edit the macro, and a macro
+// is the set of files, not the one that happens to be called first.
+void settings_open_src_folder(void) {
+    gchar *path = src_path();
+    g_mkdir_with_parents(path, 0755);
+    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "file manager");
     g_free(path);
 }
 
@@ -584,7 +611,7 @@ void settings_open_logs_folder(void) {
 // ── file contents / clearing ────────────────────────────────────────────────
 
 gchar *settings_get_macro(void) {
-    gchar *path = instance_path("macro.psl");
+    gchar *path = macro_path();
     gchar *contents = NULL;
     if (!g_file_get_contents(path, &contents, NULL, NULL)) contents = g_strdup("");
     g_free(path);
@@ -592,13 +619,14 @@ gchar *settings_get_macro(void) {
 }
 
 // Appends one action line, keeping the file newline-terminated. Read-modify-
-// write like the macOS shell's appendToMacro: macro.psl is small and the core
+// write like the macOS shell's appendToMacro: the macro is small and the core
 // is the only other writer.
 void settings_append_macro(const char *line) {
     gchar *contents = settings_get_macro();
     gboolean needs_newline = *contents != '\0' && !g_str_has_suffix(contents, "\n");
     gchar *next = g_strconcat(contents, needs_newline ? "\n" : "", line, "\n", NULL);
-    gchar *path = instance_path("macro.psl");
+    ensure_src_dir();
+    gchar *path = macro_path();
     g_file_set_contents(path, next, -1, NULL);
     g_free(path);
     g_free(next);
@@ -606,7 +634,8 @@ void settings_append_macro(const char *line) {
 }
 
 void settings_clear_macro(void) {
-    gchar *path = instance_path("macro.psl");
+    ensure_src_dir();
+    gchar *path = macro_path();
     g_file_set_contents(path, "", 0, NULL);
     g_free(path);
 }

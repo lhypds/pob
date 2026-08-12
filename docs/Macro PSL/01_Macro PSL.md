@@ -3,8 +3,8 @@ Macro PSL
 =========
 
 A macro is a sequence of actions Pob plays back — recorded from what you do, or written by hand.
-Pob keeps one per instance, in a file called `macro.psl`, and **Prompt Script Language** — PSL — is
-what that file is written in. These pages are both: the macro, and the language it is a macro in.
+Pob keeps them per instance, in that instance's `src/` folder, and **Prompt Script Language** — PSL —
+is what those files are written in. The entry point is `main.macro.psl`. These pages are both: the macro, and the language it is a macro in.
 
 PSL is not Pob's own. It is a language with a compiler of its own — [psl](https://github.com/lhypds/psl)
 — and Pob is one program that happens to write in it. The `:: … ::` slots below are filled by running
@@ -42,7 +42,7 @@ The pages
 
 | Page | What's in it |
 |------|--------------|
-| [macro.psl](02_macro.psl.md) | The file itself: where it lives, and how recording writes it |
+| [src/](02_src.md) | Where the files live, the `.macro` / `.macro.psl` extensions, and how recording writes them |
 | [Structure](03_Structure.md) | One statement per line, and the three kinds of statement |
 | [Comments](04_Comments.md) | `//` and `/* … */`, and why the text stays in the file |
 | [AI slot](05_AI%20slot.md) | `:: … ::` — what it is filled from, and what it has to come back as |
@@ -63,5 +63,5 @@ See also
 - [Settings](../Pob/06_Settings.md) — `macro_default_delay`, `image_scale`, and where the `psl` executable is
 - [psl](https://github.com/pob/psl) — the compiler, its `.pslrc`, and the models it is pointed at
 - [Logs](../Pob/05_Logs.md) — the session a run writes, and where each slot the AI filled is kept
-- [CLI](../Pob/07_CLI.md) — `pob macro` runs `macro.psl` from the terminal
+- [CLI](../Pob/07_CLI.md) — `pob macro` runs `src/main.macro.psl` from the terminal
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools, recorded into the same file

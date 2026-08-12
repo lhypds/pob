@@ -80,6 +80,9 @@ cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
 # What the person who unzips this reads first: how to install it, and what the
 # pob command is for.
 cp "$SCRIPT_DIR/README.txt" "$DIST_DIR/README.txt"
+# The license travels with the binary: it permits redistribution only when the
+# terms come along with it.
+cp "$ROOT_DIR/LICENSE" "$DIST_DIR/LICENSE"
 cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
 echo "Creating ${ZIP_PATH}…"

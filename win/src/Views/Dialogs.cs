@@ -72,7 +72,7 @@ public static class Dialogs
         dialog.ShowDialog();
     }
 
-    // ── "macro.psl has recorded actions." Clear/Keep/Cancel ─────────────────
+    // ── "main.macro.psl has recorded actions." Clear/Keep/Cancel ────────────
 
     public static RecordChoice ShowRecordWarning(Window? owner)
     {
@@ -81,7 +81,7 @@ public static class Dialogs
 
         var message = new TextBlock
         {
-            Text = "macro.psl has recorded actions. Clear them before recording?",
+            Text = "main.macro.psl has recorded actions. Clear them before recording?",
             Margin = new Thickness(0, 0, 0, 12),
             HorizontalAlignment = HorizontalAlignment.Center,
         };

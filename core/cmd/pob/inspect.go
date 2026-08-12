@@ -12,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pob/core/internal/config"
+	"pob/core/internal/storage"
 )
 
 // --- shared helpers -----------------------------------------------------
@@ -188,9 +191,14 @@ func showSession(root, instanceID, sessionID string) {
 		fmt.Printf("Ended:     — (still running or interrupted)\n")
 	}
 	// The macro as it stood when this session ran, which is not necessarily
-	// the one in the instance directory now.
-	if text, err := os.ReadFile(filepath.Join(dir, "macro.psl")); err == nil {
-		fmt.Printf("\nMacro:\n%s\n", indent(string(text), "  "))
+	// the one in the instance directory now. The old name is read too: a log
+	// tree outlives the rename, and a session someone kept is one to still be
+	// able to open.
+	for _, name := range []string{storage.SessionMacroName, storage.LegacySessionMacroName} {
+		if text, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
+			fmt.Printf("\nMacro:\n%s\n", indent(string(text), "  "))
+			break
+		}
 	}
 
 	if shots, err := os.ReadDir(filepath.Join(dir, "screenshots")); err == nil && len(shots) > 0 {
@@ -247,7 +255,7 @@ func printSlots(sessionDir string) {
 			// start again in each file a call() brought in, and a bare line number
 			// would be a line of whichever one the reader assumed.
 			where := fmt.Sprintf("line %d", line)
-			if file != "" && file != "macro.psl" {
+			if file != "" && file != config.MainMacroName {
 				where = fmt.Sprintf("%s line %d", file, line)
 			}
 			fmt.Printf("  %d. [%s] :: %s :: → %s\n", seq, where, prompt, filled)

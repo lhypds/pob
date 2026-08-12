@@ -10,6 +10,7 @@ This folder holds:
 
     Pob.app     the app, with the agent core (pob-core) and the `pob`
                 command-line tool inside it
+    LICENSE     the terms this software is released under
     VERSION     which release this is
 
 
@@ -105,6 +106,17 @@ Uninstall
 
 Use Pob ▸ Uninstall 'pob' Command, quit Pob, and move Pob.app to the Trash.
 Delete ~/.pob too if you want your settings and history gone.
+
+
+License
+-------
+
+Pob License — Copyright (C) 2026 Heyang Liu. Use and redistribution are
+permitted for non-commercial use only. Commercial use of this software, or any
+part of it, is not permitted — that includes use inside a company or in the
+course of paid work. Selling it, renamed or not, and offering any product that
+competes with it, free of charge or not, are not permitted either. See the
+LICENSE file beside this one for the full terms.
 
 
 More

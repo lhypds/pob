@@ -56,7 +56,7 @@ To operate the application, Pob uses an AI native language called PSL (Prompt Sc
 How a macro runs:  
 Pob executes it line by line -> reaches an AI slot -> psl fills the slot in -> execution continues
 
-How it looks like (macro.psl):
+How it looks like (`src/main.macro.psl`):
 
 ```
 // Reply to every unread message, then sign out.
@@ -70,7 +70,7 @@ if (:: a chat window is open ::) {
         keyPress("return")
     }
 }
-call("../sign-out.psl")
+call("sign-out.macro.psl")
 ```
 
 Refer: [PSL](https://github.com/lhypds/psl) and [Macro PSL](docs/Macro%20PSL/01_Macro%20PSL.md)  
@@ -83,7 +83,7 @@ Documentation
 |-----|--------------|
 | [Architecture](docs/Pob/01_Architecture.md) | How the brain and the native shells are split, and how they talk |
 | [UI](docs/Pob/02_UI.md) | The window and every toolbar button |
-| [Macro PSL](docs/Pob/03_Macro%20PSL.md) | `macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `:: … ::` slots psl fills in as it runs |
+| [Macro PSL](docs/Pob/03_Macro%20PSL.md) | `src/main.macro.psl` and the Prompt Script Language it is written in: recording and replaying, every statement, and the `:: … ::` slots psl fills in as it runs |
 | [Key names](docs/Pob/04_Keys.md) | What `keyPress` / `key_press` accepts |
 | [Logs](docs/Pob/05_Logs.md) | The `~/.pob/` tree: the instance directory and its sessions |
 | [Settings](docs/Pob/06_Settings.md) | Every key in `settings.json` |
@@ -101,4 +101,10 @@ Documentation
 License
 -------
 
-[MIT](LICENSE) © 2026 Heyang Liu
+[Pob License](LICENSE) © 2026 Heyang Liu
+
+You can fork this code and run it on your own machine for non-commercial use.
+Commercial use of the software, or any part of it, is not permitted — that
+includes use inside a company or in the course of paid work. Selling it,
+renamed or not, and offering any product that competes with it, free of charge
+or not, are not permitted either.

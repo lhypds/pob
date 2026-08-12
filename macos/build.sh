@@ -168,6 +168,9 @@ rm -rf "$OUTPUT_DIR/dist"
 mkdir -p "$DIST_DIR"
 ditto "$APP_BUNDLE" "$DIST_DIR/Pob.app"
 cp "$MACOS_DIR/README.txt" "$DIST_DIR/README.txt"
+# The license travels with the binary: it permits redistribution only when the
+# terms come along with it.
+cp "$ROOT_DIR/LICENSE" "$DIST_DIR/LICENSE"
 cp "$ROOT_DIR/VERSION" "$DIST_DIR/VERSION" 2>/dev/null || true
 
 echo ""

@@ -28,7 +28,7 @@ void content_view_flash(void);
 void content_view_set_capture_hidden(gboolean hidden);
 
 // Shows a transient message (bottom center, black pill, white text) that
-// disappears after ~2 s — action feedback like "macro.psl reset".
+// disappears after ~2 s — action feedback like "main.macro.psl reset".
 void content_view_show_message(const char *text);
 
 // Applies the crosshair pointer while cropping; call after mode changes.

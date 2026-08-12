@@ -161,7 +161,7 @@ func (c Compiler) Fill(ctx context.Context, req Request) (*Result, error) {
 
 	name := req.Name
 	if name == "" {
-		name = "macro.psl"
+		name = "main" + MacroPSLExt
 	}
 	sourcePath := filepath.Join(dir, name)
 	if err := os.WriteFile(sourcePath, []byte(req.Source), 0o600); err != nil {

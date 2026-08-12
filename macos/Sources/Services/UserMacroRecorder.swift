@@ -1,6 +1,6 @@
 import AppKit
 
-/// Records the user's own mouse/keyboard actions into macro.psl while the
+/// Records the user's own mouse/keyboard actions into main.macro.psl while the
 /// record toggle is on and no session is executing. Uses global event
 /// monitors, which only receive events delivered to OTHER applications — so
 /// interactions with the Pob window itself (toolbar buttons, etc.) are never
@@ -15,7 +15,7 @@ import AppKit
 /// the net displacement of the virtual cursor is emitted right before each
 /// click/drag/scroll, matching how replay chains relative moves.
 final class UserMacroRecorder {
-    /// This instance's settings, which is where its macro.psl lives.
+    /// This instance's settings, which is where its macros live.
     private let settings: SettingsService
     /// The overlay window whose content area defines the pixel coordinate
     /// space; set by PobInstance.attach.
