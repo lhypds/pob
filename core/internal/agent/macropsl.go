@@ -670,7 +670,7 @@ func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node mac
 	case !read:
 		applog.Logf("[%s] Macro %s -> %q is not true or false — %s", run.sessionID, label, expr, unread)
 	case holds:
-		applog.Logf("[%s] Macro %s -> TRUE", run.sessionID, label)
+		applog.Logf("[%s] Macro %s -> TRUE — running the block", run.sessionID, label)
 	default:
 		applog.Logf("[%s] Macro %s -> FALSE — %s", run.sessionID, label, no)
 	}
