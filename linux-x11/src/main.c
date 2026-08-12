@@ -496,7 +496,7 @@ static void on_inslog_clicked(GtkButton *b, gpointer d) {
 
 static void on_macro_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    settings_open_src_folder();
+    settings_open_macro_file();
 }
 
 static void on_record_clicked(GtkButton *b, gpointer d) {

@@ -439,13 +439,15 @@ public static class SettingsService
         OpenWithEditor(path);
     }
 
-    // Opens the whole src/ directory rather than the entry point alone: what
-    // someone reaches for the Macro PSL button to do is edit the macro, and a
-    // macro is the set of files, not the one that happens to be called first.
-    public static void OpenSrcFolder()
+    // Opens the entry point rather than the src/ directory around it: what
+    // someone reaches for the Macro PSL button to do is edit the macro, and
+    // that starts at main.macro.psl — the rest of src/ is a call() away in the
+    // editor that is now already open on it.
+    public static void OpenMacroFile()
     {
         EnsureSrcDir();
-        SpawnDetached("explorer.exe", SrcDir);
+        EnsureFile(MacroPath);
+        OpenWithEditor(MacroPath);
     }
 
     // The instance log, not the app log: what someone reaches for a log for is

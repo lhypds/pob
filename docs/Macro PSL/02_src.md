@@ -3,8 +3,8 @@ src/
 ====
 
 Each instance keeps its macros in `src/`, under its `~/.pob/<instance>/` directory. The Macro PSL
-button (🪄) in the toolbar opens that folder; Execute (▶) checks and replays `main.macro.psl`, the
-entry point; Reset (↻) empties it.
+button (🪄) in the toolbar opens `main.macro.psl`, the entry point, in the editor named in
+[settings.json](../Pob/06_Settings.md); Execute (▶) checks and replays it; Reset (↻) empties it.
 
 ```
 ~/.pob/<instance>/src/

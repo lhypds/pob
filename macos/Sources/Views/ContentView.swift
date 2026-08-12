@@ -355,7 +355,7 @@ struct InstanceContentView: View {
             InstanceLogButton { instance.settings.openInstanceLog() }
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: { instance.settings.openSrcFolder() }) {
+            Button(action: { instance.settings.openMacroFile() }) {
                 Image(systemName: "wand.and.rays")
             }
             .help("Macro PSL")

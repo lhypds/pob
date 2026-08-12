@@ -82,7 +82,7 @@ class SettingsService {
 
     /// This instance's macros. A macro of any size is written across several
     /// files — the entry point calls the pieces — so they are kept together in
-    /// one directory, which is what the Macro PSL button opens.
+    /// one directory, beside the entry point the Macro PSL button opens.
     private var srcFolder: URL {
         instanceDir.appendingPathComponent("src")
     }
@@ -282,12 +282,16 @@ class SettingsService {
         openWithEditor(settingsFile)
     }
 
-    /// Opens the whole src/ directory rather than the entry point alone: what
-    /// someone reaches for the Macro PSL button to do is edit the macro, and a
-    /// macro is the set of files, not the one that happens to be called first.
-    func openSrcFolder() {
-        try? fileManager.createDirectory(at: srcFolder, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(srcFolder)
+    /// Opens the entry point rather than the src/ directory around it: what
+    /// someone reaches for the Macro PSL button to do is edit the macro, and
+    /// that starts at main.macro.psl — the rest of src/ is a `call()` away in
+    /// the editor that is now already open on it.
+    func openMacroFile() {
+        ensureSrcFolder()
+        if !fileManager.fileExists(atPath: macroFile.path) {
+            fileManager.createFile(atPath: macroFile.path, contents: Data())
+        }
+        openWithEditor(macroFile)
     }
 
     func getMacro() -> String {

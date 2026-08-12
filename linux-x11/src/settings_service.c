@@ -603,13 +603,18 @@ void settings_open_settings_file(void) {
     g_free(path);
 }
 
-// Opens the whole src/ directory rather than the entry point alone: what
-// someone reaches for the Macro PSL button to do is edit the macro, and a macro
-// is the set of files, not the one that happens to be called first.
-void settings_open_src_folder(void) {
-    gchar *path = src_path();
-    g_mkdir_with_parents(path, 0755);
-    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "file manager");
+// Opens the entry point rather than the src/ directory around it: what someone
+// reaches for the Macro PSL button to do is edit the macro, and that starts at
+// main.macro.psl — the rest of src/ is a call() away in the editor that is now
+// already open on it.
+void settings_open_macro_file(void) {
+    gchar *src = src_path();
+    g_mkdir_with_parents(src, 0755);
+    g_free(src);
+
+    gchar *path = macro_path();
+    ensure_file(path);
+    open_with_editor(path);
     g_free(path);
 }
 

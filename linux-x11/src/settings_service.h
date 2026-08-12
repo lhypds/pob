@@ -49,7 +49,7 @@ gboolean settings_get_click_through(void);
 void settings_save_click_through(gboolean on);
 
 void settings_open_settings_file(void);
-void settings_open_src_folder(void);
+void settings_open_macro_file(void);
 void settings_open_instance_log(void);
 void settings_open_logs_folder(void);
 
