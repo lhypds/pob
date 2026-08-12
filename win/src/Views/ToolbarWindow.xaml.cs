@@ -189,12 +189,7 @@ public partial class ToolbarWindow : Window
         SetLocked(true);
         // Same behavior as macOS: starting to record outside a session enables
         // click-through so interactions reach the app below the overlay.
-        if (!AppState.IsExecuting && !AppState.IsClickThrough)
-        {
-            AppState.IsClickThrough = true;
-            SetClickThroughVisual(true);
-            AppState.UpdateClickThrough();
-        }
+        if (!AppState.IsExecuting) SetClickThrough(true);
         Content2?.ShowMessage("Recording started");
         SetRecordingVisual(true);
     }
@@ -227,11 +222,20 @@ public partial class ToolbarWindow : Window
     private void OnScreenshotClicked(object sender, RoutedEventArgs e) =>
         CoreBridge.TakeScreenshot();
 
-    private void OnClickThroughClicked(object sender, RoutedEventArgs e)
+    private void OnClickThroughClicked(object sender, RoutedEventArgs e) =>
+        SetClickThrough(!AppState.IsClickThrough);
+
+    // Sets click-through and syncs the toolbar button. Written to instance.json
+    // like the lock, so the next run starts the way this one was left: an
+    // overlay left sitting over the app it drives would otherwise come back
+    // swallowing the clicks meant for what is underneath.
+    private void SetClickThrough(bool on)
     {
-        AppState.IsClickThrough = !AppState.IsClickThrough;
-        SetClickThroughVisual(AppState.IsClickThrough);
+        if (AppState.IsClickThrough == on) return;
+        AppState.IsClickThrough = on;
+        SetClickThroughVisual(on);
         AppState.UpdateClickThrough();
+        SettingsService.SaveClickThrough(on);
     }
 
     private void OnLockClicked(object sender, RoutedEventArgs e) => SetLocked(!AppState.IsLocked);

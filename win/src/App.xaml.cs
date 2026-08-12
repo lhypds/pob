@@ -44,10 +44,12 @@ public partial class App : Application
             return;
         }
 
-        // The lock the window was left with, read before the toolbar is built
-        // so its button starts on the right icon. An instance set up for a
-        // macro comes back locked rather than movable.
+        // The lock and the click-through the window was left with, read before
+        // the toolbar is built so its buttons start on the right icons. An
+        // instance set up for a macro comes back locked rather than movable,
+        // and over the app it drives rather than catching its clicks.
         AppState.IsLocked = SettingsService.GetWindowLocked();
+        AppState.IsClickThrough = SettingsService.GetClickThrough();
         AppState.UpdateWindowLock();
 
         var toolbar = new ToolbarWindow();
@@ -79,8 +81,8 @@ public partial class App : Application
         overlay.Show();
         toolbar.Activate();
 
-        // WS_EX_TRANSPARENT needs the overlay HWND, so apply the initial
-        // click-through state (ON by default) only once both windows exist.
+        // WS_EX_TRANSPARENT needs the overlay HWND, so apply the restored
+        // click-through state only once both windows exist.
         AppState.UpdateClickThrough();
 
         // Keep the overlay out of its own screenshots for the rest of the

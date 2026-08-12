@@ -164,6 +164,10 @@ struct InstanceContentView: View {
             updateWindowLock()
             instance.settings.saveWindowLocked(locked)
         }
+        .onChange(of: isClickThrough) { enabled in
+            updateClickThrough()
+            instance.settings.saveClickThrough(enabled)
+        }
         .onChange(of: isTargeting) { _ in
             updateClickThrough()
         }
@@ -172,9 +176,11 @@ struct InstanceContentView: View {
         }
         .onAppear {
             AppLogger.event("Pob started")
-            // The lock the window was left with, so an instance set up for a
-            // macro comes back the way it was rather than loose again.
+            // The lock and the click-through the window was left with, so an
+            // instance set up for a macro comes back the way it was rather than
+            // loose and catching clicks again.
             isLocked = instance.settings.getWindowLocked()
+            isClickThrough = instance.settings.getClickThrough()
             updateClickThrough()
             updateWindowLock()
         }
@@ -425,10 +431,7 @@ struct InstanceContentView: View {
             .help("Screenshot")
         }
         ToolbarItem(placement: .automatic) {
-            Button(action: {
-                isClickThrough.toggle()
-                updateClickThrough()
-            }) {
+            Button(action: { isClickThrough.toggle() }) {
                 Image(systemName: isClickThrough ? "hand.raised" : "hand.raised.slash")
                     .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
             }
@@ -474,10 +477,7 @@ struct InstanceContentView: View {
         // click-through so those actions reach the app below.
         if !bridge.isExecuting {
             instance.recorder.start()
-            if !isClickThrough {
-                isClickThrough = true
-                updateClickThrough()
-            }
+            isClickThrough = true
         }
         showToast("Recording started")
     }

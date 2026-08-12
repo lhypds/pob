@@ -311,6 +311,10 @@ static void set_locked(gboolean on) {
 }
 
 // Sets click-through and syncs the toolbar button (icon, tooltip, shape).
+//
+// Written to instance.json like the lock, so the next run starts the way this
+// one was left: an overlay left sitting over the app it drives would otherwise
+// come back swallowing the clicks meant for what is underneath.
 static void set_click_through(gboolean on) {
     if (g_state.is_click_through == on) return;
     g_state.is_click_through = on;
@@ -319,6 +323,7 @@ static void set_click_through(gboolean on) {
                                 on ? "Click-Through On (click to disable)"
                                    : "Click-Through Off (click to enable)");
     app_update_click_through();
+    settings_save_click_through(on);
 }
 
 void app_set_targeting(gboolean targeting) {
@@ -1002,6 +1007,13 @@ static void on_activate(GtkApplication *app, gpointer data) {
                      G_CALLBACK(on_composited_changed), NULL);
     g_signal_connect(win, "draw", G_CALLBACK(on_window_draw), NULL);
 
+    // Click-through as this instance was left, read before the headerbar is
+    // built from it so its button starts on the icon the state says. It
+    // defaults to ON: the overlay sits on top of the app being driven, so
+    // passing clicks through is the useful resting state. The headerbar stays
+    // interactive (input shape) either way.
+    g_state.is_click_through = settings_get_click_through();
+
     build_headerbar();
     g_state.content = content_view_new();
     gtk_container_add(GTK_CONTAINER(win), g_state.content);
@@ -1059,11 +1071,6 @@ int main(int argc, char **argv) {
     gdk_set_allowed_backends("x11");
 
     memset(&g_state, 0, sizeof(g_state));
-    // Click-through defaults to ON: the overlay sits on top of the app being
-    // driven, so passing clicks through is the useful resting state. The
-    // headerbar stays interactive (input shape) and the toolbar button starts
-    // in its ON look.
-    g_state.is_click_through = TRUE;
 
     // Unique, not NON_UNIQUE: a second launch should reach the Pob already
     // running and present its window, not start a rival for the pointer.

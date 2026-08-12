@@ -357,6 +357,25 @@ void settings_save_window_locked(gboolean locked) {
     finish_instance_write(builder, parser);
 }
 
+gboolean settings_get_click_through(void) {
+    JsonParser *parser = NULL;
+    JsonObject *obj = load_instance(&parser);
+    // TRUE when the instance has never recorded one: the overlay sits on top of
+    // the app being driven, so passing clicks through is the resting state.
+    gboolean on = !obj || json_object_get_boolean_member_with_default(obj, "is_click_through", TRUE);
+    if (parser) g_object_unref(parser);
+    return on;
+}
+
+void settings_save_click_through(gboolean on) {
+    static const char *const click_through_keys[] = {"is_click_through", NULL};
+    JsonParser *parser = NULL;
+    JsonBuilder *builder = begin_instance_write(click_through_keys, &parser);
+    json_builder_set_member_name(builder, "is_click_through");
+    json_builder_add_boolean_value(builder, on);
+    finish_instance_write(builder, parser);
+}
+
 // ── opening files ───────────────────────────────────────────────────────────
 
 // One way of opening a file: a program, and the arguments that go in front of

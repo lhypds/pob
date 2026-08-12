@@ -39,6 +39,15 @@ void settings_save_window_frame(int x, int y, int w, int h);
 gboolean settings_get_window_locked(void);
 void settings_save_window_locked(gboolean locked);
 
+// Whether the window was left passing clicks through (is_click_through in
+// instance.json). It belongs beside the lock for the same reason: an instance
+// set up to sit over the app it drives comes back sitting over it, instead of
+// swallowing the first clicks meant for what is underneath until the button is
+// pressed again. TRUE for an instance that has never recorded one — the
+// overlay's resting state.
+gboolean settings_get_click_through(void);
+void settings_save_click_through(gboolean on);
+
 void settings_open_settings_file(void);
 void settings_open_src_folder(void);
 void settings_open_instance_log(void);

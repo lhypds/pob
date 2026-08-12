@@ -30,7 +30,8 @@ public static class AppState
     public static bool IsCropping;
     // Click-through defaults to ON: the overlay sits on top of the app being
     // driven, so passing clicks through is the useful resting state. The
-    // toolbar window stays interactive either way.
+    // toolbar window stays interactive either way. App.OnStartup replaces this
+    // with what the instance was left with, before either window is built.
     public static bool IsClickThrough = true;
     public static bool IsLocked;
     public static bool IsRecording;

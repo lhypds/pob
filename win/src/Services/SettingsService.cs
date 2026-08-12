@@ -289,6 +289,31 @@ public static class SettingsService
         WriteInstance(obj);
     }
 
+    /// <summary>
+    /// Whether the window was left passing clicks through. It belongs beside
+    /// the lock for the same reason: an instance set up to sit over the app it
+    /// drives comes back sitting over it, instead of swallowing the first
+    /// clicks meant for what is underneath until the button is pressed again.
+    /// True for an instance that has never recorded one — the overlay's resting
+    /// state.
+    /// </summary>
+    public static bool GetClickThrough()
+    {
+        JsonObject? obj = LoadInstance();
+        if (obj == null) return true;
+        if (!obj.TryGetPropertyValue("is_click_through", out JsonNode? node) || node is not JsonValue v)
+            return true;
+        if (!v.TryGetValue(out bool on)) return true;
+        return on;
+    }
+
+    public static void SaveClickThrough(bool on)
+    {
+        JsonObject obj = LoadInstance() ?? new JsonObject();
+        obj["is_click_through"] = on;
+        WriteInstance(obj);
+    }
+
     // Writes instance.json whole, so everything already in it — the id, the
     // name, the times and the port the core keeps — survives the shell's own
     // entries.

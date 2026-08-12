@@ -254,6 +254,21 @@ class SettingsService {
         writeInstanceFile(json)
     }
 
+    /// Whether the window was left passing clicks through, from instance.json.
+    /// It belongs beside the lock for the same reason: an instance set up to
+    /// sit over the app it drives comes back sitting over it, instead of
+    /// swallowing the first clicks meant for what is underneath until the
+    /// button is pressed again. On is the answer for an instance that has never
+    /// recorded one — the overlay's resting state.
+    func getClickThrough() -> Bool {
+        loadJSON(instanceFile)["is_click_through"] as? Bool ?? true
+    }
+
+    func saveClickThrough(_ enabled: Bool) {
+        var json = loadJSON(instanceFile)
+        json["is_click_through"] = enabled
+        writeInstanceFile(json)
+    }
 
     /// Writes instance.json whole, so everything already in it — the id, the
     /// name, the times the core keeps — survives the shell's own entries.
