@@ -479,12 +479,12 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		// rather than read as the one call the line was.
 		if node.isStatementSlot {
 			statement := run.line(node.line)
-			r.logMacroStep("STEP START", run, node, "statement slot", statement, "")
+			r.logMacroStep("> STEP START", run, node, "statement slot", statement, "")
 			r.runStatementSlot(ctx, run, node)
 			r.logMacroStep("STEP END", run, node, "statement slot", statement, macroStepStatus(ctx, run))
 		} else if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
 			statement := strings.TrimSpace(stripLine(run.line(node.line)))
-			r.logMacroStep("STEP START", run, node, name, statement, "")
+			r.logMacroStep("> STEP START", run, node, name, statement, "")
 			r.runMacroAction(ctx, run, name, args, quoted)
 			r.logMacroStep("STEP END", run, node, name, statement, macroStepStatus(ctx, run))
 		}
@@ -632,7 +632,7 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) (holds, read bool) {
 	label := macroBlockLabel(node)
 	statement := run.line(node.line)
-	r.logMacroStep("STEP START", run, node, "condition", statement, "")
+	r.logMacroStep("> STEP START", run, node, "condition", statement, "")
 	// What a condition means for the block it heads: the first when it does not
 	// hold, and the second when there was nothing in it to read.
 	no, unread := "skipping block", "skipping block"
@@ -786,7 +786,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	source := run.source
 	targetLine := node.line - 1
 	if live, found := liveSlotLine(source); !found || live != targetLine {
-		applog.Logf("[%s] Macro slot (%s) — psl would fill a slot on line %d, not this statement on %s; not running it",
+		applog.Logf("[%s] Macro slot :: %s :: — psl would fill a slot on line %d, not this statement on %s; not running it",
 			run.sessionID, slot.Instruction, live+1, run.where(node.line))
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 			"the first slot in the file is not this statement's", nil)
@@ -795,7 +795,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	shot, err := r.br.CaptureScreenshot(true, nil)
 	if err != nil {
-		applog.Logf("[%s] Macro slot (%s) — no screenshot", run.sessionID, slot.Instruction)
+		applog.Logf("[%s] Macro slot :: %s :: — no screenshot", run.sessionID, slot.Instruction)
 		return "", false
 	}
 
@@ -804,10 +804,10 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	// picture worth keeping beside an answer is the one it was read off.
 	scale := r.cfg.ImageScale()
 	if smaller, w, h, err := shrinkPNG(shot, scale); err != nil {
-		applog.Logf("[%s] Macro slot (%s) — could not scale the screenshot (%v), sending it whole", run.sessionID, slot.Instruction, err)
+		applog.Logf("[%s] Macro slot :: %s :: — could not scale the screenshot (%v), sending it whole", run.sessionID, slot.Instruction, err)
 		scale = 1
 	} else if w > 0 {
-		applog.Logf("[%s] Macro slot (%s) — %s", run.sessionID, slot.Instruction, scaleNote(w, h, scale))
+		applog.Logf("[%s] Macro slot :: %s :: — %s", run.sessionID, slot.Instruction, scaleNote(w, h, scale))
 		shot = smaller
 	} else {
 		scale = 1
@@ -824,7 +824,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		modelSource = scaleMacroCoordinates(source, scale)
 		modelLines := strings.Split(modelSource, "\n")
 		if targetLine < 0 || targetLine >= len(modelLines) {
-			applog.Logf("[%s] Macro slot (%s) — could not find the statement in the scaled model copy", run.sessionID, slot.Instruction)
+			applog.Logf("[%s] Macro slot :: %s :: — could not find the statement in the scaled model copy", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 				"the statement is missing from the scaled model copy", shot)
 			return "", false
@@ -833,18 +833,20 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		var modelSlotFound bool
 		modelSlot, modelSlotFound = psl.FindSlot(modelStatement, 0)
 		if !modelSlotFound {
-			applog.Logf("[%s] Macro slot (%s) — could not find the slot in the scaled model copy", run.sessionID, slot.Instruction)
+			applog.Logf("[%s] Macro slot :: %s :: — could not find the slot in the scaled model copy", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 				"the slot is missing from the scaled model copy", shot)
 			return "", false
 		}
 	}
 
-	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
+	applog.Logf("[%s] Macro slot :: %s :: — running psl...", run.sessionID, slot.Instruction)
+	// The macro source itself is not copied into the log — that is what
+	// slots/<n>/ keeps. What the row says is which slot was asked and what it
+	// was shown; the answer comes back on the PSL RESPONSE that pairs with it.
 	r.store.LogInstancef("PSL REQUEST",
 		"session=%s sequence=%d line=%d instruction=%q image_bytes=%d image_scale=%g",
 		run.sessionID, seq, node.line, slot.Instruction, len(shot), scale)
-	r.store.LogInstance("PSL REQUEST CONTENT", modelSource)
 
 	result, err := r.psl.Fill(ctx, psl.Request{Source: modelSource, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {
@@ -858,17 +860,16 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		}
 		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q duration=%s error=%q",
 			run.sessionID, seq, "error", responseDuration.Round(time.Millisecond), err)
-		applog.Errorf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
+		applog.Errorf("[%s] Macro slot :: %s :: — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, responseOutput, shot)
 		return "", false
 	}
-	r.store.LogInstancef("PSL RESPONSE",
-		"session=%s sequence=%d status=%q model=%q duration=%s",
-		run.sessionID, seq, "ok", result.Model, result.Duration.Round(time.Millisecond))
 
 	filled, ok := extractLine(modelSource, result.Source, targetLine)
 	if !ok {
-		applog.Logf("[%s] Macro slot (%s) — could not read the filled statement back", run.sessionID, slot.Instruction)
+		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q model=%q duration=%s",
+			run.sessionID, seq, "unreadable", result.Model, result.Duration.Round(time.Millisecond))
+		applog.Logf("[%s] Macro slot :: %s :: — could not read the filled statement back", run.sessionID, slot.Instruction)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
 		return "", false
 	}
@@ -877,7 +878,9 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		filled, restored = restoreFilledSurroundings(statement, slot.Start, slot.End,
 			modelStatement, modelSlot.Start, modelSlot.End, filled)
 		if !restored {
-			applog.Logf("[%s] Macro slot (%s) — psl rewrote text outside the slot in the scaled model copy; not using its coordinates", run.sessionID, slot.Instruction)
+			r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q model=%q duration=%s",
+				run.sessionID, seq, "rejected", result.Model, result.Duration.Round(time.Millisecond))
+			applog.Logf("[%s] Macro slot :: %s :: — psl rewrote text outside the slot in the scaled model copy; not using its coordinates", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
 			return "", false
 		}
@@ -888,15 +891,19 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	// log and the slot all say the same screen pixels a macro written by hand
 	// would.
 	if grown, done := rescaleFilled(statement, slot.Start, slot.End, filled, scale); done {
-		applog.Logf("[%s] Macro slot (%s) -> %s scaled back to %s", run.sessionID, slot.Instruction,
+		applog.Logf("[%s] Macro slot :: %s :: -> %s scaled back to %s", run.sessionID, slot.Instruction,
 			oneLine(filled), oneLine(grown))
 		filled = grown
 	}
+	filled = closeUnterminatedStrings(filled)
 
-	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, oneLine(filled),
+	applog.Logf("[%s] Macro slot :: %s :: -> %s  [%s, %s]", run.sessionID, slot.Instruction, oneLine(filled),
 		result.Model, result.Duration.Round(time.Millisecond))
-	r.store.LogInstancef("PSL ANSWER", "session=%s sequence=%d line=%d value=%q",
-		run.sessionID, seq, node.line, filled)
+	// Logged here rather than the moment psl answered, so the value on the row is
+	// the statement that is about to run — in screen pixels, scaled back.
+	r.store.LogInstancef("PSL RESPONSE",
+		"session=%s sequence=%d status=%q model=%q duration=%s value=%q",
+		run.sessionID, seq, "ok", result.Model, result.Duration.Round(time.Millisecond), filled)
 	r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
 
 	// The answer goes into the macro, which is what the next run is handed: with
@@ -1854,6 +1861,40 @@ func parseMacroLine(line string) (name string, args []string, quoted, ok bool) {
 		args[i] = strings.TrimSpace(p)
 	}
 	return name, args, false, true
+}
+
+// closeUnterminatedStrings writes back the closing quote a filled statement
+// left out, so that what is logged, recorded and replayed is the statement Pob
+// reads it as.
+//
+// psl answers in the shape of the file it is handed, so a macro written
+// `typeText("::what to say::)` — a quote nobody closed — comes back
+// `typeText("hello)`. parseMacroLine has always read that as `hello`: the
+// argument list is what stands between the first parenthesis and the one the
+// line ends with, and a string inside it that nothing closes runs to the end of
+// that list. The quote therefore goes in front of that closing parenthesis, and
+// the statement then says on paper what it does on screen.
+//
+// A line the parse would not read as a statement is left exactly as it came:
+// nothing here guesses at what a line that does not end in `)` was meant to be.
+func closeUnterminatedStrings(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = closeUnterminatedString(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func closeUnterminatedString(line string) string {
+	end := len(strings.TrimRight(line, " \t"))
+	if end == 0 || line[end-1] != ')' {
+		return line
+	}
+	open := strings.IndexByte(line[:end], '(')
+	if open < 0 || !unterminatedString(line[open+1:end-1]) {
+		return line
+	}
+	return line[:end-1] + `"` + line[end-1:]
 }
 
 // statementSlot reports whether a line is one slot and nothing else, which is

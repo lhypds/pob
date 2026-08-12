@@ -276,6 +276,46 @@ func TestStatementSlot(t *testing.T) {
 	}
 }
 
+// A quote nobody closed is closed where the parse already reads it as closed,
+// so the statement written down is the statement that runs. psl mirrors the
+// macro it is handed, so a slot written inside a string someone left open comes
+// back the same way.
+func TestCloseUnterminatedStrings(t *testing.T) {
+	for _, tt := range []struct {
+		line string
+		want string
+	}{
+		{`typeText("hello)`, `typeText("hello")`},
+		{`  typeText("hello)  `, `  typeText("hello")  `},
+		{`typeText("::what to say::)`, `typeText("::what to say::")`},
+		// Nothing to close: closed already, no string at all, or escaped quotes
+		// that are characters of one.
+		{`typeText("hello")`, `typeText("hello")`},
+		{`click(474, 591)`, `click(474, 591)`},
+		{`typeText("say \"hi\"")`, `typeText("say \"hi\"")`},
+		// A `"` inside an instruction is a sentence's, not a string's.
+		{`typeText(:: say "hi ::)`, `typeText(:: say "hi ::)`},
+		// Not a statement the parse would read: left exactly as it came.
+		{`typeText("hello`, `typeText("hello`},
+		{`loop (2) {`, `loop (2) {`},
+		{``, ``},
+	} {
+		if got := closeUnterminatedStrings(tt.line); got != tt.want {
+			t.Errorf("closeUnterminatedStrings(%q) = %q, want %q", tt.line, got, tt.want)
+		}
+	}
+}
+
+// A statement slot is filled with a block, and each line of it is a statement
+// that has to read as one.
+func TestCloseUnterminatedStringsInABlock(t *testing.T) {
+	block := "click(10, 20)\ntypeText(\"hello)\nsleep(1s)"
+	want := "click(10, 20)\ntypeText(\"hello\")\nsleep(1s)"
+	if got := closeUnterminatedStrings(block); got != want {
+		t.Errorf("closeUnterminatedStrings(%q) = %q, want %q", block, got, want)
+	}
+}
+
 // A condition written out rather than asked needs no model call, and reads as
 // the value it names.
 func TestParseMacroLiteralCondition(t *testing.T) {

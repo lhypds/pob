@@ -178,7 +178,7 @@ func (r *Runner) RunMacro() bool {
 		r.store.LogInstance("MACRO START REJECTED", "another macro is already running")
 		return false
 	}
-	r.store.LogInstance("MACRO START REQUEST", "accepted")
+	r.store.LogInstance(">>> MACRO START REQUEST", "accepted")
 	go func() {
 		defer r.finish()
 		r.br.NotifyExecutionState(true)

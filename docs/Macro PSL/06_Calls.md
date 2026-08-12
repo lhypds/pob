@@ -14,6 +14,12 @@ A value is one of three things.
 how a quote gets inside one: `typeText("say \"hi\"")`. A quoted string is one whole argument, commas
 and all, so `typeText("a, b")` types `a, b` rather than passing two arguments.
 
+A string nobody closed runs to the closing parenthesis: `typeText("hello)` types `hello`, the same
+as `typeText("hello")`. That is what the quote is written back as too — in the log, in the slot
+record, and in the line the replay goes on with — so a statement always reads as the one that ran.
+This matters where a slot sits inside a string, since psl answers in the shape of the line it was
+given: a macro written `typeText("::what to say::)` comes back closed.
+
 **Times** are written as a number with its unit on the end — `250ms`, `3s`, `10m`, `5h` — with no
 quotes around them and no space in the middle. The units are `ms`, `s`, `m` and `h`, and writing
 them one after another adds them up: `10h5m` is ten hours and five minutes. The number in front of a

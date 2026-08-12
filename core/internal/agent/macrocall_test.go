@@ -132,10 +132,10 @@ func TestEveryExecutedStatementIsWrittenToTheInstanceLog(t *testing.T) {
 	}
 	log := string(data)
 	for _, want := range []string{
-		`STEP START line=1`,
+		`> STEP START line=1`,
 		`kind="sleep" statement="sleep(1ms)"`,
 		`STEP END line=1`,
-		`STEP START line=2`,
+		`> STEP START line=2`,
 		`kind="stop" statement="stop()"`,
 		`STEP END line=2`,
 	} {

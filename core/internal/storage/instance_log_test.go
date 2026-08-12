@@ -9,7 +9,7 @@ import (
 
 func TestInstanceLogTimestampsEveryContentRow(t *testing.T) {
 	store := New(t.TempDir(), "pb-test", func() map[string]any { return nil }, func() string { return "" })
-	store.LogInstance("PSL REQUEST CONTENT", "moveTo(10, 20)\nclick()")
+	store.LogInstance("MACRO SOURCE", "moveTo(10, 20)\nclick()")
 
 	data, err := os.ReadFile(store.InstanceLogFile())
 	if err != nil {
@@ -19,7 +19,7 @@ func TestInstanceLogTimestampsEveryContentRow(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("instance.log has %d rows, want 2:\n%s", len(lines), data)
 	}
-	stamp := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] PSL REQUEST CONTENT `)
+	stamp := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] MACRO SOURCE `)
 	for i, line := range lines {
 		if !stamp.MatchString(line) {
 			t.Errorf("row %d is not timestamped and labelled: %q", i+1, line)

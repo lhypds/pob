@@ -100,15 +100,48 @@ func slotStarts(line string) map[int]int {
 // i, or the end of the line when nothing closes it. A backslash escapes whatever
 // follows it, which is how a quote gets inside one.
 func endOfString(line string, i int) int {
+	end, _ := stringEnd(line, i)
+	return end
+}
+
+// stringEnd is endOfString and the one thing the offset alone cannot say: a
+// string that ran to the end of the line because the line ended, rather than
+// because something closed it.
+func stringEnd(line string, i int) (end int, closed bool) {
 	for j := i + 1; j < len(line); j++ {
 		switch line[j] {
 		case '\\':
 			j++
 		case '"':
-			return j + 1
+			return j + 1, true
 		}
 	}
-	return len(line)
+	return len(line), false
+}
+
+// unterminatedString reports whether s leaves a double-quoted string open.
+//
+// Slots are passed over whole, the way every other reader here passes over
+// them: a `"` inside `:: … ::` is a character of a sentence someone wrote for a
+// model to read, not the start of a string.
+func unterminatedString(s string) bool {
+	slots := slotStarts(s)
+	for i := 0; i < len(s); {
+		if end, ok := slots[i]; ok {
+			i = end
+			continue
+		}
+		if s[i] != '"' {
+			i++
+			continue
+		}
+		end, closed := stringEnd(s, i)
+		if !closed {
+			return true
+		}
+		i = end
+	}
+	return false
 }
 
 // stripComments returns what is left of a line once its comments are taken out,
