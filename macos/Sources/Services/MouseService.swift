@@ -172,23 +172,66 @@ class MouseService: ObservableObject {
     // MARK: - Keyboard actions
 
     func performType(text: String) async {
+        if text.isEmpty { return }
         // AX direct insertion first: it puts the text in whole, in any script,
         // without touching the clipboard or depending on the keyboard layout.
-        let sysWide = AXUIElementCreateSystemWide()
-        var focusedRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(sysWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-           let focusedRef
-        {
-            let element = focusedRef as! AXUIElement
-            if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success {
-                return
-            }
-        }
+        if await insertViaAX(text) { return }
         // Most apps refuse it — browsers, Electron windows and terminals all
         // do, because the field isn't an AX text element that can be written
         // to. So type the characters instead, which is what the Windows and
         // Linux shells do in the first place.
         await typeAsKeystrokes(text)
+    }
+
+    /// Puts `text` into the focused element's selection, and answers whether it
+    /// actually arrived there.
+    ///
+    /// A refusal does not come back as one. `AXUIElementSetAttributeValue`
+    /// returns `.success` from any app whose accessibility bridge accepts the
+    /// message, which the browsers and Electron windows above all do while
+    /// putting no character on screen — so success is claimed for exactly the
+    /// apps the keystroke path exists to serve, and taking it at face value is
+    /// a typeText that reliably types nothing. The field's value is read either
+    /// side of the write instead, and only a value that moved counts.
+    private func insertViaAX(_ text: String) async -> Bool {
+        let sysWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(sysWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focusedRef
+        else { return false }
+        let element = focusedRef as! AXUIElement
+
+        // Pob's own window is never what a macro is typing into: when focus has
+        // stayed here the text is meant for the app underneath, and writing it
+        // into our own field would put it somewhere the macro cannot see.
+        var pid: pid_t = 0
+        if AXUIElementGetPid(element, &pid) == .success, pid == getpid() { return false }
+
+        var settable: DarwinBoolean = false
+        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
+              settable.boolValue
+        else { return false }
+
+        // An unreadable value is one the write could not be checked against
+        // afterwards, and an unverified write that turns out to be a no-op
+        // becomes typed-twice text once the keystrokes follow it. Hand those
+        // straight to the keystrokes, which need no such proof.
+        guard let before = axValue(of: element) else { return false }
+        guard AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString,
+                                           text as CFString) == .success
+        else { return false }
+        // The setter returns once the other app has handled it, but the field
+        // it redraws is that app's own main thread's work, so give it a beat
+        // before reading back.
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        return axValue(of: element) != before
+    }
+
+    private func axValue(of element: AXUIElement) -> String? {
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success
+        else { return nil }
+        return valueRef as? String
     }
 
     /// Types text one character at a time as synthesised key events. The
