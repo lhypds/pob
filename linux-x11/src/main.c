@@ -1047,6 +1047,22 @@ static void on_activate(GtkApplication *app, gpointer data) {
 
     gtk_widget_show_all(win);
 
+    // What the macOS shell checks its Accessibility grant for, in the form this
+    // one can fail: input is synthesised through XTest, and an X server without
+    // the extension discards all of it without saying so — the virtual cursor
+    // still walks to the target, so it looks like a working Pob that does
+    // nothing. Nothing to grant here; the fix is the session or the server.
+    if (!mouse_service_xtest_available()) {
+        app_logger_error("XTest extension not available — clicks and keystrokes will be discarded");
+        app_show_alert_dialog(
+            "Pob cannot control this desktop",
+            "This X server has no XTest extension, and Pob synthesises every click and "
+            "keystroke through it — they will be discarded, silently, while the cursor "
+            "still moves to where they were aimed.\n\n"
+            "Log in to an Xorg session (under Wayland, Pob runs through XWayland and "
+            "cannot drive native Wayland windows), and check that libxtst6 is installed.");
+    }
+
     app_logger_event("Pob started");
     mouse_service_init();
     core_bridge_start();

@@ -35,12 +35,20 @@ its grant, while `Pob.app` is its own identity and needs its own — added by
 hand, since nothing prompts for Accessibility. `macos/build.sh` ad-hoc signs
 the bundle whenever no Developer ID is in the keychain, and macOS pins an
 ad-hoc grant to that exact binary, so every rebuild invalidates it: the toggle
-stays on in the list while clicks stop working. After replacing an installed
-copy, reset it and add the app again.
+stays on in the list while clicks stop working — and screenshots come back
+black or empty the same way. After replacing an installed copy, reset both
+services and grant them again:
 
 ```
 tccutil reset Accessibility com.gcc3.pob
+tccutil reset ScreenCapture com.gcc3.pob
+tccutil reset All com.gcc3.pob            # or both at once, plus anything else
 ```
+
+Reset with Pob quit, then reopen it: Screen Recording prompts again on the
+first capture, Accessibility still has to be added by hand. Renaming the bundle
+ID leaves the old identity's entries behind, pointing at an app that no longer
+exists — `tccutil reset All com.gcc3.pob` clears them.
 
 
 Release

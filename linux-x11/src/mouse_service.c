@@ -487,6 +487,17 @@ static void do_key_press(Display *dpy, const char *key) {
     for (guint i = mod_count; i > 0; i--) fake_key(dpy, mod_kc[i - 1], False);
 }
 
+// ── capability check ────────────────────────────────────────────────────────
+
+gboolean mouse_service_xtest_available(void) {
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return FALSE;
+    int ev, err, major, minor;
+    gboolean available = XTestQueryExtension(dpy, &ev, &err, &major, &minor) ? TRUE : FALSE;
+    XCloseDisplay(dpy);
+    return available;
+}
+
 // ── worker main ─────────────────────────────────────────────────────────────
 
 static gpointer worker_main(gpointer data) {

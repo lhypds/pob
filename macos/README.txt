@@ -38,7 +38,21 @@ Accessibility never prompts: open it, press +, and add Pob.app by hand. Until
 you do, Pob looks like it is working — it draws its own cursor and walks it
 around the screen — while every click it makes is dropped in silence.
 
-Grant both and reopen Pob. Nothing works without them.
+Grant both and reopen Pob. Nothing works without them. Pob checks at every
+launch and says so if either is missing, with a button that opens the right
+pane — so you are told, rather than left with an app that looks fine.
+
+macOS ties these grants to the exact app it was shown, and Pob is not signed
+with a Developer ID, so replacing Pob.app with a newer version invalidates
+them: both switches stay on in the list while clicking does nothing and
+screenshots come back empty. That is what the launch message's "Reset
+Permissions and Quit" button is for — it clears both grants so the copy you
+reopen can be given them. By hand it is:
+
+    tccutil reset All com.gcc3.pob            # both at once
+
+    tccutil reset Accessibility com.gcc3.pob  # or one at a time
+    tccutil reset ScreenCapture com.gcc3.pob
 
 
 2. Install the `pob` command

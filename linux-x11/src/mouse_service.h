@@ -25,6 +25,14 @@ typedef enum {
 void mouse_service_init(void);
 void mouse_service_shutdown(void);
 
+// Whether this X server has the XTest extension — everything below is
+// synthesised through it, and without it every click and keystroke is
+// discarded in silence. The Linux counterpart of the macOS shell's
+// Accessibility check (macos/Sources/Services/PermissionsService.swift):
+// there is no permission to grant here, but the same failure to warn about.
+// Safe to call before mouse_service_init(); it uses a connection of its own.
+gboolean mouse_service_xtest_available(void);
+
 // Virtual cursor (screenshot pixels, top-left origin). Thread-safe.
 void mouse_get_virtual_pos(double *x, double *y);
 void mouse_reset_cursor(void);              // -> (20, 20)

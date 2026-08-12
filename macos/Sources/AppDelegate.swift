@@ -34,6 +34,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PobInstance.updateAllIgnoresMouseEvents()
             return event
         }
+
+        // Last, because an ungranted Pob is not a broken Pob — it comes up,
+        // draws, logs and serves exactly as it does when granted, and only the
+        // events it posts go nowhere. Nothing downstream can report that, so
+        // the launch has to ask.
+        PermissionsService.checkAtLaunch()
     }
 
     func applicationWillTerminate(_: Notification) {
