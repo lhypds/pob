@@ -140,7 +140,9 @@ type Result struct {
 var resolvedLine = regexp.MustCompile(`resolved with (\S+)(?: \([^)]*\))? — (.*)`)
 
 // Fill runs psl once over the source and returns it with the first slot
-// replaced by what the model answered.
+// replaced by what the model answered. A compiler process that exits with an
+// error still returns a Result carrying its complete output and duration, so
+// callers can preserve the failed response in their logs.
 //
 // Nothing is left behind on failure: psl rewrites its input file only once the
 // model has returned usable text, so a run that fails leaves the source as it
@@ -198,16 +200,17 @@ func (c Compiler) Fill(ctx context.Context, req Request) (*Result, error) {
 	elapsed := time.Since(started)
 
 	output := strings.TrimSpace(stderr.String())
+	result := &Result{Output: output, Duration: elapsed}
 	if runErr != nil {
-		return nil, fmt.Errorf("%s: %s", runErr, firstLine(output))
+		return result, fmt.Errorf("%s: %s", runErr, firstLine(output))
 	}
 
 	filled, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 
-	result := &Result{Source: string(filled), Output: output, Duration: elapsed}
+	result.Source = string(filled)
 	if match := resolvedLine.FindStringSubmatch(output); match != nil {
 		result.Model, result.Instruction = match[1], strings.TrimSpace(match[2])
 	}

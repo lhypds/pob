@@ -13,7 +13,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
+	"time"
 
 	"pob/core/internal/agent"
 	"pob/core/internal/applog"
@@ -63,6 +65,11 @@ func main() {
 	applog.Init(*root)
 	cfg := config.New(*root, instanceID)
 	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Macro)
+	applog.SetInstanceSink(func(message string) {
+		store.LogInstance("INFO", message)
+	})
+	store.WriteInstanceStart()
+	store.LogInstancef("INSTANCE START", "id=%s pid=%d", store.InstanceID(), os.Getpid())
 
 	client := ipc.NewStdio()
 	// Frames go down their own connection rather than sharing the JSON-RPC
@@ -144,22 +151,37 @@ func main() {
 	_ = ctl.Start()
 
 	applog.Logf("pob-core started (instance %s)", store.InstanceID())
-	store.WriteInstanceStart()
+
+	// Both ways out use the same once-only shutdown record: the shell closing
+	// stdin, or a direct signal from stop.sh / the operating system.
+	var shutdown sync.Once
+	stopInstance := func(reason string) {
+		shutdown.Do(func() {
+			sessionID := runner.CurrentSession()
+			if sessionID == "" {
+				sessionID = "pending"
+			}
+			if !runner.StopAndWait(5 * time.Second) {
+				store.LogInstancef("MACRO STOP", "session=%s status=%q", sessionID, "forced by instance shutdown timeout")
+			}
+			applog.Logf("pob-core stopping (instance %s, %s)", store.InstanceID(), reason)
+			ctl.Stop()
+			srv.Stop()
+			store.WriteInstanceEnd()
+			store.LogInstancef("INSTANCE STOP", "id=%s pid=%d reason=%q", store.InstanceID(), os.Getpid(), reason)
+		})
+	}
 
 	// Record the end time when killed directly (e.g. stop.sh straggler cleanup).
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-sig
-		ctl.Stop()
-		srv.Stop()
-		store.WriteInstanceEnd()
+		s := <-sig
+		stopInstance("signal " + s.String())
 		os.Exit(0)
 	}()
 
 	// Blocks until stdin closes — i.e. the shell exits — then we exit too.
 	client.Run()
-	ctl.Stop()
-	srv.Stop()
-	store.WriteInstanceEnd()
+	stopInstance("shell disconnected")
 }

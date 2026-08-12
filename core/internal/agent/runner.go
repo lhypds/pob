@@ -26,6 +26,7 @@ type Runner struct {
 
 	mu             sync.Mutex
 	cancel         context.CancelFunc
+	done           chan struct{}
 	running        bool
 	currentSession string
 
@@ -36,7 +37,17 @@ func NewRunner(cfg *config.Config, store *storage.Storage, compiler psl.Compiler
 	return &Runner{cfg: cfg, store: store, psl: compiler, br: br}
 }
 
-func (r *Runner) SetRecording(recording bool) { r.recording.Store(recording) }
+func (r *Runner) SetRecording(recording bool) {
+	previous := r.recording.Swap(recording)
+	if previous == recording {
+		return
+	}
+	if recording {
+		r.store.LogInstance("RECORDING START", "macro.psl recording enabled")
+	} else {
+		r.store.LogInstance("RECORDING STOP", "macro.psl recording disabled")
+	}
+}
 
 // Recording reports whether macro recording is on.
 func (r *Runner) Recording() bool { return r.recording.Load() }
@@ -88,12 +99,46 @@ func (r *Runner) TakeScreenshot() {
 
 // Stop cancels the running session, if any.
 func (r *Runner) Stop() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.cancel != nil {
-		r.cancel()
+	_, stopped := r.requestStop("user request")
+	if !stopped {
+		r.store.LogInstance("MACRO STOP REQUEST", "ignored: no macro is running")
 	}
 	applog.Log("Stopped")
+}
+
+// StopAndWait cancels a macro during instance shutdown and gives it time to
+// save its compiled macro, session times and MACRO STOP event before the core
+// process exits. It returns false only when the timeout expires.
+func (r *Runner) StopAndWait(timeout time.Duration) bool {
+	done, stopped := r.requestStop("instance shutdown")
+	if !stopped || done == nil {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+func (r *Runner) requestStop(reason string) (<-chan struct{}, bool) {
+	r.mu.Lock()
+	cancel := r.cancel
+	sessionID := r.currentSession
+	done := r.done
+	r.mu.Unlock()
+	if cancel == nil {
+		return done, false
+	}
+	if sessionID == "" {
+		sessionID = "pending"
+	}
+	r.store.LogInstancef("MACRO STOP REQUEST", "session=%s reason=%q", sessionID, reason)
+	cancel()
+	return done, true
 }
 
 // start reserves the runner and returns a fresh session context, or nil if a
@@ -107,14 +152,22 @@ func (r *Runner) start() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	r.running = true
 	r.cancel = cancel
+	r.done = make(chan struct{})
+	r.currentSession = ""
 	return ctx
 }
 
 func (r *Runner) finish() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	done := r.done
 	r.running = false
 	r.cancel = nil
+	r.done = nil
+	r.currentSession = ""
+	r.mu.Unlock()
+	if done != nil {
+		close(done)
+	}
 }
 
 // RunMacro starts a macro session asynchronously. It returns false when a
@@ -122,8 +175,10 @@ func (r *Runner) finish() {
 func (r *Runner) RunMacro() bool {
 	ctx := r.start()
 	if ctx == nil {
+		r.store.LogInstance("MACRO START REJECTED", "another macro is already running")
 		return false
 	}
+	r.store.LogInstance("MACRO START REQUEST", "accepted")
 	go func() {
 		defer r.finish()
 		r.br.NotifyExecutionState(true)

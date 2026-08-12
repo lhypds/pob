@@ -27,10 +27,11 @@ import (
 // macroTest is a Runner over a temporary ~/.pob, the directory its macro.psl
 // would sit in, and the log everything it does is written to.
 type macroTest struct {
-	runner *Runner
-	dir    string // the instance directory, where macro.psl lives
-	root   string // ~/.pob itself, which is one up — where call("../x.psl") lands
-	log    string
+	runner      *Runner
+	dir         string // the instance directory, where macro.psl lives
+	root        string // ~/.pob itself, which is one up — where call("../x.psl") lands
+	log         string
+	instanceLog string
 }
 
 func newMacroTest(t *testing.T) *macroTest {
@@ -48,10 +49,11 @@ func newMacroTest(t *testing.T) *macroTest {
 	cfg := config.New(root, "pob-test")
 	store := storage.New(root, "pob-test", cfg.SettingsDict, cfg.Macro)
 	return &macroTest{
-		runner: NewRunner(cfg, store, psl.Compiler{}, nil),
-		dir:    cfg.InstanceDir(),
-		root:   root,
-		log:    filepath.Join(root, "app.log"),
+		runner:      NewRunner(cfg, store, psl.Compiler{}, nil),
+		dir:         cfg.InstanceDir(),
+		root:        root,
+		log:         filepath.Join(root, "app.log"),
+		instanceLog: store.InstanceLogFile(),
 	}
 }
 
@@ -112,6 +114,32 @@ func checkRan(t *testing.T, got, want []string) {
 	t.Helper()
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the replay ran %v, want %v", got, want)
+	}
+}
+
+func TestEveryExecutedStatementIsWrittenToTheInstanceLog(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, "sleep(1ms)\nstop()\nsleep(2ms)")
+
+	data, err := os.ReadFile(m.instanceLog)
+	if err != nil {
+		t.Fatalf("reading instance.log: %v", err)
+	}
+	log := string(data)
+	for _, want := range []string{
+		`STEP START session=test file="macro.psl" line=1`,
+		`kind="sleep" statement="sleep(1ms)"`,
+		`STEP END session=test file="macro.psl" line=1`,
+		`STEP START session=test file="macro.psl" line=2`,
+		`kind="stop" statement="stop()"`,
+		`STEP END session=test file="macro.psl" line=2`,
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("instance.log does not contain %q:\n%s", want, log)
+		}
+	}
+	if strings.Contains(log, `statement="sleep(2ms)"`) {
+		t.Errorf("instance.log recorded a statement after stop():\n%s", log)
 	}
 }
 

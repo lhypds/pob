@@ -12,6 +12,7 @@ Structure
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
+         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, and complete psl requests and responses.
          +--- macro.psl                           the [macro](03_Macro%20PSL.md) Record writes and Execute replays.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
@@ -44,6 +45,17 @@ directories already there.
 The [settings](06_Settings.md) are the exception, and sit at the root for it: where psl is and which
 port the server takes are how the machine works whichever instance is running, so a new instance is a
 clean sheet of work rather than a machine to set up again.
+
+`instance.log` is append-only across starts and sessions. Every row begins with an RFC 3339 UTC
+timestamp and an event name. Multiline psl content is logged as separately timestamped rows under
+`PSL REQUEST CONTENT`, `PSL REQUEST PROMPT`, `PSL RESPONSE CONTENT`, and `PSL RESPONSE OUTPUT`, so
+the exact file and compiler output remain readable without unlabelled continuation lines. `STEP
+START` and `STEP END` name the session, file, line, resolved statement, and completion state for each
+statement that reaches execution; condition checks and loop passes are included too.
+
+The file deliberately contains the complete macro text sent to psl and its complete response. That
+can include text typed by a macro or other sensitive screen-related instructions. Protect or remove
+`instance.log` when sharing an instance directory.
 
 `pob new "Work laptop"` is that move done for you: it creates the directory, records the name in
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks

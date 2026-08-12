@@ -409,6 +409,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	// which logs what it could not read as it goes — a macro that gets past here
 	// has nothing for it to say.
 	if problems := checkMacroSource(source, path); len(problems) > 0 {
+		r.store.LogInstancef("MACRO NOT STARTED", "file=%q reason=%q problems=%d", path, "macro check failed", len(problems))
 		applog.Logf("Macro not run: %d problem(s) in %s", len(problems), filepath.Base(path))
 		for _, p := range problems {
 			applog.Logf("Macro %s", p)
@@ -431,6 +432,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 		message := "macro.psl, or a file it calls, has a :: … :: slot, and Pob fills those by running " +
 			"the psl compiler. psl was not found — install it (see https://github.com/pob/psl), or set " +
 			"\"psl\" in settings.json to the path of the executable, and run the macro again."
+		r.store.LogInstancef("MACRO NOT STARTED", "file=%q reason=%q", path, "psl is not available")
 		applog.Logf("Macro not run: %s", message)
 		r.br.ShowAlert("psl needed", message)
 		return
@@ -447,22 +449,26 @@ func (r *Runner) runMacro(ctx context.Context) {
 	}
 
 	if _, err := r.br.ResetCursor(); err != nil {
+		r.store.LogInstancef("MACRO NOT STARTED", "file=%q reason=%q error=%q", path, "cursor reset failed", err)
 		return
 	}
 
-	applog.Logf("Executing macro (%d actions)", countMacroNodes(nodes))
+	actionCount := countMacroNodes(nodes)
+	applog.Logf("Executing macro (%d actions)", actionCount)
 
 	// Initial capture establishes the screenshot→screen coordinate context on
 	// the Swift side before any click lands.
 	if _, err := r.br.CaptureScreenshot(true, nil); err != nil {
+		r.store.LogInstancef("MACRO NOT STARTED", "file=%q reason=%q error=%q", path, "initial screenshot failed", err)
 		applog.Log("Macro: failed to get screenshot context")
 		return
 	}
 
+	macroStart := time.Now()
 	sessionID := r.store.CreateSession()
 	r.setCurrentSession(sessionID)
 	r.store.SaveMacro(sessionID)
-	macroStart := time.Now()
+	r.store.LogInstancef("MACRO START", "session=%s file=%q actions=%d", sessionID, path, actionCount)
 	applog.Logf("[%s] Macro session started", sessionID)
 
 	run := newMacroRun(sessionID, path, source, prompt)
@@ -473,9 +479,18 @@ func (r *Runner) runMacro(ctx context.Context) {
 	// what the replay actually ran, rather than what it was asked to.
 	r.store.SaveCompiledMacro(sessionID, run.compiled())
 
-	r.store.SaveSessionStartEndTimes(sessionID, macroStart, time.Now())
+	macroEnd := time.Now()
+	r.store.SaveSessionStartEndTimes(sessionID, macroStart, macroEnd)
 	applog.Logf("[%s] Macro session times saved", sessionID)
 	applog.Log("Macro execution complete")
+	status := "completed"
+	switch {
+	case ctx.Err() != nil:
+		status = "cancelled"
+	case run.halted():
+		status = "completed by stop()"
+	}
+	r.store.LogInstancef("MACRO STOP", "session=%s status=%q duration=%s", sessionID, status, macroEnd.Sub(macroStart).Round(time.Millisecond))
 
 	// A run that was stopped never reached its end, so nothing is announced:
 	// the hook is what says the macro finished. A stop statement is the other
@@ -534,9 +549,15 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		// belong there rather than with a value, so what comes back is replayed
 		// rather than read as the one call the line was.
 		if node.isStatementSlot {
+			statement := run.line(node.line)
+			r.logMacroStep("STEP START", run, node, "statement slot", statement, "")
 			r.runStatementSlot(ctx, run, node)
+			r.logMacroStep("STEP END", run, node, "statement slot", statement, macroStepStatus(ctx, run))
 		} else if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
+			statement := strings.TrimSpace(stripLine(run.line(node.line)))
+			r.logMacroStep("STEP START", run, node, name, statement, "")
 			r.runMacroAction(ctx, run, name, args, quoted)
+			r.logMacroStep("STEP END", run, node, name, statement, macroStepStatus(ctx, run))
 		}
 		// A no-op when the statement filled: what it spends is the slot of one
 		// that did not, which the replay is nonetheless done with.
@@ -551,6 +572,31 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		if delayMs := r.cfg.MacroDefaultDelay(); delayMs > 0 {
 			sleepCtx(ctx, time.Duration(delayMs)*time.Millisecond)
 		}
+	}
+}
+
+// logMacroStep gives instance.log one uniform row around every statement that
+// reaches execution. The existing app log still carries action-specific
+// results (cursor positions, branch decisions and validation failures); these
+// rows provide the file/line identity and exact resolved statement common to
+// every kind of action.
+func (r *Runner) logMacroStep(event string, run *macroRun, node macroNode, kind, statement, status string) {
+	detail := fmt.Sprintf("session=%s file=%q line=%d depth=%d kind=%q statement=%q",
+		run.sessionID, run.name, node.line, run.depth(), kind, statement)
+	if status != "" {
+		detail += fmt.Sprintf(" status=%q", status)
+	}
+	r.store.LogInstance(event, detail)
+}
+
+func macroStepStatus(ctx context.Context, run *macroRun) string {
+	switch {
+	case ctx.Err() != nil:
+		return "cancelled"
+	case run.halted():
+		return "stopped"
+	default:
+		return "completed"
 	}
 }
 
@@ -576,6 +622,8 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode) {
 	label := macroBlockLabel(node)
 	passes := 0
+	r.store.LogInstancef("LOOP START", "session=%s file=%q line=%d loop=%q count=%d",
+		run.sessionID, run.name, node.line, label, node.count)
 
 	for passes < node.count {
 		if ctx.Err() != nil || run.halted() {
@@ -595,6 +643,8 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 			}
 		}
 		passes++
+		r.store.LogInstancef("LOOP PASS", "session=%s file=%q line=%d loop=%q pass=%d count=%d",
+			run.sessionID, run.name, node.line, label, passes, node.count)
 		applog.Logf("[%s] Macro %s — pass %d of %d", run.sessionID, label, passes, node.count)
 		r.runMacroNodes(ctx, run, node.body)
 	}
@@ -610,6 +660,8 @@ func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode
 	// what psl would fill next — in place of the statement under the block.
 	run.spendBlock(node.body)
 	run.spend(node.line)
+	r.store.LogInstancef("LOOP STOP", "session=%s file=%q line=%d loop=%q passes=%d status=%q",
+		run.sessionID, run.name, node.line, label, passes, macroStepStatus(ctx, run))
 }
 
 // resolveMacroAction fills the statement's slots, if it has any, and reads the
@@ -650,6 +702,8 @@ func (r *Runner) resolveMacroAction(ctx context.Context, run *macroRun, node mac
 // be the guess the reading was written to refuse, taken the other way round.
 func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node macroNode) (holds, read bool) {
 	label := macroBlockLabel(node)
+	statement := run.line(node.line)
+	r.logMacroStep("STEP START", run, node, "condition", statement, "")
 	// What a condition means for the block it heads: the first when it does not
 	// hold, and the second when there was nothing in it to read.
 	no, unread := "skipping block", "skipping block"
@@ -666,6 +720,7 @@ func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node mac
 	if psl.HasSlot(expr) {
 		filled, ok := r.fillStatement(ctx, run, node)
 		if !ok {
+			r.logMacroStep("STEP END", run, node, "condition", statement, "unfilled")
 			applog.Logf("[%s] Macro %s — slot unfilled, %s", run.sessionID, label, unread)
 			return false, false
 		}
@@ -675,6 +730,13 @@ func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node mac
 	}
 
 	holds, read = conditionHolds(expr)
+	conditionStatus := "unreadable"
+	if read && holds {
+		conditionStatus = "true"
+	} else if read {
+		conditionStatus = "false"
+	}
+	r.logMacroStep("STEP END", run, node, "condition", statement, conditionStatus)
 	switch {
 	case !read:
 		applog.Logf("[%s] Macro %s -> %q is not true or false — %s", run.sessionID, label, expr, unread)
@@ -837,13 +899,37 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	}
 
 	applog.Logf("[%s] Macro slot (%s) — running psl...", run.sessionID, slot.Instruction)
+	r.store.LogInstancef("PSL REQUEST",
+		"session=%s sequence=%d file=%q line=%d instruction=%q image_bytes=%d image_scale=%g",
+		run.sessionID, seq, run.name, node.line, slot.Instruction, len(shot), scale)
+	r.store.LogInstance("PSL REQUEST CONTENT", modelSource)
+	r.store.LogInstance("PSL REQUEST PROMPT", run.prompt)
 
 	result, err := r.psl.Fill(ctx, psl.Request{Source: modelSource, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {
+		responseOutput := err.Error()
+		responseDuration := time.Duration(0)
+		if result != nil {
+			responseDuration = result.Duration
+			if result.Output != "" {
+				responseOutput = result.Output
+			}
+			if result.Source != "" {
+				r.store.LogInstance("PSL RESPONSE CONTENT", result.Source)
+			}
+		}
+		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q duration=%s error=%q",
+			run.sessionID, seq, "error", responseDuration.Round(time.Millisecond), err)
+		r.store.LogInstance("PSL RESPONSE OUTPUT", responseOutput)
 		applog.Logf("[%s] Macro slot (%s) — psl failed: %v", run.sessionID, slot.Instruction, err)
-		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, err.Error(), shot)
+		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, responseOutput, shot)
 		return "", false
 	}
+	r.store.LogInstancef("PSL RESPONSE",
+		"session=%s sequence=%d status=%q model=%q duration=%s",
+		run.sessionID, seq, "ok", result.Model, result.Duration.Round(time.Millisecond))
+	r.store.LogInstance("PSL RESPONSE CONTENT", result.Source)
+	r.store.LogInstance("PSL RESPONSE OUTPUT", result.Output)
 
 	filled, ok := extractLine(modelSource, result.Source, targetLine)
 	if !ok {
@@ -874,6 +960,8 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 
 	applog.Logf("[%s] Macro slot (%s) -> %s  [%s, %s]", run.sessionID, slot.Instruction, oneLine(filled),
 		result.Model, result.Duration.Round(time.Millisecond))
+	r.store.LogInstancef("PSL ANSWER", "session=%s sequence=%d file=%q line=%d value=%q",
+		run.sessionID, seq, run.name, node.line, filled)
 	r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
 
 	// The answer goes into the macro, which is what the next run is handed: with
@@ -945,6 +1033,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		if pos, err := r.br.MoveCursor(dx, dy); err == nil {
 			applog.Logf("[%s] Macro move(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro move(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
 		}
 
 	case "moveTo":
@@ -958,6 +1048,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		// edge stopped it short — so it is logged rather than assumed.
 		if pos, err := r.br.MoveCursorTo(x, y); err == nil {
 			applog.Logf("[%s] Macro moveTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro moveTo(%d, %d) failed: %v", sessionID, int(x), int(y), err)
 		}
 
 	case "resetCursor":
@@ -967,6 +1059,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		// place.
 		if pos, err := r.br.ResetCursor(); err == nil {
 			applog.Logf("[%s] Macro resetCursor -> (%d, %d)", sessionID, pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro resetCursor failed: %v", sessionID, err)
 		}
 
 	case "click", "rightClick", "doubleClick":
@@ -999,15 +1093,20 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 				return
 			}
 			if _, err := r.br.MoveCursorTo(x, y); err != nil {
+				applog.Logf("[%s] Macro %s(%d, %d) could not move to its target: %v", sessionID, name, int(x), int(y), err)
 				return
 			}
 			if pos, err := press(); err == nil {
 				applog.Logf("[%s] Macro %s(%d, %d) at (%d, %d)", sessionID, name, int(x), int(y), pos.X, pos.Y)
+			} else {
+				applog.Logf("[%s] Macro %s(%d, %d) failed: %v", sessionID, name, int(x), int(y), err)
 			}
 			return
 		}
 		if pos, err := press(); err == nil {
 			applog.Logf("[%s] Macro %s at (%d, %d)", sessionID, name, pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro %s failed: %v", sessionID, name, err)
 		}
 
 	case "drag":
@@ -1018,6 +1117,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		if pos, err := r.br.Drag(dx, dy); err == nil {
 			applog.Logf("[%s] Macro drag(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro drag(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
 		}
 
 	case "dragTo":
@@ -1031,6 +1132,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		// whatever put the cursor on the thing being dragged.
 		if pos, err := r.br.DragTo(x, y); err == nil {
 			applog.Logf("[%s] Macro dragTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro dragTo(%d, %d) failed: %v", sessionID, int(x), int(y), err)
 		}
 
 	case "scroll":
@@ -1041,6 +1144,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		if pos, err := r.br.Scroll(int(dx), int(dy)); err == nil {
 			applog.Logf("[%s] Macro scroll(%d, %d) at (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
+		} else {
+			applog.Logf("[%s] Macro scroll(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
 		}
 
 	case "typeText":
@@ -1049,14 +1154,18 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		text := args[0]
 		applog.Logf("[%s] Macro typeText(%q)", sessionID, truncate(text, 80))
-		_ = r.br.TypeText(text)
+		if err := r.br.TypeText(text); err != nil {
+			applog.Logf("[%s] Macro typeText failed: %v", sessionID, err)
+		}
 
 	case "keyPress":
 		if len(args) == 0 {
 			return
 		}
 		applog.Logf("[%s] Macro keyPress(%q)", sessionID, args[0])
-		_ = r.br.KeyPress(args[0])
+		if err := r.br.KeyPress(args[0]); err != nil {
+			applog.Logf("[%s] Macro keyPress(%q) failed: %v", sessionID, args[0], err)
+		}
 
 	case "sleep":
 		if len(args) == 0 {
@@ -1108,6 +1217,8 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		r.br.FlashScreenshot()
 		if shot, err := r.br.CaptureScreenshot(true, crop); err == nil {
 			r.store.SaveScreenshot(shot, sessionID)
+		} else {
+			applog.Logf("[%s] Macro takeScreenshot failed: %v", sessionID, err)
 		}
 
 	default:

@@ -114,3 +114,30 @@ func TestNoPromptMeansNoFlag(t *testing.T) {
 		t.Errorf("--prompt = %q, want no --prompt at all", value)
 	}
 }
+
+func TestFailedCompilerReturnsItsCompleteOutput(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "psl")
+	script := "#!/bin/sh\nprintf 'first response row\\nsecond response row\\n' >&2\nexit 3\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := (Compiler{Binary: stub, Dir: dir}).Fill(context.Background(), Request{
+		Source: "click(:: target ::)\n",
+		Name:   "macro.psl",
+	})
+	if err == nil {
+		t.Fatal("Fill succeeded, want the stub's exit failure")
+	}
+	if result == nil {
+		t.Fatal("Fill returned no result details for the failed compiler")
+	}
+	want := "first response row\nsecond response row"
+	if result.Output != want {
+		t.Errorf("failed compiler output = %q, want %q", result.Output, want)
+	}
+	if result.Duration <= 0 {
+		t.Errorf("failed compiler duration = %s, want a measured duration", result.Duration)
+	}
+}

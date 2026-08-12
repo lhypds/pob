@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,7 @@ type Storage struct {
 	instanceID   string
 	settingsDict func() map[string]any
 	macro        func() string
+	instanceLog  sync.Mutex
 }
 
 // InstancePrefix is what every instance id starts with. The shells match on
@@ -124,6 +126,42 @@ func (s *Storage) InstanceDir() string { return filepath.Join(s.root, s.instance
 
 // LogsDir returns <root>/<instance>/logs, this process's log directory.
 func (s *Storage) LogsDir() string { return filepath.Join(s.InstanceDir(), "logs") }
+
+// InstanceLogFile returns <root>/<instance>/instance.log. Unlike app.log,
+// which mixes every instance on the machine, this is one chronological record
+// of this instance across all of its starts and macro sessions.
+func (s *Storage) InstanceLogFile() string {
+	return filepath.Join(s.InstanceDir(), "instance.log")
+}
+
+// LogInstance appends a timestamped event to instance.log. Multiline content
+// is written one timestamped row at a time, so a raw PSL request or response
+// never leaves continuation lines that look detached from the event that
+// produced them.
+func (s *Storage) LogInstance(event, message string) {
+	event = strings.Join(strings.Fields(event), " ")
+	if event == "" {
+		event = "INFO"
+	}
+	message = strings.ReplaceAll(message, "\r\n", "\n")
+	rows := strings.Split(message, "\n")
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+
+	s.instanceLog.Lock()
+	defer s.instanceLog.Unlock()
+	f, err := os.OpenFile(s.InstanceLogFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	for _, row := range rows {
+		_, _ = fmt.Fprintf(f, "[%s] %s %s\n", stamp, event, row)
+	}
+}
+
+func (s *Storage) LogInstancef(event, format string, args ...any) {
+	s.LogInstance(event, fmt.Sprintf(format, args...))
+}
 
 // instanceFile is <root>/<instance>/instance.json — who this instance is (its
 // id and the name it was given) and when it last ran. It sits at the top of the
