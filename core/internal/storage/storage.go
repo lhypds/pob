@@ -270,21 +270,13 @@ func (s *Storage) SaveMacro(sessionID string) {
 	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), SessionMacroName), []byte(s.macro()), 0o644)
 }
 
-// SaveCompiledMacro writes the macro as the session left it to
-// logs/<session>/macro.txt — every slot filled with what psl answered, the ones
-// never asked about written out as <instruction>, and every statement slot opened
-// out into the block it filled to, a statement to a line.
-//
-// macro.psl beside it is the macro as it was written; this is the program that
-// actually ran, whole and in one piece rather than a slot at a time under
-// slots/. A run that was stopped partway leaves what it had compiled by then.
-//
-// Its line numbers are its own once a generated block is in it, since a block is
-// more lines than the one that asked for it. The line in each slot.json is a line
-// of macro.psl, which is the file that has not moved.
-func (s *Storage) SaveCompiledMacro(sessionID, source string) {
-	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), "macro.txt"), []byte(source), 0o644)
-}
+// A session used to keep a compiled macro beside the written one — every slot
+// replaced by what psl answered, in one file. It is not kept any more, because
+// for a good part of a macro there is no one answer to write down: a slot inside
+// a loop is asked once per pass and only the last pass's answer could go in, and
+// a slot the replay never reached has no answer at all. What each fill was, and
+// which pass it belonged to, is under slots/ — numbered in the order they were
+// filled, which is the only reading of a replay that stays true to it.
 
 // SaveMacroSlot writes one :: … :: that psl filled during a macro session, under
 // logs/<session>/slots/<n>/. The directories are numbered in the order the slots

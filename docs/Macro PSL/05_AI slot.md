@@ -176,12 +176,11 @@ not read as PSL is logged and skipped, and the ones around it still run. What th
 a line that is neither kind of slot — two slots on one line, or a slot with a word beside it — since
 a statement slot already fills to as many statements as the instruction asks for.
 
-The whole block is kept under `logs/<session>/slots/<n>/` with the screenshot it was read off, and it
-is in `logs/<session>/macro.txt` too — opened back out into lines, under the indentation of the line
-that asked for it, so that what the session writes down is a program that reads as PSL and runs a
-statement to a line. That file's line numbers are its own from then on: a block is more lines than the
-one line it came from, and the line each `slot.json` names is a line of `main.macro.psl`, which has not
-moved.
+The whole block is kept under `logs/<session>/slots/<n>/` with the screenshot it was read off, and the
+line each `slot.json` names is a line of `main.macro.psl`, which has not moved. A statement slot in a
+loop's body generates a block on every pass, and each of those is one of these directories — so the
+slots are where a generated block is read, one fill at a time, rather than folded back into a copy of
+the macro that could only hold one of them.
 
 Writing one
 
@@ -228,9 +227,10 @@ A macro with no slot never runs psl at all, and needs nothing installed. A macro
 psl to be found — Pob checks over the whole macro, and over the files it `call`s, before the first
 statement runs rather than partway through, and puts up **psl needed** instead of moving the cursor.
 Every fill is kept under `logs/<session>/slots/<n>/` with the screenshot it was answered from and
-what psl said while filling it (see [Logs](../Pob/05_Logs.md)); `pob --session <id>` lists them. The whole
-macro as it ended up — every slot filled, in one file — is kept beside them as
-`logs/<session>/macro.txt`.
+what psl said while filling it (see [Logs](../Pob/05_Logs.md)); `pob --session <id>` lists them. Beside
+them is `main.macro.psl`, the macro as it was written — the fills are read against it rather than
+written into a copy of it, since a slot in a `loop` has an answer per pass and a slot never reached has
+none.
 
 
 See also

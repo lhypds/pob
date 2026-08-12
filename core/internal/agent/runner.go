@@ -107,8 +107,8 @@ func (r *Runner) Stop() {
 }
 
 // StopAndWait cancels a macro during instance shutdown and gives it time to
-// save its compiled macro, session times and MACRO STOP event before the core
-// process exits. It returns false only when the timeout expires.
+// save its session times and MACRO STOP event before the core process exits. It
+// returns false only when the timeout expires.
 func (r *Runner) StopAndWait(timeout time.Duration) bool {
 	done, stopped := r.requestStop("instance shutdown")
 	if !stopped || done == nil {

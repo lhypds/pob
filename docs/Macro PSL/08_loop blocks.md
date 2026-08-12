@@ -53,8 +53,9 @@ that could only be answered once would never turn false.
 
 Each of those is a psl run of its own and is kept as its own numbered directory under
 `logs/<session>/slots/`, so five passes over one slot leave five of them, in the order they were
-filled (see [Logs](../Pob/05_Logs.md)). The compiled `macro.txt` is one file and therefore holds the
-answers of the pass that ran last.
+filled (see [Logs](../Pob/05_Logs.md)). That is the only place a loop's fills can be read: a slot asked
+once per pass has an answer per pass, and no single copy of the macro could hold more than the last of
+them, which is why the session keeps none.
 
 The model is shown the macro and a screenshot and nothing else, so it does not know which pass it is
 being asked about — a slot that would have to count them is one it cannot answer. Write instructions

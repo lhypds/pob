@@ -91,18 +91,6 @@ type macroRun struct {
 	// slots again instead of repeating the answers of the pass before.
 	written []string
 
-	// blocks is what each statement slot filled to, whole, by the line it was
-	// written on — what compiled puts back into the file once the replay is over.
-	//
-	// The line itself holds the block folded onto it while the replay is running,
-	// because a statement is found by its line number for as long as anything is
-	// still being replayed. This is the same text unfolded, kept beside the file
-	// rather than in it, and read only when the file has stopped being a program
-	// and is only being written down. A statement slot in a loop's body fills
-	// again on every pass and so leaves the last pass's block here, the same way
-	// the file itself holds the last pass's answers.
-	blocks map[int]string
-
 	// prompt is the briefing that goes over beside the file on every fill, and
 	// is empty when this psl is older than the flag that takes it — settled once
 	// for the run rather than asked about at each slot.
@@ -268,61 +256,6 @@ func (run *macroRun) record(n int, filled string) {
 	run.source = strings.Join(lines, "\n")
 }
 
-// recordBlock keeps what a statement slot filled to, unfolded, against the line
-// that asked for it. See compiled.
-func (run *macroRun) recordBlock(line int, block string) {
-	if run.blocks == nil {
-		run.blocks = map[int]string{}
-	}
-	run.blocks[line] = block
-}
-
-// compiled is the macro as the session ran it — every slot filled, the ones
-// never asked about written out as <instruction>, and every statement slot
-// opened back out into the block it filled to, one statement per line.
-//
-// That last part is what this exists for. A macro is a file of statements, one
-// per line, and the point of writing the compiled one down is that it can be read
-// as the program that actually ran. While the replay is running a generated block
-// has to stay folded onto the one line it came from, because every statement is
-// found by its line number until the last of them has run — but nothing needs
-// those numbers afterwards, and a row per step is what the file is for.
-//
-// So the line numbers here are this file's own. A statement below a generated
-// block is further down than it was in macro.psl, which is kept beside it as the
-// macro that was written and is the file the line in each slot.json counts to.
-func (run *macroRun) compiled() string {
-	if len(run.blocks) == 0 {
-		return run.source
-	}
-	lines := strings.Split(run.source, "\n")
-	out := make([]string, 0, len(lines))
-	for n, line := range lines {
-		block, generated := run.blocks[n+1]
-		if !generated {
-			out = append(out, line)
-			continue
-		}
-		// The block goes in under the indentation of the line that asked for it, so
-		// one generated inside an if reads as part of that if. Its own indentation
-		// is kept on top of that.
-		//
-		// Taken from the line as it was written rather than as it stands: what the
-		// line holds now came back from psl, and how much of a line a compiler
-		// leaves alone either side of the span it filled is not something to lay a
-		// file out by.
-		asked := line
-		if n < len(run.written) {
-			asked = run.written[n]
-		}
-		indent := asked[:len(asked)-len(strings.TrimLeft(asked, " \t"))]
-		for _, statement := range strings.Split(block, "\n") {
-			out = append(out, indent+statement)
-		}
-	}
-	return strings.Join(out, "\n")
-}
-
 // spend writes the slots on a line out of the macro — `:: x ::` becomes `<x>` —
 // leaving the instruction there to be read but nothing psl would fill.
 //
@@ -474,10 +407,6 @@ func (r *Runner) runMacro(ctx context.Context) {
 	run := newMacroRun(sessionID, path, source, prompt)
 	run.spendUncovered(nodes)
 	r.runMacroNodes(ctx, run, nodes)
-
-	// The macro with every answer in it, kept beside the one that was written:
-	// what the replay actually ran, rather than what it was asked to.
-	r.store.SaveCompiledMacro(sessionID, run.compiled())
 
 	macroEnd := time.Now()
 	r.store.SaveSessionStartEndTimes(sessionID, macroStart, macroEnd)
@@ -955,9 +884,9 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 	}
 
 	// The answer was read off a smaller picture, so the distances in it are that
-	// picture's. Grown back here rather than at the click, so that the macro,
-	// the log and the compiled file all say the same screen pixels a macro
-	// written by hand would.
+	// picture's. Grown back here rather than at the click, so that the macro, the
+	// log and the slot all say the same screen pixels a macro written by hand
+	// would.
 	if grown, done := rescaleFilled(statement, slot.Start, slot.End, filled, scale); done {
 		applog.Logf("[%s] Macro slot (%s) -> %s scaled back to %s", run.sessionID, slot.Instruction,
 			oneLine(filled), oneLine(grown))
@@ -1259,8 +1188,8 @@ const maxCallDepth = 8
 //
 // What that one line holds while the replay is running is the block folded onto
 // it, which is what any answer of several lines does — see record. The block
-// itself is kept beside the file, and goes back into it a statement to a line
-// once nothing is counting line numbers any more — see compiled.
+// whole is written down under logs/<session>/slots/<n>/, where the fill that
+// produced it is, and where a pass of a loop leaves its own.
 func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macroNode) {
 	// Asked before the fill rather than after it: a block this replay would not
 	// run is not a block worth spending a model call on.
@@ -1298,12 +1227,6 @@ func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macro
 	if !generated.halted() {
 		applog.Logf("[%s] Macro %s — %s done", run.sessionID, run.where(node.line), generated.name)
 	}
-
-	// Kept after the replay rather than before it, and taken from the block's own
-	// compiled file: what goes into the macro the session writes out is the block
-	// as it ran, with its own slots filled and its own generated blocks opened out
-	// in turn.
-	run.recordBlock(node.line, generated.compiled())
 }
 
 // runMacroCall replays another PSL file where the call() stands, statement by

@@ -549,61 +549,6 @@ func TestACallInAGeneratedBlockCannotReachTheFileThatAskedForIt(t *testing.T) {
 	}
 }
 
-// The macro a session writes out is the program that ran, one statement per
-// line — so a generated block goes back to being lines in it, under the
-// indentation of the line that asked for it, and a block generated inside one
-// goes in with it.
-func TestTheCompiledMacroOpensGeneratedBlocksBackOut(t *testing.T) {
-	macro := "click(120, 300)\nif (true) {\n\t<make the two clicks>\n}\nsleep(2s)"
-	run := &macroRun{sessionID: "test", source: macro, written: strings.Split(macro, "\n")}
-
-	// What the replay leaves behind: the line with the block folded onto it, and
-	// the block kept beside it. The indentation comes from the line as it was
-	// written, so it is there whatever psl left of the rest of the line.
-	run.record(3, "click(489, 597) click(814, 814)")
-	run.recordBlock(3, "click(489, 597)\nclick(814, 814)")
-
-	want := `click(120, 300)
-if (true) {
-	click(489, 597)
-	click(814, 814)
-}
-sleep(2s)`
-	if got := run.compiled(); got != want {
-		t.Errorf("compiled() =\n%s\nwant\n%s", got, want)
-	}
-}
-
-// A statement slot inside a generated block generates a block of its own, and
-// what the session writes out is the outer one with the inner one already opened
-// out in it — each run's compiled() feeding the one above it.
-func TestTheCompiledMacroNestsGeneratedBlocks(t *testing.T) {
-	macro := ":: do the thing ::"
-	run := &macroRun{sessionID: "test", source: macro, written: strings.Split(macro, "\n")}
-
-	outerSource := "click(0, 0)\n\t:: and then the rest ::"
-	outer := &macroRun{sessionID: "test", source: outerSource, written: strings.Split(outerSource, "\n"), parent: run}
-	outer.record(2, "\tclick(1, 2) sleep(1ms)")
-	outer.recordBlock(2, "click(1, 2)\nsleep(1ms)")
-
-	run.record(1, "click(0, 0) click(1, 2) sleep(1ms)")
-	run.recordBlock(1, outer.compiled())
-
-	want := "click(0, 0)\n\tclick(1, 2)\n\tsleep(1ms)"
-	if got := run.compiled(); got != want {
-		t.Errorf("compiled() =\n%s\nwant\n%s", got, want)
-	}
-}
-
-// A macro with no generated block in it is the file itself, untouched.
-func TestTheCompiledMacroOfAMacroWithNoBlocks(t *testing.T) {
-	macro := "click(120, 300)\nmove(-120, 40)"
-	run := &macroRun{sessionID: "test", source: macro}
-	if got := run.compiled(); got != macro {
-		t.Errorf("compiled() = %q, want the file itself %q", got, macro)
-	}
-}
-
 // What a generated block is called: the file that asked and the line it asked
 // on, written as a filename because psl is handed one.
 func TestGeneratedName(t *testing.T) {

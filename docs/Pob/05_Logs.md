@@ -23,8 +23,7 @@ Structure
          +--- logs/
               +--- <session>/                    one replay of main.macro.psl.
                    +--- session.json              session details, start time and end time.
-                   +--- main.macro.psl            the macro as it stood when this session ran.
-                   +--- macro.txt                 the same macro compiled: every `:: … ::` replaced by what psl filled it with, the ones never asked about written out as `<instruction>`, and a slot that stood for statements opened out into the block it filled to.
+                   +--- main.macro.psl            the macro as it stood when this session ran, slots and all.
                    +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
                         +--- <n>/
                              +--- slot.json       the instruction, the statement and the file and line it came from, what was filled in, and which model filled it.
@@ -80,7 +79,8 @@ can include text typed by a macro or other sensitive screen-related instructions
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
 `<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`) — a `loop` asks the slots inside it once per pass, and each of those is one of these.  
-A slot written on a line of its own is filled with statements rather than with a value, and `slot.json` holds the whole block it filled to. `macro.txt` holds it too, opened out into lines where the one line that asked for it was — so its line numbers are its own from that point, while the `line` in each `slot.json` is a line of `main.macro.psl`.  
+A slot written on a line of its own is filled with statements rather than with a value, and `slot.json` holds the whole block it filled to.  
+There is no second copy of the macro with the answers written into it. For much of a macro there is no one answer to write down: a slot inside a `loop` is asked once per pass and only the last pass's could go in, and a slot the replay never reached was never asked at all. `main.macro.psl` is the macro, and `slots/` is what each fill was, in the order the fills happened — the `line` in every `slot.json` counts to that one file, which does not move.  
 
 
 See also

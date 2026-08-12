@@ -6,10 +6,12 @@ import (
 	"testing"
 )
 
-// A session keeps both macros: the one that was written, and the one that ran.
-// Reading a replay back means reading them against each other, so neither may
-// be written over the other.
-func TestSessionKeepsBothTheWrittenAndTheCompiledMacro(t *testing.T) {
+// A session keeps the macro as it was written, slots and all: the instance's own
+// copy is edited and re-recorded, and a replay is read against the lines it
+// happened from. What the slots were filled with is under slots/, a fill at a
+// time — there is no second copy of the macro with the answers in it, since a
+// slot in a loop has one answer per pass and no one of them is the macro.
+func TestSessionKeepsTheMacroAsItWasWritten(t *testing.T) {
 	root := t.TempDir()
 	info, err := CreateInstance(root, "Work laptop")
 	if err != nil {
@@ -20,13 +22,12 @@ func TestSessionKeepsBothTheWrittenAndTheCompiledMacro(t *testing.T) {
 
 	sessionID := store.CreateSession()
 	store.SaveMacro(sessionID)
-	store.SaveCompiledMacro(sessionID, "move(-120, 40)\nclick()\n")
 
 	dir := filepath.Join(root, info.ID, "logs", sessionID)
 	if text, err := os.ReadFile(filepath.Join(dir, SessionMacroName)); err != nil || string(text) != written {
 		t.Errorf("%s = %q (%v), want the macro as it was written", SessionMacroName, text, err)
 	}
-	if text, err := os.ReadFile(filepath.Join(dir, "macro.txt")); err != nil || string(text) != "move(-120, 40)\nclick()\n" {
-		t.Errorf("macro.txt = %q (%v), want the macro with its slot filled", text, err)
+	if _, err := os.Stat(filepath.Join(dir, "macro.txt")); err == nil {
+		t.Error("macro.txt is in the session — the compiled macro is not kept any more")
 	}
 }
