@@ -46,8 +46,8 @@ The [settings](06_Settings.md) are the exception, and sit at the root for it: wh
 port the server takes are how the machine works whichever instance is running, so a new instance is a
 clean sheet of work rather than a machine to set up again.
 
-`instance.log` is append-only across starts and sessions. Every row begins with an RFC 3339 UTC
-timestamp and an event name. Multiline request source is logged as separately timestamped rows under
+`instance.log` is append-only across starts and sessions. Every row begins with a fixed-width RFC
+3339 UTC timestamp with six fractional digits and an event name. Multiline request source is logged as separately timestamped rows under
 `PSL REQUEST CONTENT`, so the exact file remains readable without unlabelled continuation lines.
 The separate PSL system prompt, raw response file, and compiler output are not copied into this log;
 response metadata is under `PSL RESPONSE` and the accepted value is under `PSL ANSWER`. The existing

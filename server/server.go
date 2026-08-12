@@ -143,10 +143,10 @@ func (s *Server) Start(port int) error {
 		}
 	}(s.server)
 
-	// urlsLocked, not URLs: the lock is already held here, and sync.Mutex is
-	// not reentrant — taking it again would wedge the instance before it ever
-	// served a page.
-	s.logf("Server: serving at %s", strings.Join(s.urlsLocked(), " "))
+	// Log the bare server root, which is the index a person opens. The
+	// instance-qualified operation routes remain available and URLs() keeps
+	// advertising them to API clients.
+	s.logf("Server: serving at %s", strings.Join(s.rootURLsLocked(), " "))
 	return nil
 }
 
@@ -216,6 +216,18 @@ func (s *Server) urlsLocked() []string {
 	for _, ip := range Addresses() {
 		urls = append(urls, fmt.Sprintf("http://%s/%s",
 			net.JoinHostPort(ip.String(), strconv.Itoa(s.port)), s.instance))
+	}
+	return urls
+}
+
+func (s *Server) rootURLsLocked() []string {
+	if !s.running {
+		return nil
+	}
+	var urls []string
+	for _, ip := range Addresses() {
+		urls = append(urls, fmt.Sprintf("http://%s/",
+			net.JoinHostPort(ip.String(), strconv.Itoa(s.port))))
 	}
 	return urls
 }

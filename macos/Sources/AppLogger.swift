@@ -3,7 +3,14 @@ import Foundation
 enum AppLogger {
     private static let logFile: URL = SettingsService.projectRoot.appendingPathComponent("app.log")
     private static let queue = DispatchQueue(label: "app.logger", qos: .utility)
-    private static let formatter: ISO8601DateFormatter = ISO8601DateFormatter()
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+        return formatter
+    }()
 
     static func log(_ message: String) {
         let timestamp = formatter.string(from: Date())

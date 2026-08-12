@@ -15,7 +15,7 @@ void app_logger_log(const char *fmt, ...) {
     va_end(args);
 
     GDateTime *now = g_date_time_new_now_utc();
-    gchar *timestamp = g_date_time_format(now, "%Y-%m-%dT%H:%M:%SZ");
+    gchar *timestamp = g_date_time_format(now, "%Y-%m-%dT%H:%M:%S.%fZ");
     gchar *path = g_build_filename(settings_project_root(), "app.log", NULL);
 
     g_mutex_lock(&log_mutex);

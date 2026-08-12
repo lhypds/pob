@@ -502,6 +502,27 @@ func TestPortAlreadyTakenIsAnError(t *testing.T) {
 	}
 }
 
+func TestServingLogUsesTheBareServerRoot(t *testing.T) {
+	port := freePort(t)
+	var messages []string
+	server := New("pb-aaaa", &fakeTarget{}, func(format string, args ...any) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	})
+	if err := server.Start(port); err != nil {
+		t.Fatal(err)
+	}
+	defer server.Stop()
+
+	log := strings.Join(messages, "\n")
+	if !strings.Contains(log, "Server: serving at http://") ||
+		!strings.Contains(log, fmt.Sprintf(":%d/", port)) {
+		t.Errorf("serving log has no bare root for port %d:\n%s", port, log)
+	}
+	if strings.Contains(log, "/pb-aaaa") {
+		t.Errorf("serving log includes the instance path:\n%s", log)
+	}
+}
+
 func get(t *testing.T, url string) []byte {
 	t.Helper()
 	resp, err := http.Get(url)

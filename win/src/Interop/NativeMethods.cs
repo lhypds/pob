@@ -177,6 +177,63 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+    // ── enumerating and placing other windows ───────────────────────────────
+
+    public const long WS_EX_TOOLWINDOW = 0x00000080;
+
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+
+    // The window's visible bounds, as the compositor draws them.
+    // GetWindowRect answers with the invisible resize border included — some
+    // seven pixels of nothing on every side of a normal window, which is enough
+    // to make a window sitting *beside* the overlay look like one underneath it.
+    public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
+    // Set on a window the compositor is keeping off screen — the ghost windows
+    // every suspended packaged app leaves behind, which are otherwise visible,
+    // enumerable, and exactly the wrong thing to pick up.
+    public const int DWMWA_CLOAKED = 14;
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+                                           int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsZoomed(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute,
+                                                   out RECT pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute,
+                                                   out int pvAttribute, int cbAttribute);
+
     // ── screen capture (GDI) ────────────────────────────────────────────────
 
     // SRCCOPY only: CAPTUREBLT would pull in layered windows that the

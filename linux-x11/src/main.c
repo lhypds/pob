@@ -5,6 +5,7 @@
 // environment's native (Unix) button layout; everything else mirrors macOS.
 #include "app.h"
 #include "app_logger.h"
+#include "carry_service.h"
 #include "content_view.h"
 #include "core_bridge.h"
 #include "mouse_service.h"
@@ -272,9 +273,18 @@ void app_update_click_through(void) {
     }
 }
 
+// The lock holds the frame's size, and holds it onto what it frames.
+//
+// Moving stays allowed, because with the lock on a move no longer costs
+// anything: the windows under the frame travel with it (see carry_service.c),
+// so a macro's coordinates still land where they landed when it was recorded.
+// A resize is the one that cannot be made harmless that way — it changes where
+// every pixel inside the frame sits, and no amount of moving the windows below
+// puts them back.
 void app_update_window_lock(void) {
     gboolean locked = g_state.is_locked || g_state.is_executing;
     gtk_window_set_resizable(g_state.window, !locked);
+    carry_service_set_enabled(locked);
     // The input shape only keeps GTK's resize handles while resizing is allowed.
     app_update_click_through();
 }
@@ -284,15 +294,16 @@ static void apply_locked(gboolean on) {
     if (g_state.is_locked == on) return;
     g_state.is_locked = on;
     set_button_icon(g_state.lock_btn, on ? ICONS_LOCKED : ICONS_UNLOCKED);
-    gtk_widget_set_tooltip_text(g_state.lock_btn,
-                                on ? "Window Locked (click to unlock)"
-                                   : "Window Unlocked (click to lock)");
+    gtk_widget_set_tooltip_text(
+        g_state.lock_btn,
+        on ? "Window Locked — fixed size, and dragging carries the windows below (click to unlock)"
+           : "Window Unlocked (click to lock)");
     app_update_window_lock();
 }
 
 // The lock as the instance now stands, written to instance.json so the next
 // run starts the way this one was left: a window locked to hold a macro's
-// coordinates would otherwise come back movable and have to be locked again.
+// coordinates would otherwise come back loose and have to be locked again.
 static void set_locked(gboolean on) {
     if (g_state.is_locked == on) return;
     apply_locked(on);
@@ -564,8 +575,9 @@ static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpoi
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)ev);
         return TRUE;
     }
-    // Window locked (or executing): swallow the press so the WM drag never starts.
-    if (g_state.is_locked || g_state.is_executing) return TRUE;
+    // A locked window still drags: the lock holds its size, and what it frames
+    // comes along with it. Only resizing is taken away, which
+    // gtk_window_set_resizable and the input shape handle between them.
     return FALSE;
 }
 
@@ -821,6 +833,10 @@ static gboolean save_frame_now(gpointer data) {
 
 static gboolean on_configure(GtkWidget *w, GdkEventConfigure *ev, gpointer d) {
     (void)w; (void)ev; (void)d;
+    // First: the window below is carried by the frame's delta, and anything
+    // done in front of it only widens the gap between the frame and what it is
+    // holding.
+    carry_service_window_configured();
     if (save_frame_timeout) g_source_remove(save_frame_timeout);
     save_frame_timeout = g_timeout_add(500, save_frame_now, NULL);
     return FALSE;
@@ -1008,6 +1024,10 @@ static void on_activate(GtkApplication *app, gpointer data) {
     // The lock comes back with the frame: applied rather than set, since it is
     // what instance.json already says.
     apply_locked(settings_get_window_locked());
+
+    // After the frame is placed, so the first drag is measured from where the
+    // window actually starts rather than from wherever GTK first put it.
+    carry_service_seed();
 
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);

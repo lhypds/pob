@@ -38,6 +38,11 @@ public partial class OverlayWindow : Window
     private NativeMethods.POINT _resizeStartCursor;
     private Rect _resizeStartFrame;
 
+    // An edge drag moves the window's top-left as it resizes it, which reaches
+    // App's LocationChanged glue looking exactly like a move. CarryService asks
+    // so it can tell the two apart.
+    public bool IsResizing => _resizing;
+
     private bool _passThrough;
     private bool _edgeHot;
     private DispatcherTimer? _edgeWatch;
@@ -161,7 +166,7 @@ public partial class OverlayWindow : Window
     // Targeting and cropping need the content clickable up to the edges, and
     // a locked (or executing) window must not resize — mirror the GTK shell.
     private bool ResizeAllowed =>
-        !AppState.IsMoveResizeLocked && !AppState.IsTargeting && !AppState.IsCropping;
+        !AppState.IsResizeLocked && !AppState.IsTargeting && !AppState.IsCropping;
 
     private void OnPreviewLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

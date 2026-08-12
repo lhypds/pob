@@ -1,7 +1,10 @@
 package applog
 
 import (
+	"os"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -28,5 +31,21 @@ func TestInitClearsThePreviousInstanceSink(t *testing.T) {
 	Log("after reinitialising")
 	if called {
 		t.Error("Init retained the previous instance sink")
+	}
+}
+
+func TestAppLogTimestampHasFixedMicrosecondWidth(t *testing.T) {
+	root := t.TempDir()
+	Init(root)
+	Log("fixed width")
+
+	data, err := os.ReadFile(root + "/app.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.TrimSpace(string(data))
+	want := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] fixed width$`)
+	if !want.MatchString(line) {
+		t.Errorf("app.log timestamp is not fixed-width microseconds: %q", line)
 	}
 }

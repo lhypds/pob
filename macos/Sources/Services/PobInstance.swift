@@ -17,6 +17,7 @@ final class PobInstance: NSObject, ObservableObject {
     let mouse: MouseService
     let bridge: CoreBridge
     let recorder: UserMacroRecorder
+    let carry: CarryService
 
     private(set) weak var window: NSWindow?
     private var clickThroughEnabled = false
@@ -30,6 +31,7 @@ final class PobInstance: NSObject, ObservableObject {
         self.mouse = mouse
         bridge = CoreBridge(settings: settings, mouse: mouse)
         recorder = UserMacroRecorder(settings: settings)
+        carry = CarryService()
         super.init()
         PobInstance.registry.add(self)
 
@@ -53,6 +55,7 @@ final class PobInstance: NSObject, ObservableObject {
     func shutdown() {
         clickThroughPoll?.invalidate()
         clickThroughPoll = nil
+        carry.setEnabled(false)
         bridge.stop()
     }
 
@@ -98,6 +101,11 @@ final class PobInstance: NSObject, ObservableObject {
             window.center()
         }
 
+        // After the frame is restored, so the first drag is measured from where
+        // the window actually starts rather than from wherever SwiftUI first
+        // put it.
+        carry.attach(window: window)
+
         // Observe rather than replace window.delegate: the delegate belongs
         // to SwiftUI's WindowGroup scene bookkeeping, and stealing it makes
         // SwiftUI lose track of its windows and open spurious extra ones on
@@ -108,6 +116,10 @@ final class PobInstance: NSObject, ObservableObject {
         }
         windowObservers = [
             nc.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main) { [weak self] _ in
+                // First: the window below is carried by the frame's delta, and
+                // saving or remapping in front of it only widens the gap
+                // between the frame and what it is holding.
+                self?.carry.windowDidMove()
                 self?.saveWindowFrame()
                 self?.bridge.windowGeometryChanged()
             },
@@ -135,12 +147,12 @@ final class PobInstance: NSObject, ObservableObject {
         // The lock comes back with the frame. The view owns it from here on —
         // it is applied again as the window is attached because the window can
         // arrive after the view has already read the saved state, and a window
-        // restored to a locked instance must not be movable in between. Last,
+        // restored to a locked instance must not be resizable in between. Last,
         // so it is the same order the view's own lock takes: the window set up
-        // first, then held still.
+        // first, then held to its size.
         if settings.getWindowLocked() {
-            window.isMovable = false
             window.styleMask.remove(.resizable)
+            carry.setEnabled(true)
         }
 
         updateClickThroughPolling()

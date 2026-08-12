@@ -145,7 +145,9 @@ func (s *Storage) LogInstance(event, message string) {
 	}
 	message = strings.ReplaceAll(message, "\r\n", "\n")
 	rows := strings.Split(message, "\n")
-	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	// Six fractional digits are always written, including trailing zeroes. The
+	// variable-width RFC3339Nano format made adjacent rows shift horizontally.
+	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
 
 	s.instanceLog.Lock()
 	defer s.instanceLog.Unlock()

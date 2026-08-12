@@ -173,7 +173,7 @@ struct InstanceContentView: View {
         .onAppear {
             AppLogger.log("Pob started")
             // The lock the window was left with, so an instance set up for a
-            // macro comes back the way it was rather than movable again.
+            // macro comes back the way it was rather than loose again.
             isLocked = instance.settings.getWindowLocked()
             updateClickThrough()
             updateWindowLock()
@@ -439,7 +439,9 @@ struct InstanceContentView: View {
                 Image(systemName: isLocked ? "lock.fill" : "lock.open")
                     .foregroundStyle(controlActiveState == .inactive ? Color.secondary : Color.primary)
             }
-            .help(isLocked ? "Window Locked (click to unlock)" : "Window Unlocked (click to lock)")
+            .help(isLocked
+                ? "Window Locked — fixed size, and dragging carries the windows below (click to unlock)"
+                : "Window Unlocked (click to lock)")
         }
         ToolbarItem(placement: .automatic) {
             Button(action: {
@@ -503,18 +505,26 @@ struct InstanceContentView: View {
     }
 
     /// Running and recording both make the window's frame part of the result:
-    /// every coordinate written to macro.psl is relative to it, so a nudge or a
-    /// resize partway through aims the replay at the wrong pixels. Play and
-    /// Record turn the lock on themselves; turning it back off stays the
-    /// user's call, as it was before.
+    /// every coordinate written to macro.psl is relative to it, so a resize
+    /// partway through aims the replay at the wrong pixels. Play and Record
+    /// turn the lock on themselves; turning it back off stays the user's call,
+    /// as it was before.
     private func lockWindow() {
         isLocked = true
     }
 
+    /// The lock holds the frame's *size*, and holds it onto what it frames.
+    ///
+    /// Moving stays allowed, because with the lock on a move no longer costs
+    /// anything: the windows under the frame travel with it, so a macro's
+    /// coordinates still land where they landed when it was recorded. A resize
+    /// is the one that cannot be made harmless that way — it changes where
+    /// every pixel inside the frame sits, and no amount of moving the windows
+    /// below puts them back.
     private func updateWindowLock() {
         guard let window = instance.window else { return }
         let shouldLock = isLocked || bridge.isExecuting
-        window.isMovable = !shouldLock
+        instance.carry.setEnabled(shouldLock)
         if shouldLock {
             window.styleMask.remove(.resizable)
         } else {

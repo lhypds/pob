@@ -95,13 +95,22 @@ public static class AppState
         Overlay?.SetHitTestTransparent(pass);
     }
 
+    // The lock holds the frame's size, and holds it onto what it frames.
+    //
+    // Moving stays allowed, because with the lock on a move no longer costs
+    // anything: the windows under the frame travel with it (see CarryService),
+    // so a macro's coordinates still land where they landed when it was
+    // recorded. A resize is the one that cannot be made harmless that way — it
+    // changes where every pixel inside the frame sits, and no amount of moving
+    // the windows below puts them back.
     public static void UpdateWindowLock()
     {
-        // Locked (or executing): OverlayWindow / ToolbarWindow consult
-        // IsMoveResizeLocked before starting a drag or an edge resize.
+        // OverlayWindow consults IsResizeLocked before starting an edge resize;
+        // dragging the toolbar needs no permission from anyone.
+        CarryService.SetEnabled(IsResizeLocked);
     }
 
-    public static bool IsMoveResizeLocked => IsLocked || IsExecuting;
+    public static bool IsResizeLocked => IsLocked || IsExecuting;
 
     public static void SetTargeting(bool targeting)
     {

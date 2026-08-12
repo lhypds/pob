@@ -92,7 +92,7 @@ public partial class ToolbarWindow : Window
     {
         LockIcon.Text = locked ? GlyphLocked : GlyphUnlocked;
         LockBtn.ToolTip = locked
-            ? "Window Locked (click to unlock)"
+            ? "Window Locked — fixed size, and dragging carries the windows below (click to unlock)"
             : "Window Unlocked (click to lock)";
     }
 
@@ -238,12 +238,12 @@ public partial class ToolbarWindow : Window
 
     // Sets the window lock and syncs the toolbar button. Play and Record turn
     // it on themselves: recorded coordinates are relative to the window, so a
-    // nudge or a resize partway through aims the replay at the wrong pixels.
-    // Unlocking again is the user's call.
+    // resize partway through aims the replay at the wrong pixels. Unlocking
+    // again is the user's call.
     //
     // The lock is written to instance.json so the next run starts the way this
     // one was left: a window locked to hold a macro's coordinates would
-    // otherwise come back movable and have to be locked again.
+    // otherwise come back loose and have to be locked again.
     private void SetLocked(bool locked)
     {
         if (AppState.IsLocked == locked) return;
@@ -273,8 +273,8 @@ public partial class ToolbarWindow : Window
 
     private void OnBarLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Window locked (or executing): swallow the press so the drag never starts.
-        if (AppState.IsMoveResizeLocked) return;
+        // A locked window still drags: the lock holds its size, and what it
+        // frames comes along with it. Only the edge resize is taken away.
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 

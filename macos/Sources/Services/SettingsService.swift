@@ -215,11 +215,11 @@ class SettingsService {
     }
 
     /// Whether the window was left locked, from instance.json. It belongs
-    /// beside the frame: the lock is what keeps the frame still, so a run that
-    /// restored the frame but not the lock would come back movable — and a
-    /// window locked to hold a macro's coordinates would have to be locked
-    /// again by hand every launch. Unlocked is the answer for an instance that
-    /// has never recorded one.
+    /// beside the frame: the lock is what holds the frame to its size and to
+    /// what it frames, so a run that restored the frame but not the lock would
+    /// come back loose — and a window locked to hold a macro's coordinates
+    /// would have to be locked again by hand every launch. Unlocked is the
+    /// answer for an instance that has never recorded one.
     func getWindowLocked() -> Bool {
         loadJSON(instanceFile)["is_locked"] as? Bool ?? false
     }
@@ -229,6 +229,7 @@ class SettingsService {
         json["is_locked"] = locked
         writeInstanceFile(json)
     }
+
 
     /// Writes instance.json whole, so everything already in it — the id, the
     /// name, the times the core keeps — survives the shell's own entries.

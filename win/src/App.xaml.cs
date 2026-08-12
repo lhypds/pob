@@ -48,6 +48,7 @@ public partial class App : Application
         // so its button starts on the right icon. An instance set up for a
         // macro comes back locked rather than movable.
         AppState.IsLocked = SettingsService.GetWindowLocked();
+        AppState.UpdateWindowLock();
 
         var toolbar = new ToolbarWindow();
         var overlay = new OverlayWindow();
@@ -99,6 +100,10 @@ public partial class App : Application
                 overlay.Left = toolbar.Left;
                 overlay.Top = toolbar.Top + ToolbarWindow.BarHeight;
                 _syncing = false;
+                // After the glue, so the pair has already arrived where Carry
+                // is about to measure from — and before the save, which only
+                // widens the gap between the frame and what it is holding.
+                CarryService.FrameMoved();
             }
             ScheduleSaveFrame();
         };
@@ -110,6 +115,7 @@ public partial class App : Application
                 toolbar.Left = overlay.Left;
                 toolbar.Top = overlay.Top - ToolbarWindow.BarHeight;
                 _syncing = false;
+                CarryService.FrameMoved();
             }
             ScheduleSaveFrame();
         };
@@ -171,6 +177,11 @@ public partial class App : Application
         _overlay.Height = Math.Max(frame.Height - ToolbarWindow.BarHeight, _overlay.MinHeight);
         _syncing = false;
         ScheduleSaveFrame();
+        // Nothing here is a drag — this is the restored frame at startup, or a
+        // maximize — and _syncing kept the glue below from telling Carry about
+        // it. Re-anchor, so the next real drag is measured from where the frame
+        // ended up rather than from wherever it was before this jump.
+        CarryService.Seed();
     }
 
     public void ToggleMaximize()

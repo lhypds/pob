@@ -42,7 +42,7 @@ func Log(message string) {
 	mu.Lock()
 	if path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-			timestamp := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+			timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
 			_, _ = fmt.Fprintf(f, "[%s] %s\n", timestamp, message)
 			_ = f.Close()
 		}

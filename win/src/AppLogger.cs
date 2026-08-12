@@ -1,6 +1,7 @@
 // Timestamped append-only logging to <project root>/app.log, matching the
 // macOS/Linux AppLogger format: "[ISO8601] message\n".
 using System.IO;
+using System.Globalization;
 using Pob.Services;
 
 namespace Pob;
@@ -11,7 +12,7 @@ public static class AppLogger
 
     public static void Log(string message)
     {
-        string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", CultureInfo.InvariantCulture);
         string path = Path.Combine(SettingsService.ProjectRoot, "app.log");
         lock (LogLock)
         {

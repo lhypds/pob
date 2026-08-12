@@ -32,8 +32,9 @@ gboolean settings_get_window_frame(int *x, int *y, int *w, int *h);
 void settings_save_window_frame(int x, int y, int w, int h);
 
 // Whether the window was left locked (is_locked in instance.json). It belongs
-// beside the frame: the lock is what keeps the frame still, so a run that
-// restored the frame but not the lock would come back movable. FALSE for an
+// beside the frame: the lock is what holds the frame to its size and to what it
+// frames, so a run that restored the frame but not the lock would come back
+// loose. FALSE for an
 // instance that has never recorded one.
 gboolean settings_get_window_locked(void);
 void settings_save_window_locked(gboolean locked);
