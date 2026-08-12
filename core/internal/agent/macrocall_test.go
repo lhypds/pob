@@ -127,12 +127,12 @@ func TestEveryExecutedStatementIsWrittenToTheInstanceLog(t *testing.T) {
 	}
 	log := string(data)
 	for _, want := range []string{
-		`STEP START session=test file="macro.psl" line=1`,
+		`STEP START line=1`,
 		`kind="sleep" statement="sleep(1ms)"`,
-		`STEP END session=test file="macro.psl" line=1`,
-		`STEP START session=test file="macro.psl" line=2`,
+		`STEP END line=1`,
+		`STEP START line=2`,
 		`kind="stop" statement="stop()"`,
-		`STEP END session=test file="macro.psl" line=2`,
+		`STEP END line=2`,
 	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("instance.log does not contain %q:\n%s", want, log)
@@ -140,6 +140,29 @@ func TestEveryExecutedStatementIsWrittenToTheInstanceLog(t *testing.T) {
 	}
 	if strings.Contains(log, `statement="sleep(2ms)"`) {
 		t.Errorf("instance.log recorded a statement after stop():\n%s", log)
+	}
+	if strings.Contains(log, "STEP START session=") || strings.Contains(log, "STEP END session=") ||
+		strings.Contains(log, "STEP START file=") || strings.Contains(log, "STEP END file=") {
+		t.Errorf("step events repeat macro-level fields:\n%s", log)
+	}
+}
+
+func TestLoopEventsDoNotRepeatTheMacroSession(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, "loop (2) {\n\tsleep(1ms)\n}")
+
+	data, err := os.ReadFile(m.instanceLog)
+	if err != nil {
+		t.Fatalf("reading instance.log: %v", err)
+	}
+	log := string(data)
+	for _, event := range []string{"LOOP START", "LOOP PASS", "LOOP STOP"} {
+		if !strings.Contains(log, event+` line=1`) {
+			t.Errorf("instance.log has no %s event with its line:\n%s", event, log)
+		}
+		if strings.Contains(log, event+" session=") || strings.Contains(log, event+" file=") {
+			t.Errorf("%s repeats macro-level fields:\n%s", event, log)
+		}
 	}
 }
 

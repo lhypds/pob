@@ -12,7 +12,7 @@ Structure
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
-         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, and complete psl requests and responses.
+         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, psl request source, and response summaries and answers.
          +--- macro.psl                           the [macro](03_Macro%20PSL.md) Record writes and Execute replays.
          +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
          +--- screenshots/                        screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
@@ -47,12 +47,15 @@ port the server takes are how the machine works whichever instance is running, s
 clean sheet of work rather than a machine to set up again.
 
 `instance.log` is append-only across starts and sessions. Every row begins with an RFC 3339 UTC
-timestamp and an event name. Multiline psl content is logged as separately timestamped rows under
-`PSL REQUEST CONTENT`, `PSL RESPONSE CONTENT`, and `PSL RESPONSE OUTPUT`, so the exact file and
-compiler output remain readable without unlabelled continuation lines. The separate PSL system
-prompt is not copied into this log. `STEP START` and `STEP END` name the session, file, line,
-resolved statement, and completion state for each statement that reaches execution; condition
-checks and loop passes are included too.
+timestamp and an event name. Multiline request source is logged as separately timestamped rows under
+`PSL REQUEST CONTENT`, so the exact file remains readable without unlabelled continuation lines.
+The separate PSL system prompt, raw response file, and compiler output are not copied into this log;
+response metadata is under `PSL RESPONSE` and the accepted value is under `PSL ANSWER`. The existing
+per-slot `psl.txt` keeps compiler output for detailed diagnostics. `STEP START` and `STEP END` name
+the line, resolved statement, and completion state for each statement that reaches execution;
+condition checks and loop passes are included too. The session and macro file appear on the
+surrounding `MACRO START` event instead of being repeated on every step, loop, and psl row; `MACRO
+STOP` repeats only the session so the boundary remains explicit.
 
 The file deliberately contains the complete macro text sent to psl and its complete response. That
 can include text typed by a macro or other sensitive screen-related instructions. Protect or remove

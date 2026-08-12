@@ -100,7 +100,7 @@ Everything is under ~/.pob:
     INSTANCE                which instance directory is the current one
     app.log                 what the app did
     <instance>/
-        instance.log        lifecycle, macro steps, psl requests and responses
+        instance.log        lifecycle, macro steps, psl request source and results
         macro.psl           recorded or hand-written actions
         screenshots/        captures from the Screenshot button
         logs/               sessions, AI slots, screenshots
