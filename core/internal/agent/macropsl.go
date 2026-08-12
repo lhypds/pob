@@ -738,11 +738,12 @@ func conditionHolds(expr string) (holds, read bool) {
 // written, since a slot filled a moment ago is already in there.
 func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNode) (string, bool) {
 	statement := run.line(node.line)
+	var notes []string
 	for psl.HasSlot(statement) {
 		if ctx.Err() != nil {
 			return "", false
 		}
-		filled, ok := r.fillOneSlot(ctx, run, node, statement)
+		filled, note, ok := r.fillOneSlot(ctx, run, node, statement)
 		if !ok {
 			return "", false
 		}
@@ -750,20 +751,41 @@ func (r *Runner) fillStatement(ctx context.Context, run *macroRun, node macroNod
 			applog.Logf("[%s] Macro %s: psl returned the statement unchanged — giving up on it", run.sessionID, run.where(node.line))
 			return "", false
 		}
+		notes = append(notes, note)
 		statement = filled
 	}
-	applog.Logf("[%s] Macro %s: %s -> %s", run.sessionID, run.where(node.line), node.raw, strings.TrimSpace(statement))
+	// One bracket per slot: a statement with two of them was two model calls, and
+	// which model answered and how long it took is a thing about each of them.
+	applog.Logf("[%s] Macro %s: %s -> %s%s", run.sessionID, run.where(node.line), node.raw,
+		strings.TrimSpace(statement), fillNotes(notes))
 	return statement, true
 }
 
+// fillNotes puts the model and duration of each fill in brackets after the
+// statement they made, and writes nothing at all where there was no fill to
+// report — a statement whose slots were already filled costs no model call.
+func fillNotes(notes []string) string {
+	var kept []string
+	for _, note := range notes {
+		if note != "" {
+			kept = append(kept, note)
+		}
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return "  [" + strings.Join(kept, "; ") + "]"
+}
+
 // fillOneSlot runs psl once over the macro and returns the statement with its
-// first slot filled.
-func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode, statement string) (string, bool) {
+// first slot filled, and which model answered and how long it took — what the
+// row naming the filled statement puts in brackets after it.
+func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode, statement string) (string, string, bool) {
 	seq := run.nextSlot()
 
 	slot, found := psl.FindSlot(statement, 0)
 	if !found {
-		return statement, true
+		return statement, "", true
 	}
 
 	// A `.macro` says in its name that it is replayed without the compiler, so a
@@ -776,7 +798,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 			run.sessionID, run.where(node.line), run.name, slot.Instruction, psl.MacroExt)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 			"a "+psl.MacroExt+" file is replayed without psl, so its slots are never filled", nil)
-		return "", false
+		return "", "", false
 	}
 
 	// psl fills the first slot in the file, and the file is handed over whole,
@@ -790,13 +812,13 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 			run.sessionID, slot.Instruction, live+1, run.where(node.line))
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 			"the first slot in the file is not this statement's", nil)
-		return "", false
+		return "", "", false
 	}
 
 	shot, err := r.br.CaptureScreenshot(true, nil)
 	if err != nil {
 		applog.Logf("[%s] Macro slot :: %s :: — no screenshot", run.sessionID, slot.Instruction)
-		return "", false
+		return "", "", false
 	}
 
 	// What the model is shown, which is the screenshot itself unless image_scale
@@ -827,7 +849,7 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 			applog.Logf("[%s] Macro slot :: %s :: — could not find the statement in the scaled model copy", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 				"the statement is missing from the scaled model copy", shot)
-			return "", false
+			return "", "", false
 		}
 		modelStatement = modelLines[targetLine]
 		var modelSlotFound bool
@@ -836,81 +858,67 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 			applog.Logf("[%s] Macro slot :: %s :: — could not find the slot in the scaled model copy", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false,
 				"the slot is missing from the scaled model copy", shot)
-			return "", false
+			return "", "", false
 		}
 	}
 
 	applog.Logf("[%s] Macro slot :: %s :: — running psl...", run.sessionID, slot.Instruction)
-	// The macro source itself is not copied into the log — that is what
-	// slots/<n>/ keeps. What the row says is which slot was asked and what it
-	// was shown; the answer comes back on the PSL RESPONSE that pairs with it.
-	r.store.LogInstancef("PSL REQUEST",
-		"session=%s sequence=%d line=%d instruction=%q image_bytes=%d image_scale=%g",
-		run.sessionID, seq, node.line, slot.Instruction, len(shot), scale)
 
 	result, err := r.psl.Fill(ctx, psl.Request{Source: modelSource, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {
 		responseOutput := err.Error()
-		responseDuration := time.Duration(0)
-		if result != nil {
-			responseDuration = result.Duration
-			if result.Output != "" {
-				responseOutput = result.Output
-			}
+		if result != nil && result.Output != "" {
+			responseOutput = result.Output
 		}
-		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q duration=%s error=%q",
-			run.sessionID, seq, "error", responseDuration.Round(time.Millisecond), err)
 		applog.Errorf("[%s] Macro slot :: %s :: — psl failed: %v", run.sessionID, slot.Instruction, err)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", "", false, responseOutput, shot)
-		return "", false
+		return "", "", false
 	}
 
 	filled, ok := extractLine(modelSource, result.Source, targetLine)
 	if !ok {
-		r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q model=%q duration=%s",
-			run.sessionID, seq, "unreadable", result.Model, result.Duration.Round(time.Millisecond))
 		applog.Logf("[%s] Macro slot :: %s :: — could not read the filled statement back", run.sessionID, slot.Instruction)
 		r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
-		return "", false
+		return "", "", false
 	}
 	if scale < 1 {
 		var restored bool
 		filled, restored = restoreFilledSurroundings(statement, slot.Start, slot.End,
 			modelStatement, modelSlot.Start, modelSlot.End, filled)
 		if !restored {
-			r.store.LogInstancef("PSL RESPONSE", "session=%s sequence=%d status=%q model=%q duration=%s",
-				run.sessionID, seq, "rejected", result.Model, result.Duration.Round(time.Millisecond))
 			applog.Logf("[%s] Macro slot :: %s :: — psl rewrote text outside the slot in the scaled model copy; not using its coordinates", run.sessionID, slot.Instruction)
 			r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, "", result.Model, false, result.Output, shot)
-			return "", false
+			return "", "", false
 		}
+	}
+
+	// What the model wrote, before any of it is grown: the row below says it as
+	// the model said it, and the statement it became after.
+	answer, hasAnswer := filledAnswer(statement, slot.Start, slot.End, filled)
+	if !hasAnswer {
+		answer = filled
 	}
 
 	// The answer was read off a smaller picture, so the distances in it are that
 	// picture's. Grown back here rather than at the click, so that the macro, the
 	// log and the slot all say the same screen pixels a macro written by hand
 	// would.
-	if grown, done := rescaleFilled(statement, slot.Start, slot.End, filled, scale); done {
-		applog.Logf("[%s] Macro slot :: %s :: -> %s scaled back to %s", run.sessionID, slot.Instruction,
-			oneLine(filled), oneLine(grown))
-		filled = grown
+	grown, rescaled := rescaleFilled(statement, slot.Start, slot.End, filled, scale)
+	filled = closeUnterminatedStrings(grown)
+	if rescaled {
+		applog.Logf("[%s] Macro slot :: %s :: -> %s, scaled back to %s", run.sessionID, slot.Instruction,
+			oneLine(answer), oneLine(filled))
 	}
-	filled = closeUnterminatedStrings(filled)
-
-	applog.Logf("[%s] Macro slot :: %s :: -> %s  [%s, %s]", run.sessionID, slot.Instruction, oneLine(filled),
-		result.Model, result.Duration.Round(time.Millisecond))
-	// Logged here rather than the moment psl answered, so the value on the row is
-	// the statement that is about to run — in screen pixels, scaled back.
-	r.store.LogInstancef("PSL RESPONSE",
-		"session=%s sequence=%d status=%q model=%q duration=%s value=%q",
-		run.sessionID, seq, "ok", result.Model, result.Duration.Round(time.Millisecond), filled)
+	// The statement itself is not logged again where it did not have to be grown:
+	// the `Macro <where>: <written> -> <filled>` row under this one already says
+	// what the line became, and carries the model and how long it took.
 	r.store.SaveMacroSlot(run.sessionID, seq, run.name, node.line, statement, slot.Instruction, filled, result.Model, true, result.Output, shot)
 
 	// The answer goes into the macro, which is what the next run is handed: with
 	// this slot no longer in the file, the first one left is the next statement's
 	// — or the second slot of this one, if it has two.
 	run.record(node.line, filled)
-	return filled, true
+	return filled, fmt.Sprintf("%s, %s", result.Model, result.Duration.Round(time.Millisecond)), true
 }
 
 // Nothing of Pob's is written permanently into the macro: no preamble and no
@@ -1206,7 +1214,7 @@ func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macro
 		return
 	}
 
-	filled, ok := r.fillOneSlot(ctx, run, node, run.line(node.line))
+	filled, note, ok := r.fillOneSlot(ctx, run, node, run.line(node.line))
 	if !ok {
 		return
 	}
@@ -1228,8 +1236,8 @@ func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macro
 	generated := newGeneratedRun(run, node.line, block)
 	generated.spendUncovered(nodes)
 
-	applog.Logf("[%s] Macro %s -> %s (%d actions)", run.sessionID, run.where(node.line),
-		generated.name, countMacroNodes(nodes))
+	applog.Logf("[%s] Macro %s -> %s (%d actions)%s", run.sessionID, run.where(node.line),
+		generated.name, countMacroNodes(nodes), fillNotes([]string{note}))
 	r.runMacroNodes(ctx, generated, nodes)
 	if !generated.halted() {
 		applog.Logf("[%s] Macro %s — %s done", run.sessionID, run.where(node.line), generated.name)

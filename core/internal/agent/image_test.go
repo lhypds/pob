@@ -154,6 +154,30 @@ func TestAnAbsoluteAnswerIsGrownBackToScreenPixels(t *testing.T) {
 	}
 }
 
+// What the model wrote, told apart from the statement it went into — this is
+// what the log says a slot came back as, before it is grown back to screen
+// pixels.
+func TestTheAnswerIsCutOutOfTheFilledStatement(t *testing.T) {
+	cases := []struct {
+		statement, filled, want string
+		ok                      bool
+	}{
+		{"click(::the Save button::)", "click(180, 193)", "180, 193", true},
+		{"move(40, ::how far down::)", "move(40, 120)", "120", true},
+		{`typeText("Hi ::the name::!")`, `typeText("Hi Bob!")`, "Bob", true},
+		// A line psl rewrote further than the slot: no part of it is the answer.
+		{"click(::the Save button::)", "moveTo(180, 193)", "", false},
+	}
+	for _, c := range cases {
+		start := strings.Index(c.statement, "::")
+		end := strings.LastIndex(c.statement, "::") + 2
+		got, ok := filledAnswer(c.statement, start, end, c.filled)
+		if got != c.want || ok != c.ok {
+			t.Errorf("filledAnswer(%q, %q) = %q, %v; want %q, %v", c.statement, c.filled, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 // Once the model-facing statement's scaled surroundings are replaced with the
 // original source text, only the slot's answer is grown.
 func TestOnlyTheAnsweredPartOfAStatementIsScaled(t *testing.T) {

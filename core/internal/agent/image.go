@@ -221,22 +221,37 @@ func macroArgumentSpans(args string) [][2]int {
 	return append(spans, [2]int{start, len(args)})
 }
 
+// filledAnswer cuts what the model wrote out of a filled statement: the text
+// standing where the slot stood, found by the text that surrounded it.
+//
+// Not found there is not found at all. A filled line whose surroundings moved is
+// one psl rewrote further than the slot, and picking an answer out of it would
+// be a guess at which part of the line was the model's.
+func filledAnswer(statement string, start, end int, filled string) (string, bool) {
+	if start < 0 || end > len(statement) || start > end {
+		return "", false
+	}
+	prefix, suffix := statement[:start], statement[end:]
+	if !strings.HasPrefix(filled, prefix) || !strings.HasSuffix(filled, suffix) ||
+		len(filled) < len(prefix)+len(suffix) {
+		return "", false
+	}
+	return filled[len(prefix) : len(filled)-len(suffix)], true
+}
+
 // restoreFilledSurroundings takes the answer out of the scaled, model-facing
 // statement and puts it between the text surrounding the slot in the real
 // statement. Existing coordinates therefore remain byte-for-byte as written;
 // only the answer goes on to rescaleFilled.
 func restoreFilledSurroundings(statement string, start, end int, modelStatement string,
 	modelStart, modelEnd int, filled string) (string, bool) {
-	if start < 0 || end > len(statement) || start > end ||
-		modelStart < 0 || modelEnd > len(modelStatement) || modelStart > modelEnd {
+	if start < 0 || end > len(statement) || start > end {
 		return filled, false
 	}
-	modelPrefix, modelSuffix := modelStatement[:modelStart], modelStatement[modelEnd:]
-	if !strings.HasPrefix(filled, modelPrefix) || !strings.HasSuffix(filled, modelSuffix) ||
-		len(filled) < len(modelPrefix)+len(modelSuffix) {
+	answer, ok := filledAnswer(modelStatement, modelStart, modelEnd, filled)
+	if !ok {
 		return filled, false
 	}
-	answer := filled[len(modelPrefix) : len(filled)-len(modelSuffix)]
 	return statement[:start] + answer + statement[end:], true
 }
 
@@ -266,17 +281,15 @@ func rescaleFilled(statement string, start, end int, filled string, scale float6
 	if !scaledCalls[callName(statement)] {
 		return filled, false
 	}
-	prefix, suffix := statement[:start], statement[end:]
-	if !strings.HasPrefix(filled, prefix) || !strings.HasSuffix(filled, suffix) ||
-		len(filled) < len(prefix)+len(suffix) {
+	answer, ok := filledAnswer(statement, start, end, filled)
+	if !ok {
 		return filled, false
 	}
-	answer := filled[len(prefix) : len(filled)-len(suffix)]
 	scaled, ok := rescaleNumbers(answer, scale)
 	if !ok {
 		return filled, false
 	}
-	return prefix + scaled + suffix, true
+	return statement[:start] + scaled + statement[end:], true
 }
 
 // rescaleBlock grows the numbers in a block a statement slot filled to back to

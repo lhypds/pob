@@ -12,7 +12,7 @@ Structure
 
     +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
          +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
-         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, and each psl request and the answer it was filled with.
+         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, and what each `:: … ::` slot was filled with.
          +--- src/                                this instance's [macros](03_Macro%20PSL.md).
          |    +--- main.macro.psl                 the entry point: what Record writes and Execute replays. `.macro.psl` says psl fills its `:: … ::` slots.
          |    +--- <name>.macro.psl               anything `main` calls that has slots of its own.
@@ -70,13 +70,18 @@ checks and loop passes are included too. The session and macro file appear on th
 START` event instead of being repeated on every step and loop row; `MACRO STOP` repeats only the
 session so the boundary remains explicit.
 
-Each `:: … ::` slot is a `PSL REQUEST` row naming the slot and the picture it was asked about, and a
-`PSL RESPONSE` row that pairs with it: the model, how long it took, and `value=` — the replacement
-text, in screen pixels, that is about to run. A response that failed says so under `status` and
-carries no value. The macro source sent to psl, the raw response, the system prompt, and the
-compiler output are not copied into this log — the per-session `slots/<n>/` directory keeps
-`slot.json`, `psl.txt` and the screenshot for detailed diagnostics. The same fill also reads as one
-line of detail beside it: `Macro slot :: <instruction> :: -> <statement>`.
+What a `:: … ::` slot became is the row for the line it was on:
+`Macro <where>: <as written> -> <as filled>`, with which model answered and how long it took in
+brackets after it — one bracket per slot, since a line with two of them was two model calls. The
+statement on it is the one that runs, in screen pixels.
+
+A slot answered off a shrunken picture (see `image_scale` in [Settings](06_Settings.md)) adds the
+one row that statement cannot show: `Macro slot :: <instruction> :: -> <answer>, scaled back to
+<statement>` — what the model wrote, and what it became once grown back to the screen's own pixels.
+
+The macro source sent to psl, the raw response, the system prompt, and the compiler output are not
+copied into this log; the per-session `slots/<n>/` directory keeps `slot.json`, `psl.txt` and the
+screenshot for detailed diagnostics.
 
 The file still contains resolved statements, which can include text a macro typed or other sensitive
 screen-related instructions. Protect or remove `instance.log` when sharing an instance directory.
