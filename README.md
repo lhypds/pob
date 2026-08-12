@@ -47,6 +47,10 @@ powershell -ExecutionPolicy Bypass -File install.ps1      # Windows
 On macOS drag `Pob.app` to Applications and use Pob → Install 'pob'
 Command, in the app menu.  
 
+macOS Only: allow the blocked first open in System Settings ▸ Privacy & Security, add
+`Pob.app` to Accessibility by hand — nothing prompts for it, and clicks are
+dropped in silence until you do — and allow Screen Recording.
+
 
 Macro PSL
 ---------

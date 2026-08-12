@@ -1082,7 +1082,7 @@ int main(int argc, char **argv) {
 #else
     GApplicationFlags app_flags = G_APPLICATION_FLAGS_NONE;
 #endif
-    GtkApplication *app = gtk_application_new("jp.co.linktivity.pob", app_flags);
+    GtkApplication *app = gtk_application_new("com.gcc3.pob", app_flags);
     g_state.app = app;
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL);
     g_signal_connect(app, "shutdown", G_CALLBACK(on_shutdown), NULL);

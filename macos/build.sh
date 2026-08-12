@@ -19,7 +19,7 @@ done
 
 VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo '0.0.1')"
 APP_NAME="Pob"
-BUNDLE_ID="jp.co.linktivity.pob"
+BUNDLE_ID="com.gcc3.pob"
 MACOS_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$MACOS_DIR/macos_app"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"

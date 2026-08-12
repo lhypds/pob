@@ -27,6 +27,21 @@ Windows has no bash to dispatch from, so it runs its own scripts directly —
 `win\setup.ps1`, `win\start.ps1`, `win\restart.ps1`, `win\stop.ps1`,
 `win\build.ps1` — one per root script, doing the same job.
 
+On macOS a dev run and a built bundle are two different things to the
+permission system. Posting mouse and keyboard events needs Accessibility, which
+macOS grants per app identity: `./start.sh` runs `macos/.build/*/Pob` as a child
+of your terminal, so the events are attributed to the terminal app and borrow
+its grant, while `Pob.app` is its own identity and needs its own — added by
+hand, since nothing prompts for Accessibility. `macos/build.sh` ad-hoc signs
+the bundle whenever no Developer ID is in the keychain, and macOS pins an
+ad-hoc grant to that exact binary, so every rebuild invalidates it: the toggle
+stays on in the list while clicks stop working. After replacing an installed
+copy, reset it and add the app again.
+
+```
+tccutil reset Accessibility com.gcc3.pob
+```
+
 
 Release
 -------

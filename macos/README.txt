@@ -19,16 +19,26 @@ This folder holds:
 
 Drag Pob.app to your Applications folder, then open it.
 
-macOS will ask for two permissions the first time, in System Settings ▸
-Privacy & Security:
+The app is not notarized, so that first open is blocked. Try it anyway, then
+go to System Settings ▸ Privacy & Security — the Security section, under
+"Allow applications from", then offers Open Anyway for Pob. On macOS 15 and
+later that is the only route; control-click ▸ Open no longer works for an
+unnotarized app. If macOS calls the app damaged instead, the download
+quarantine flag is still on it:
+
+    xattr -dr com.apple.quarantine /Applications/Pob.app
+
+Then two permissions, both in System Settings ▸ Privacy & Security:
 
   - Accessibility     — to move the mouse and type
   - Screen Recording  — to see the screen
 
-Grant both and reopen Pob. Nothing works without them.
+Screen Recording prompts for itself, the first time Pob captures anything.
+Accessibility never prompts: open it, press +, and add Pob.app by hand. Until
+you do, Pob looks like it is working — it draws its own cursor and walks it
+around the screen — while every click it makes is dropped in silence.
 
-The app is not notarized, so the first open may need a right-click ▸ Open
-(or System Settings ▸ Privacy & Security ▸ Open Anyway).
+Grant both and reopen Pob. Nothing works without them.
 
 
 2. Install the `pob` command
