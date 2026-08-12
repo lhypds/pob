@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,19 +185,38 @@ func showStatus(inst *Instance) {
 		case !running:
 			fmt.Printf("Server:     off\n")
 		case len(urls) == 0:
-			fmt.Printf("Server:     %s\n", pob["url"])
+			addr, _ := pob["url"].(string)
+			fmt.Printf("Server:     %s\n", dashboardURL(addr))
 		default:
 			// One line per network the machine is on: which of them a phone can
 			// reach depends on where the phone is.
 			for i, u := range urls {
+				addr, _ := u.(string)
 				if i == 0 {
-					fmt.Printf("Server:     %v\n", u)
+					fmt.Printf("Server:     %s\n", dashboardURL(addr))
 				} else {
-					fmt.Printf("            %v\n", u)
+					fmt.Printf("            %s\n", dashboardURL(addr))
 				}
 			}
 		}
 	}
+}
+
+// dashboardURL is the address to open: the server's bare root, which answers
+// with the index page — what is running here, and links on to the control and
+// view pages. The address the core reports names the instance in its path, and
+// a GET there is a picture of the screen rather than somewhere to land, so the
+// path is dropped, the same way the app's instance badge does it. The
+// instance-qualified address stays what the Operation API is called at.
+//
+// Anything that doesn't parse as an address is printed as it came: a reading
+// nobody expected is still better said than swallowed.
+func dashboardURL(addr string) string {
+	parsed, err := url.Parse(addr)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return addr
+	}
+	return parsed.Scheme + "://" + parsed.Host + "/"
 }
 
 // cmdMacro replays the instance's main macro. After starting it polls briefly

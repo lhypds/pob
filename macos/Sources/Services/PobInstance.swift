@@ -22,6 +22,10 @@ final class PobInstance: NSObject, ObservableObject {
     private(set) weak var window: NSWindow?
     private var clickThroughEnabled = false
     private var clickThroughPoll: Timer?
+    /// True while MouseService is posting an automation burst at the app below,
+    /// during which the click-through decision below is suspended — see
+    /// setAutomationPassThrough.
+    private var automationPassThrough = false
     private var windowObservers: [NSObjectProtocol] = []
 
     override init() {
@@ -71,6 +75,9 @@ final class PobInstance: NSObject, ObservableObject {
         mouse.window = window
         bridge.window = window
         recorder.window = window
+        mouse.holdClickThrough = { [weak self] posting in
+            self?.setAutomationPassThrough(posting)
+        }
 
         window.isOpaque = false
         window.backgroundColor = NSColor.clear
@@ -204,12 +211,44 @@ final class PobInstance: NSObject, ObservableObject {
         clickThroughPoll = timer
     }
 
+    /// Suspends the click-through decision for the length of an automation
+    /// burst, and resumes it after. Called by MouseService (main thread) around
+    /// every click, drag, scroll and their events.
+    ///
+    /// Everything below decides from `NSEvent.mouseLocation` — where the user's
+    /// real pointer is — which is the right question for a person reaching for
+    /// the window and the wrong one for a click Pob is posting somewhere else
+    /// entirely. The two ran concurrently: the poll fires every 50 ms, the burst
+    /// takes about 150 ms, so a real pointer resting on the toolbar or the
+    /// resize edge — where this window must keep its own clicks — reliably took
+    /// mouse events back mid-burst and swallowed the press meant for the app
+    /// below. Holding the decision is what makes the burst's own window state
+    /// hold for as long as the burst.
+    func setAutomationPassThrough(_ posting: Bool) {
+        automationPassThrough = posting
+        if posting {
+            guard let window else { return }
+            setIgnoresMouseEvents(true, on: window)
+        } else {
+            updateIgnoresMouseEvents()
+        }
+    }
+
     /// Central function — called for every mouseMoved event, on every poll AND
     /// on any state change. When click-through is disabled (targeting /
     /// executing) it ACTIVELY sets ignoresMouseEvents = false on every call, so
     /// no stale monitor callback can re-enable it.
     func updateIgnoresMouseEvents() {
         guard let window else { return }
+
+        // A burst is in flight and aimed at the app below: it owns the window's
+        // click-through until it says otherwise. This comes before the
+        // clickThroughEnabled branch because that branch actively sets the
+        // window live, and an executing session posts these same events.
+        guard !automationPassThrough else {
+            setIgnoresMouseEvents(true, on: window)
+            return
+        }
 
         guard clickThroughEnabled else {
             setIgnoresMouseEvents(false, on: window)

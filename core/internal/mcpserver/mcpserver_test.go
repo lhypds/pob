@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -29,6 +30,26 @@ type fakeShell struct {
 	pos      bridge.Point
 	called   []string
 	notified []string // "method=param" for each notification received
+	// The window's size in its own pixels. Zero reads as 800×600 — small enough
+	// that nothing is shrunk, which is what most tests want.
+	winW, winH int
+	// The crop of the last capture, as the shell received it: in window pixels,
+	// whatever grid the client asked in.
+	lastCrop *bridge.CropRect
+}
+
+// setWindow gives the fake a window big enough that a capture of it has to be
+// shrunk before a client is handed it.
+func (f *fakeShell) setWindow(w, h int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.winW, f.winH = w, h
+}
+
+func (f *fakeShell) cropNow() *bridge.CropRect {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastCrop
 }
 
 // note records a notification (no id, no response) such as mcp.state.
@@ -71,11 +92,40 @@ func (f *fakeShell) handle(method string, params map[string]any) map[string]any 
 		f.pos.X += num("dx")
 		f.pos.Y += num("dy")
 	case "screenshot.capture":
+		// Crop, then shrink, then report both sizes — the order and the reply
+		// every real shell gives, because what the core makes of the picture
+		// depends on the difference between them.
+		srcW, srcH := f.winW, f.winH
+		if srcW == 0 || srcH == 0 {
+			srcW, srcH = 800, 600
+		}
+		f.lastCrop = nil
+		if c, ok := params["crop"].(map[string]any); ok {
+			cropNum := func(key string) float64 {
+				v, _ := c[key].(float64)
+				return v
+			}
+			f.lastCrop = &bridge.CropRect{
+				X: cropNum("x"), Y: cropNum("y"), W: cropNum("width"), H: cropNum("height"),
+			}
+			srcW, srcH = int(f.lastCrop.W), int(f.lastCrop.H)
+		}
+		outW, outH := srcW, srcH
+		if mw := num("maxWidth"); mw > 0 && mw < srcW {
+			outW = mw
+			outH = int(math.Round(float64(srcH) * float64(mw) / float64(srcW)))
+		}
 		var buf bytes.Buffer
-		if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 800, 600))); err != nil {
+		if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, outW, outH))); err != nil {
 			return map[string]any{}
 		}
-		return map[string]any{"image": encodeBase64(buf.Bytes())}
+		return map[string]any{
+			"image":        encodeBase64(buf.Bytes()),
+			"width":        float64(outW),
+			"height":       float64(outH),
+			"sourceWidth":  float64(srcW),
+			"sourceHeight": float64(srcH),
+		}
 	case "keyboard.type", "keyboard.keyPress":
 		return map[string]any{}
 	}
@@ -676,6 +726,84 @@ func TestScreenshotReportsItsDimensions(t *testing.T) {
 	}
 	if text := resultText(t, resp); !bytes.Contains([]byte(text), []byte("800×600")) {
 		t.Errorf("size note missing dimensions: %q", text)
+	}
+}
+
+// The picture a client is handed is the only grid it can read a coordinate off,
+// so it has to be the grid the coordinate tools take. A window this size cannot
+// reach an LLM whole — the host shrinks it to fit the model's limit first, and
+// nothing in the picture says by how much — so Pob shrinks it first and takes
+// coordinates in that grid. Without this a click lands at less than half the
+// distance from the corner and hits whatever happens to be there.
+func TestCoordinatesAreInThePictureTheClientWasHanded(t *testing.T) {
+	srv, shell := newTestServer(t)
+	shell.setWindow(3288, 2936)
+
+	text := resultText(t, srv.callTool(1, "take_screenshot", map[string]any{}))
+	if !strings.Contains(text, "1500×1339") {
+		t.Fatalf("picture was not shrunk to a grid a client can keep: %q", text)
+	}
+
+	// A position read off that picture is quoted back in the same grid...
+	got := resultText(t, srv.callTool(1, "click", map[string]any{"x": 461.0, "y": 309.0}))
+	if want := "Moved and clicked. Cursor at (461, 309)."; got != want {
+		t.Errorf("click: got %q, want %q", got, want)
+	}
+	// ...and lands on the window pixel it names, 2.192× further out than the
+	// number itself.
+	if pos := shell.posNow(); pos.X != 1010 || pos.Y != 677 {
+		t.Errorf("click landed at (%d, %d), want (1010, 677)", pos.X, pos.Y)
+	}
+}
+
+// A crop comes back at the same scale as the whole view, so one pixel means the
+// same thing in both: a coordinate read off a crop is the offset it was taken at
+// plus what was read, with no scaling in between. Shrinking each crop to the cap
+// instead would give every one its own private grid.
+func TestACropKeepsTheViewsScale(t *testing.T) {
+	srv, shell := newTestServer(t)
+	shell.setWindow(3288, 2936)
+	srv.callTool(1, "take_screenshot", map[string]any{}) // establishes the grid
+
+	text := resultText(t, srv.callTool(1, "take_screenshot", map[string]any{
+		"crop_x": 100.0, "crop_y": 50.0, "crop_width": 300.0, "crop_height": 200.0,
+	}))
+	// Asked for in the picture's pixels, cut in the window's.
+	crop := shell.cropNow()
+	if crop == nil || int(crop.X) != 219 || int(crop.Y) != 109 || int(crop.W) != 657 || int(crop.H) != 438 {
+		t.Errorf("crop cut at %+v, want x=219 y=109 w=657 h=438", crop)
+	}
+	if !strings.Contains(text, "300×200") {
+		t.Errorf("crop came back at its own scale rather than the view's: %q", text)
+	}
+	// The offset a client is told to add has to be in the grid it reads in.
+	if !strings.Contains(text, "crop taken at (100, 50)") {
+		t.Errorf("crop offset not quoted in the picture's pixels: %q", text)
+	}
+}
+
+// Replay drives the window, not a picture of it, and knows nothing about what
+// size some client was once shown. So whatever grid a call arrives in, the line
+// written down is in window pixels.
+func TestRecordedLinesStayInWindowPixels(t *testing.T) {
+	srv, shell := newTestServer(t)
+	rec := &fakeRecorder{on: true}
+	srv.SetRecorder(rec)
+	shell.setWindow(3288, 2936)
+	srv.callTool(1, "take_screenshot", map[string]any{})
+
+	srv.callTool(1, "move", map[string]any{"dx": 100.0, "dy": 50.0})
+	srv.callTool(1, "scroll", map[string]any{"dx": 0.0, "dy": 100.0})
+
+	want := []string{"takeScreenshot()", "move(219, 109)", "scroll(0, 219)"}
+	got := rec.recorded()
+	if len(got) != len(want) {
+		t.Fatalf("recorded %d lines, want %d:\n got: %q\nwant: %q", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: got %q, want %q", i, got[i], want[i])
+		}
 	}
 }
 

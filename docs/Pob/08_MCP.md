@@ -154,12 +154,26 @@ listening — which it does from the moment the app starts — shows nothing.
 Coordinates
 -----------
 
-All coordinates are **screenshot pixels**, origin at the top-left of the image
-returned by `take_screenshot` — the client never deals with screen-level
-positions. `take_screenshot` reports the image size alongside the PNG, so the
-model can read a target's coordinates off the image and pass them straight to
-the tools that take an absolute position. Every action returns the resulting
-cursor position.
+All coordinates are **pixels of the image `take_screenshot` returned**, origin at
+its top-left — the client never deals with screen-level positions. The image's
+own grid is the coordinate space, so a target read off the picture goes straight
+into the tools that take an absolute position, and every action answers with the
+cursor position in that same grid.
+
+That is a promise about the picture as the client sees it, which is why Pob
+shrinks it before sending: an LLM host resizes an image to fit its model's limit
+before the model ever sees it — around 1568 pixels on the long edge for
+Anthropic's API — and a window captured at 3288 across arrives at less than half
+size with nothing in it to say so. A coordinate read off that picture would land
+at less than half the distance from the corner. So `take_screenshot` caps the
+long edge at 1500 pixels itself, small enough that no host has reason to touch
+it, and converts what comes back into the window's own pixels. A **crop keeps the
+same scale as the whole view** rather than being shrunk to the cap of its own, so
+one pixel means the same thing in both and a coordinate read off a crop is the
+crop's offset plus what was read — no scaling in between.
+
+Macros are unaffected: replay drives the window rather than a picture of it, so a
+recorded line is written in window pixels whatever grid the call arrived in.
 
 The name says which kind of coordinate a tool takes: `move`, `drag` and `scroll`
 are measured from wherever the cursor is now, and `move_to` and `drag_to` are
@@ -179,7 +193,7 @@ Perception:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer, `with_cursor?`: boolean | Capture the Pob window content area and return a PNG image plus its pixel dimensions. When all four crop parameters are provided, only that region is captured (coordinates read off a crop need the crop offset added back). `with_cursor` draws the virtual cursor into the image. |
+| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer, `with_cursor?`: boolean | Capture the Pob window content area and return a PNG image plus its pixel dimensions, shrunk so the picture the client receives is the picture that was sent. When all four crop parameters are provided, only that region is captured — asked for in the same pixels as everything else, and returned at the view's scale, so coordinates read off a crop need only the crop offset added back. `with_cursor` draws the virtual cursor into the image. |
 | `get_cursor_position` | — | Current virtual cursor position, without moving or clicking. |
 
 Pointer:

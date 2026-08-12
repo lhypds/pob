@@ -25,9 +25,9 @@ Endpoint
 http://<host>:<server_port>/<instance-id>/
 ```
 
-`pob status` prints the address — one line per network the machine is on. The
-instance ID is the one in the toolbar, and since a machine keeps it for good
-the address is worth writing down.
+`pob status` prints the machine's bare address — one line per network it is on
+— and its instance ID on the line above. The ID is the one in the toolbar, and
+since a machine keeps it for good the address is worth writing down.
 
 The bare root works for commands too — there is one instance to reach, so a
 POST to `http://192.168.1.40:8033/` lands the same way. It is served where it

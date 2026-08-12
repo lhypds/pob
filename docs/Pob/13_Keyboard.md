@@ -12,7 +12,9 @@ one window, for driving a machine running Pob from another computer.
 
 With no address it opens Settings… straight away, laid out as the address
 itself — machine, port, instance ID — and remembered between runs. Pasting the
-whole line `pob status` prints into the first field fills all three.
+address `pob status` prints into the first field fills the machine and the
+port; the instance ID is on that status's Instance line, and on the toolbar
+badge.
 
 Keys pressed on your real keyboard are forwarded too while the window has
 focus, and light up the matching keycap. Modifier keys latch — click once for

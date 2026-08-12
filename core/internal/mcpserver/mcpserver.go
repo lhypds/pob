@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -37,6 +38,83 @@ type Server struct {
 	server   *http.Server
 	host     string
 	port     int
+
+	// The picture last handed to a client, and what its pixels are worth —
+	// see viewMaxEdge and scale().
+	viewMu    sync.Mutex
+	viewScale float64
+	viewSrcW  int
+	viewSrcH  int
+}
+
+// viewMaxEdge caps the longest edge of the picture take_screenshot hands back.
+//
+// Coordinates are only useful if the grid they are read off is the grid they are
+// sent back in, and a client cannot keep that promise for a picture this big: an
+// LLM host shrinks an image to fit its model's limit before the model ever sees
+// it — around 1568 pixels for Anthropic's API — so a window captured at 3288
+// across arrives at less than half size. Nothing says so in the picture, and a
+// coordinate read straight off it lands at less than half the distance from the
+// corner. Whether it hits anything is luck.
+//
+// So the shrinking is done here, to a size no host has reason to touch, and the
+// picture that arrives is the picture that was sent. What a client reads off it
+// is what it sends back, and scale() puts it back into the window's own pixels.
+// The cap is on the longest edge rather than the width because a host measures
+// the same way — a tall narrow window capped by its width would still be shrunk
+// on the way in.
+const viewMaxEdge = 1500
+
+// scale is how many window pixels one pixel of the last picture is worth. 1
+// until a screenshot has established otherwise, which is also what an older
+// shell — one that reports no sizes and does no shrinking — leaves it at, so
+// coordinates there mean what they always did.
+func (s *Server) scale() float64 {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+	if s.viewScale <= 0 {
+		return 1
+	}
+	return s.viewScale
+}
+
+// setView records the mapping a fresh uncropped capture establishes. Only an
+// uncropped one may: a crop reports its own size as the source, which says
+// nothing about the window it came from.
+func (s *Server) setView(scale float64, srcW, srcH int) {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+	s.viewScale = scale
+	s.viewSrcW = srcW
+	s.viewSrcH = srcH
+}
+
+// windowSize is the last known size of the window in its own pixels, or zeroes
+// before the first capture.
+func (s *Server) windowSize() (int, int) {
+	s.viewMu.Lock()
+	defer s.viewMu.Unlock()
+	return s.viewSrcW, s.viewSrcH
+}
+
+// toWindow takes a coordinate the client read off the picture into the window's
+// pixel space, which is what the shell and a recorded macro speak.
+func (s *Server) toWindow(v float64) float64 { return v * s.scale() }
+
+// toView is the way back, for the position every result quotes: a client that
+// is handed a number it could not have read off its own picture cannot use it
+// for the next call.
+func (s *Server) toView(v int) int { return int(math.Round(float64(v) / s.scale())) }
+
+// fitWidth is the width to ask the shell to shrink to so that neither edge of
+// the result passes viewMaxEdge. Zero — leave it alone — when it already fits,
+// or when the size is not known yet.
+func fitWidth(srcW, srcH int) int {
+	long := max(srcW, srcH)
+	if srcW <= 0 || srcH <= 0 || long <= viewMaxEdge {
+		return 0
+	}
+	return max(1, int(math.Round(float64(srcW)*float64(viewMaxEdge)/float64(long))))
 }
 
 // MacroRecorder is the main macro's sink. An action driven over MCP is an action
@@ -439,62 +517,63 @@ func toolDefinitions() []any {
 		return map[string]any{"type": "string", "description": description}
 	}
 
-	// Absolute coordinates are screenshot pixels as reported by take_screenshot,
-	// which is also what the position line of every result refers to.
-	absX := num("Target x in screenshot pixels, measured from the left edge.")
-	absY := num("Target y in screenshot pixels, measured from the top edge.")
+	// Absolute coordinates are pixels of the picture take_screenshot handed back,
+	// which is also the space the position line of every result is quoted in.
+	absX := num("Target x, measured from the left edge of the last screenshot as you see it.")
+	absY := num("Target y, measured from the top edge of the last screenshot as you see it.")
 	xy := func() map[string]any { return map[string]any{"x": absX, "y": absY} }
 	// The same pair where a tool takes it or does without it. Both or neither:
 	// one coordinate alone would aim at a position half of which was guessed,
 	// so it is refused rather than filled in.
 	optionalXY := func() map[string]any {
 		return map[string]any{
-			"x": num("Optional target x in screenshot pixels, measured from the left edge. Give both x and y, or neither."),
-			"y": num("Optional target y in screenshot pixels, measured from the top edge. Give both x and y, or neither."),
+			"x": num("Optional target x, measured from the left edge of the last screenshot. Give both x and y, or neither."),
+			"y": num("Optional target y, measured from the top edge of the last screenshot. Give both x and y, or neither."),
 		}
 	}
 
 	return []any{
 		tool("take_screenshot",
 			"Capture a screenshot of the Pob window and return it as a PNG image, plus a text line "+
-				"giving the image size. Start here: the returned pixel dimensions are the coordinate "+
-				"space every other tool uses. All crop parameters are optional. When all four are "+
-				"provided, only that region is captured — note that crops shift the origin, so read "+
-				"coordinates for later clicks off an uncropped shot. Coordinates are in screenshot "+
-				"pixels, origin at top-left. Set with_cursor to true to draw the virtual cursor into "+
-				"the image.",
+				"giving the image size. Start here: this image's own pixel grid is the coordinate "+
+				"space every other tool uses, so a position read straight off it is a position you "+
+				"can click — read it off the image as you see it and pass those numbers back. All "+
+				"crop parameters are optional. When all four are provided, only that region is "+
+				"captured; a crop comes back at the same scale as the whole view, so a coordinate "+
+				"read off it plus the crop's own offset is a coordinate you can click. Origin is "+
+				"top-left. Set with_cursor to true to draw the virtual cursor into the image.",
 			map[string]any{
-				"crop_x":      map[string]any{"type": "integer", "description": "Left edge in screenshot pixels."},
-				"crop_y":      map[string]any{"type": "integer", "description": "Top edge in screenshot pixels."},
-				"crop_width":  map[string]any{"type": "integer", "description": "Width in screenshot pixels."},
-				"crop_height": map[string]any{"type": "integer", "description": "Height in screenshot pixels."},
+				"crop_x":      map[string]any{"type": "integer", "description": "Left edge, in the pixels of the last screenshot."},
+				"crop_y":      map[string]any{"type": "integer", "description": "Top edge, in the pixels of the last screenshot."},
+				"crop_width":  map[string]any{"type": "integer", "description": "Width, in the pixels of the last screenshot."},
+				"crop_height": map[string]any{"type": "integer", "description": "Height, in the pixels of the last screenshot."},
 				"with_cursor": map[string]any{"type": "boolean", "description": "Draw the virtual cursor into the image. Default false."},
 			}, nil),
 		tool("get_cursor_position",
-			"Return the current virtual cursor position in screenshot pixels without moving or "+
-				"clicking anything.",
+			"Return the current virtual cursor position, in the pixels of the last screenshot, "+
+				"without moving or clicking anything.",
 			nil, nil),
 		tool("reset_cursor",
 			"Reset the virtual cursor to its home position and return the new position. "+
 				"Use this to get to a known state before a sequence of relative moves.",
 			nil, nil),
 		tool("move",
-			"Move the virtual cursor by a relative pixel offset in screenshot space "+
-				"(origin = top-left, x increases right, y increases down) and return the new position. "+
+			"Move the virtual cursor by a relative offset, measured across the last screenshot "+
+				"(x increases right, y increases down), and return the new position. "+
 				"Use this to nudge an already-close cursor; prefer move_to when you can read the "+
 				"target off a screenshot.",
 			map[string]any{
-				"dx": num("Horizontal offset in screenshot pixels. Positive = right, negative = left."),
-				"dy": num("Vertical offset in screenshot pixels. Positive = down, negative = up."),
+				"dx": num("Horizontal offset, measured across the last screenshot. Positive = right, negative = left."),
+				"dy": num("Vertical offset, measured across the last screenshot. Positive = down, negative = up."),
 			}, []string{"dx", "dy"}),
 		tool("move_to",
-			"Move the virtual cursor to an absolute position in screenshot pixels and return the new "+
-				"position. This is the reliable way to aim: read the target's coordinates off a "+
-				"screenshot and pass them directly.",
+			"Move the virtual cursor to an absolute position in the last screenshot's pixels and "+
+				"return the new position. This is the reliable way to aim: read the target's "+
+				"coordinates off the screenshot and pass them directly.",
 			xy(), []string{"x", "y"}),
 		tool("click",
-			"Left-click. With x and y, move the virtual cursor to that absolute screenshot-pixel "+
-				"position and click there, in one step — the preferred way to click something you "+
+			"Left-click. With x and y, move the virtual cursor to that position in the last "+
+				"screenshot and click there, in one step — the preferred way to click something you "+
 				"located in a screenshot. With neither, click where the cursor already is.",
 			optionalXY(), nil),
 		tool("right_click",
@@ -506,24 +585,24 @@ func toolDefinitions() []any {
 				"e.g. to open an item or select a word.",
 			optionalXY(), nil),
 		tool("drag",
-			"Drag from the current virtual cursor position by (dx, dy) screenshot pixels. "+
-				"The cursor ends at the new position.",
+			"Drag from the current virtual cursor position by (dx, dy), measured across the last "+
+				"screenshot. The cursor ends at the new position.",
 			map[string]any{
-				"dx": num("Horizontal drag offset in screenshot pixels. Positive = right."),
-				"dy": num("Vertical drag offset in screenshot pixels. Positive = down."),
+				"dx": num("Horizontal drag offset, measured across the last screenshot. Positive = right."),
+				"dy": num("Vertical drag offset, measured across the last screenshot. Positive = down."),
 			}, []string{"dx", "dy"}),
 		tool("drag_to",
-			"Drag from the current virtual cursor position to an absolute screenshot-pixel position. "+
-				"Place the cursor on the drag source first (move_to), then call this with the "+
-				"drop target.",
+			"Drag from the current virtual cursor position to an absolute position in the last "+
+				"screenshot's pixels. Place the cursor on the drag source first (move_to), then call "+
+				"this with the drop target.",
 			xy(), []string{"x", "y"}),
 		tool("scroll",
 			"Scroll at the current virtual cursor position. dy > 0 = scroll down, dy < 0 = scroll up, "+
 				"dx > 0 = scroll right. The scroll lands on whatever is under the cursor, so put the "+
 				"cursor on the pane you mean to scroll first (move_to).",
 			map[string]any{
-				"dx": num("Horizontal scroll amount in pixels."),
-				"dy": num("Vertical scroll amount in pixels. Positive = down."),
+				"dx": num("Horizontal scroll amount, measured across the last screenshot."),
+				"dy": num("Vertical scroll amount, measured across the last screenshot. Positive = down."),
 			}, []string{"dx", "dy"}),
 		tool("type_text",
 			"Type text at the current keyboard focus. Click the target field first — this types wherever "+
@@ -578,11 +657,16 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		v, _ := numArg(arguments, key)
 		return v
 	}
+	// Relative offsets are read off the picture the same as absolute ones — the
+	// distance between two things in it — so they are scaled the same way.
+	optWindow := func(key string) float64 { return s.toWindow(opt(key)) }
 	position := func(pos bridge.Point, err error, action string) map[string]any {
 		if err != nil {
 			return rpcError(id, -32603, action+" failed: "+err.Error())
 		}
-		return textResult(id, fmt.Sprintf("%s. Cursor at (%d, %d).", action, pos.X, pos.Y))
+		// Quoted in the picture's pixels: a position the client could not have
+		// read off its own screenshot is not one it can use in the next call.
+		return textResult(id, fmt.Sprintf("%s. Cursor at (%d, %d).", action, s.toView(pos.X), s.toView(pos.Y)))
 	}
 	// target reads the required absolute (x, y) pair. Defaulting a missing
 	// coordinate to 0 would silently aim at the top-left corner, so this
@@ -593,7 +677,8 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if !okX || !okY {
 			return 0, 0, rpcError(id, -32602, "Tool "+name+" requires numeric x and y in screenshot pixels")
 		}
-		return x, y, nil
+		// Into the window's own pixels, which is what the shell aims with.
+		return s.toWindow(x), s.toWindow(y), nil
 	}
 	// clickTarget reads the (x, y) a click may be aimed at. It is offered rather
 	// than required — a click with neither goes where the cursor already is — but
@@ -619,7 +704,7 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		if err != nil {
 			return rpcError(id, -32603, "Cursor query failed: "+err.Error())
 		}
-		return textResult(id, fmt.Sprintf("Cursor at (%d, %d).", pos.X, pos.Y))
+		return textResult(id, fmt.Sprintf("Cursor at (%d, %d).", s.toView(pos.X), s.toView(pos.Y)))
 
 	case "reset_cursor":
 		pos, err := s.br.ResetCursor()
@@ -629,9 +714,13 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		return position(pos, err, "Cursor reset")
 
 	case "move":
-		pos, err := s.br.MoveCursor(opt("dx"), opt("dy"))
+		dx, dy := optWindow("dx"), optWindow("dy")
+		pos, err := s.br.MoveCursor(dx, dy)
 		if err == nil {
-			s.record("move(%d, %d)", int(opt("dx")), int(opt("dy")))
+			// The window's pixels, not the picture's: replay moves the cursor
+			// itself, and knows nothing about how big a picture some client was
+			// once shown.
+			s.record("move(%d, %d)", int(dx), int(dy))
 		}
 		return position(pos, err, "Cursor moved")
 
@@ -685,9 +774,10 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		return position(pos, err, action)
 
 	case "drag":
-		pos, err := s.br.Drag(opt("dx"), opt("dy"))
+		dx, dy := optWindow("dx"), optWindow("dy")
+		pos, err := s.br.Drag(dx, dy)
 		if err == nil {
-			s.record("drag(%d, %d)", int(opt("dx")), int(opt("dy")))
+			s.record("drag(%d, %d)", int(dx), int(dy))
 		}
 		return position(pos, err, "Dragged")
 
@@ -704,9 +794,12 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 		return position(pos, err, "Dragged")
 
 	case "scroll":
-		pos, err := s.br.Scroll(int(opt("dx")), int(opt("dy")))
+		// A scroll is a distance across the picture too — "past this much of
+		// what I can see" — so it travels the same way as a move.
+		dx, dy := int(optWindow("dx")), int(optWindow("dy"))
+		pos, err := s.br.Scroll(dx, dy)
 		if err == nil {
-			s.record("scroll(%d, %d)", int(opt("dx")), int(opt("dy")))
+			s.record("scroll(%d, %d)", dx, dy)
 		}
 		return position(pos, err, "Scrolled")
 
@@ -755,20 +848,42 @@ func textResult(id any, text string) map[string]any {
 }
 
 func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any {
+	scale := s.scale()
 	var crop *bridge.CropRect
 	x, okX := arguments["crop_x"].(float64)
 	y, okY := arguments["crop_y"].(float64)
 	cw, okW := arguments["crop_width"].(float64)
 	ch, okH := arguments["crop_height"].(float64)
-	if okX && okY && okW && okH {
-		crop = &bridge.CropRect{X: x, Y: y, W: cw, H: ch}
+	cropped := okX && okY && okW && okH
+	if cropped {
+		// The crop is asked for in the picture's pixels, like every other
+		// coordinate, and cut in the window's.
+		crop = &bridge.CropRect{X: s.toWindow(x), Y: s.toWindow(y), W: s.toWindow(cw), H: s.toWindow(ch)}
 	}
 
 	withCursor, _ := arguments["with_cursor"].(bool)
-	shot, err := s.br.CaptureScreenshot(withCursor, crop)
+	opts := bridge.ShotOptions{WithCursor: withCursor, Crop: crop}
+	if cropped {
+		// A crop comes back at the same scale as the whole view, so that a pixel
+		// means the same thing in both and a coordinate read off the crop is the
+		// crop's own offset plus what was read. Shrinking it to the cap instead
+		// would make every crop its own private grid.
+		opts.MaxWidth = int(math.Round(crop.W / scale))
+	} else if srcW, srcH := s.windowSize(); srcW > 0 {
+		opts.MaxWidth = fitWidth(srcW, srcH)
+	} else {
+		// Nothing captured yet, so the window's shape is unknown and only its
+		// width can be capped. A window taller than it is wide comes back long
+		// on this first call and right on every one after it.
+		opts.MaxWidth = viewMaxEdge
+	}
+
+	shot, err := s.br.CaptureShot(opts)
 	if err != nil {
 		return rpcError(id, -32603, "Screenshot capture failed")
 	}
+	// The macro is replayed against the window, not against a picture, so it
+	// records the region in window pixels.
 	if crop != nil {
 		s.record("takeScreenshot(%d, %d, %d, %d)", int(crop.X), int(crop.Y), int(crop.W), int(crop.H))
 	} else {
@@ -777,17 +892,22 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 
 	content := []any{map[string]any{
 		"type":     "image",
-		"data":     base64.StdEncoding.EncodeToString(shot),
+		"data":     base64.StdEncoding.EncodeToString(shot.Bytes),
 		"mimeType": "image/png",
 	}}
-	// The absolute-position tools address this image's pixel grid, so state its
-	// size — and, for a crop, the offset those coordinates need.
-	if cfg, err := png.DecodeConfig(bytes.NewReader(shot)); err == nil {
+	// The picture's own pixel grid is the coordinate space every other tool
+	// takes, so state its size — and, for a crop, the offset those coordinates
+	// need. Measured off the bytes rather than taken from the shell's reply,
+	// which an older shell does not send.
+	if cfg, err := png.DecodeConfig(bytes.NewReader(shot.Bytes)); err == nil {
+		if !cropped && shot.SourceWidth > 0 && cfg.Width > 0 {
+			s.setView(float64(shot.SourceWidth)/float64(cfg.Width), shot.SourceWidth, shot.SourceHeight)
+		}
 		note := fmt.Sprintf("Screenshot is %d×%d pixels; coordinates for move_to / click "+
 			"are measured from its top-left corner.", cfg.Width, cfg.Height)
-		if crop != nil {
+		if cropped {
 			note += fmt.Sprintf(" This is a crop taken at (%d, %d), so add that offset to any coordinate "+
-				"read off this image before clicking.", int(crop.X), int(crop.Y))
+				"read off this image before clicking.", int(x), int(y))
 		}
 		content = append(content, map[string]any{"type": "text", "text": note})
 	}

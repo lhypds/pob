@@ -18,6 +18,24 @@ class MouseService: ObservableObject {
     /// automation events are posted. Set by PobInstance.attach.
     weak var window: NSWindow?
 
+    /// Suspends the click-through policy for the length of an automation burst,
+    /// and hands it back afterwards. Set by PobInstance.attach; called on the
+    /// main thread with true before any event is posted and false once they all
+    /// are.
+    ///
+    /// It is not enough to set `window.ignoresMouseEvents` here and post. That
+    /// property has another owner — PobInstance decides it from where the *real*
+    /// pointer is, on a 50 ms poll and on every mouse-moved event the app sees —
+    /// and the real pointer has nothing to do with where an automated click is
+    /// aimed. A pointer left resting on this window's toolbar or resize edge
+    /// makes that policy hand mouse events back to Pob between this burst's
+    /// first event and its button-press, and the press then lands on Pob's own
+    /// window: the window comes forward and the app below never hears the click,
+    /// which is a click that plainly did not happen from anywhere except the
+    /// event log. Where the pointer happened to be resting is also why it came
+    /// and went.
+    var holdClickThrough: ((Bool) -> Void)?
+
     /// The content area in screenshot pixels — the box the cursor lives in.
     /// Kept up to date by CoreBridge from the same context that maps pixels to
     /// the screen. Zero until the window geometry is known, which is what makes
@@ -241,6 +259,12 @@ class MouseService: ObservableObject {
     /// the one shell that pressed without ever arriving.
     private func passThrough(arrivingAt target: CGPoint? = nil, _ body: () async -> Void) async {
         await MainActor.run {
+            // Before the window property, and for the whole burst rather than
+            // just this instant: the policy that also owns it has to be told to
+            // hold still, or it puts back whatever it thinks the real pointer
+            // implies — most of the way through this method, and again on any
+            // mouse-moved event the burst itself generates.
+            self.holdClickThrough?(true)
             self.window?.ignoresMouseEvents = true
         }
         // Let the window server process the hit-test change before posting events.
@@ -270,7 +294,16 @@ class MouseService: ObservableObject {
         CGAssociateMouseAndMouseCursorPosition(1)
 
         await MainActor.run {
-            self.window?.ignoresMouseEvents = false
+            if let holdClickThrough = self.holdClickThrough {
+                // Hands the property back to its owner, which decides afresh
+                // what the pointer's real position now calls for. Setting it
+                // false here instead would be this method's parting guess at
+                // that, and wrong for a pointer sitting where clicks should
+                // pass through — until the next poll corrected it.
+                holdClickThrough(false)
+            } else {
+                self.window?.ignoresMouseEvents = false
+            }
         }
     }
 
