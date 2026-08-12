@@ -903,7 +903,6 @@ func (r *Runner) fillOneSlot(ctx context.Context, run *macroRun, node macroNode,
 		"session=%s sequence=%d file=%q line=%d instruction=%q image_bytes=%d image_scale=%g",
 		run.sessionID, seq, run.name, node.line, slot.Instruction, len(shot), scale)
 	r.store.LogInstance("PSL REQUEST CONTENT", modelSource)
-	r.store.LogInstance("PSL REQUEST PROMPT", run.prompt)
 
 	result, err := r.psl.Fill(ctx, psl.Request{Source: modelSource, Name: run.name, Image: shot, Prompt: run.prompt})
 	if err != nil {

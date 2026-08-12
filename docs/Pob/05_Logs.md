@@ -48,10 +48,11 @@ clean sheet of work rather than a machine to set up again.
 
 `instance.log` is append-only across starts and sessions. Every row begins with an RFC 3339 UTC
 timestamp and an event name. Multiline psl content is logged as separately timestamped rows under
-`PSL REQUEST CONTENT`, `PSL REQUEST PROMPT`, `PSL RESPONSE CONTENT`, and `PSL RESPONSE OUTPUT`, so
-the exact file and compiler output remain readable without unlabelled continuation lines. `STEP
-START` and `STEP END` name the session, file, line, resolved statement, and completion state for each
-statement that reaches execution; condition checks and loop passes are included too.
+`PSL REQUEST CONTENT`, `PSL RESPONSE CONTENT`, and `PSL RESPONSE OUTPUT`, so the exact file and
+compiler output remain readable without unlabelled continuation lines. The separate PSL system
+prompt is not copied into this log. `STEP START` and `STEP END` name the session, file, line,
+resolved statement, and completion state for each statement that reaches execution; condition
+checks and loop passes are included too.
 
 The file deliberately contains the complete macro text sent to psl and its complete response. That
 can include text typed by a macro or other sensitive screen-related instructions. Protect or remove
