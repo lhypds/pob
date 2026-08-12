@@ -12,7 +12,8 @@ typeText("the next thing")
 ```
 
 Nothing under it runs — not the statements after it, not the rest of the block it is in, not the
-passes a `loop` around it had left, and not the file that called the file it is written in. It is
+passes a `loop` around it had left, not the watching a [`once`](09_once%20blocks.md) around it would
+otherwise go on doing, and not the file that called the file it is written in. It is
 the Stop button reached from inside the macro, and it takes effect between one statement and the
 next in exactly the same way. There is no delay after it: `macro_default_delay` is the gap before
 the statement that would have been next, and there is no such statement.
@@ -29,10 +30,16 @@ Where this earns its place is beside an [`if`](07_if%20blocks.md). A macro that 
 it was not written for — a login screen, an error dialog, a list that came back empty — has nothing
 useful to do with the forty statements below, and `stop()` is how it says so.
 
+It is also the only end a [`once`](09_once%20blocks.md) has of its own. That block watches the
+screen until something stops the run, so a watch meant to finish on its own — after the file it was
+waiting for arrives, when the last message has been answered — says so with a `stop()` under an
+`if` inside it.
+
 
 See also
 --------
 
 - [if blocks](07_if%20blocks.md) — the condition a `stop()` usually sits under
-- [How it runs](12_How%20it%20runs.md) — Stop, `stop_hook`, and the delay between statements
-- [call](10_call.md) — the file a `stop()` also ends
+- [once blocks](09_once%20blocks.md) — the block a `stop()` is the only end of
+- [How it runs](13_How%20it%20runs.md) — Stop, `stop_hook`, and the delay between statements
+- [call](11_call.md) — the file a `stop()` also ends

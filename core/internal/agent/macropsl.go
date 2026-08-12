@@ -18,7 +18,9 @@ import (
 
 // macroNode is one statement of a macro: an action call, an if block whose body
 // only runs when its condition holds — and whose else block runs when it does
-// not — or a loop block whose body runs again and again.
+// not — a loop block whose body runs again and again, or a once block that
+// watches the screen and runs its body each time the screen changes into
+// something its condition holds of.
 type macroNode struct {
 	// raw is the statement as written, with any :: … :: slot still in it. It is
 	// the line psl fills, and what is parsed once it has been.
@@ -43,17 +45,18 @@ type macroNode struct {
 
 	isIf   bool // if only
 	isLoop bool // loop only
+	isOnce bool // once only
 
 	// isElseIf says the if was written on the else of the one above it —
 	// `} else if (…) {`. It is that same if either way, and what this is for is
 	// the log, which names a block the way it is written.
 	isElseIf bool
 
-	// condition is the parenthesised expression, slots unfilled: an if always has
-	// one, a loop only when it was written with one.
+	// condition is the parenthesised expression, slots unfilled: an if and a once
+	// always have one, a loop only when it was written with one.
 	condition string
 	count     int         // loop only — the most passes it may make
-	body      []macroNode // if and loop — the statements the block holds
+	body      []macroNode // if, loop and once — the statements the block holds
 
 	// elseBody is what an if runs when its condition does not hold — the
 	// statements under its else — and is empty in an if written without one. A
@@ -474,6 +477,11 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 			continue
 		}
 
+		if node.isOnce {
+			r.runMacroOnce(ctx, run, node)
+			continue
+		}
+
 		// A slot written on a line of its own is answered with the statements that
 		// belong there rather than with a value, so what comes back is replayed
 		// rather than read as the one call the line was.
@@ -639,6 +647,10 @@ func (r *Runner) evalMacroCondition(ctx context.Context, run *macroRun, node mac
 	switch {
 	case node.isLoop:
 		no, unread = "the loop ends here", "the loop ends here"
+	case node.isOnce:
+		// Neither ends the block: a once is asked again at the next change, so a
+		// no and a non-answer alike leave it watching where it was.
+		no, unread = "back to watching the screen", "back to watching the screen"
 	case len(node.elseBody) == 1 && node.elseBody[0].isElseIf:
 		no, unread = "the else if is asked next", "skipping the block and the else if under it"
 	case len(node.elseBody) > 0:
@@ -687,6 +699,10 @@ func readCondition(node macroNode, header string) string {
 		condition, _, _ := parseLoopHeader(header)
 		return condition
 	}
+	if node.isOnce {
+		condition, _ := parseOnceHeader(header)
+		return condition
+	}
 	// An if written on an else has the } and the keyword of the block before it
 	// in front of the one it opens, and the whole line is what came back from psl.
 	if node.isElseIf {
@@ -708,6 +724,8 @@ func macroBlockLabel(node macroNode) string {
 		return fmt.Sprintf("loop (%d)", node.count)
 	case node.isLoop:
 		return fmt.Sprintf("loop (%s, %d)", node.condition, node.count)
+	case node.isOnce:
+		return fmt.Sprintf("once (%s)", node.condition)
 	case node.isElseIf:
 		return fmt.Sprintf("else if (%s)", node.condition)
 	default:
@@ -1343,6 +1361,13 @@ const macroElseKeyword = "else"
 // the body of the block to run once, unbounded and unguarded.
 const macroLoopKeyword = "loop"
 
+// macroOnceKeyword opens a block that watches the screen and runs when it has
+// changed into something the condition holds of: `once (<condition>) {`, closed
+// the same way as the other two. It is written at the top level of a file and
+// never inside another block, and nothing under it is ever reached — see
+// runMacroOnce. Matched whatever its case, for the reason `if` and `loop` are.
+const macroOnceKeyword = "once"
+
 // macroStopKeyword ends the replay where it stands. It is written `stop()`, with
 // the parentheses every other call has: they hold nothing, and what they buy is
 // that a statement is one shape throughout the language rather than one shape and
@@ -1451,6 +1476,13 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 		*probs = append(*probs, problemf(line, format, a...))
 	}
 
+	// The once block this file has, if it has one, and whether the line under it
+	// has been reported yet. A once watches until the run is stopped, so
+	// everything written after it is a statement nothing will ever reach — said
+	// once, at the first of them, since a whole tail of unreachable statements is
+	// one mistake and not twenty.
+	onceLine, saidUnreachable := 0, false
+
 	for i < len(lines) {
 		lineNo := i + 1
 		trimmed := strings.TrimSpace(lines[i])
@@ -1466,6 +1498,11 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 				continue
 			}
 			return nodes, i, blockClosed
+		}
+
+		if onceLine > 0 && !saidUnreachable {
+			problem(lineNo, "nothing here runs — the once block opened on line %d watches the screen until the run is stopped, so the statements under it are never reached", onceLine)
+			saidUnreachable = true
 		}
 
 		if _, braced, isElse := cutElse(trimmed); isElse {
@@ -1527,6 +1564,45 @@ func parseMacroBlock(lines []string, i, depth, opened int, probs *[]macroProblem
 				continue
 			}
 			nodes = append(nodes, macroNode{isLoop: true, condition: condition, count: count, body: body, line: lineNo, raw: trimmed})
+			continue
+		}
+
+		if condition, isOnce := parseOnceHeader(trimmed); isOnce {
+			// Read either way, like the if and the loop: a header Pob cannot read
+			// takes its block with it, rather than leaving the body to run once when
+			// what was written asks for it to run every time the screen changes.
+			var body []macroNode
+			var end blockEnd
+			body, i, end = parseMacroBlock(lines, i, depth+1, lineNo, probs)
+			// A once has no other half either: the condition it asks is asked again
+			// at the next change rather than answered once, so there is no moment an
+			// else would be the thing that runs instead.
+			if end == blockElse {
+				elseLine := i
+				problem(elseLine, "else belongs to an if, and the block this one closes is a once — so its whole block is dropped")
+				var dropped []macroNode
+				dropped, i, _ = parseMacroBlock(lines, i, depth+1, elseLine, probs)
+				*probs = append(*probs, checkStatements(dropped)...)
+			}
+			// Where it is written is half of what it means. A once never hands the
+			// run back, so one inside an if would be a block that runs to the end of
+			// the run in place of the statements after it, and one inside a loop or
+			// another once would be a second pass that never comes — neither of which
+			// is what the file looks like it says. At the top level it is what it
+			// reads as: the file runs down to it and then watches.
+			if depth > 0 {
+				problem(lineNo, "once watches the screen until the run is stopped and is written at the top level of a file, not inside another block — so its whole block is dropped")
+				// Checked though it is dropped, for the same reason an if's body is.
+				*probs = append(*probs, checkStatements(body)...)
+				continue
+			}
+			if condition == "" {
+				problem(lineNo, "once wants a condition in parentheses and a { at the end of the line — once (:: … ::) { — so its whole block is dropped")
+				*probs = append(*probs, checkStatements(body)...)
+				continue
+			}
+			nodes = append(nodes, macroNode{isOnce: true, condition: condition, body: body, line: lineNo, raw: trimmed})
+			onceLine = lineNo
 			continue
 		}
 
@@ -1751,6 +1827,32 @@ func parseLoopHeader(line string) (condition string, count int, isLoop bool) {
 		return "", 0, true
 	}
 	return condition, n, true
+}
+
+// parseOnceHeader reads `once (<condition>) {`.
+//
+// The condition is PSL text, the same an `if` takes and read the same way, and
+// a once is never written without one: the whole statement is a question asked
+// of every screen that arrives, so a once with nothing to ask is a block with
+// no reason to run. The second return says the line opens a block at all; an
+// empty condition on a line that did is what says the header could not be read.
+func parseOnceHeader(line string) (string, bool) {
+	rest, isOnce := cutKeyword(line, macroOnceKeyword)
+	if !isOnce {
+		return "", false
+	}
+	expr, ok := strings.CutSuffix(strings.TrimSpace(rest), "{")
+	if !ok {
+		return "", true
+	}
+	expr, ok = cutParens(strings.TrimSpace(expr))
+	if !ok {
+		return "", true
+	}
+	if expr == "" || (!psl.HasSlot(expr) && !isBoolLiteral(expr)) {
+		return "", true
+	}
+	return expr, true
 }
 
 // lastArgumentComma returns the offset of the comma between a loop's condition

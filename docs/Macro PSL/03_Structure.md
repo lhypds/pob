@@ -10,13 +10,15 @@ macro — and every file it `call`s — when Execute is pressed, and puts up **M
 the line numbers instead of moving the cursor. A macro is often half-recorded and half-typed, and
 what a bad line in the middle of one costs is not the thirty-nine statements around it but the
 half of them that would have played before anyone noticed. See
-[When something is wrong](11_When%20something%20is%20wrong.md), and `pob macro --check` to read a
+[When something is wrong](12_When%20something%20is%20wrong.md), and `pob macro --check` to read a
 macro without running it.
 
-There are three kinds of statement: a **[call](06_Calls.md)**, which does something to the machine or
+There are four kinds of statement: a **[call](06_Calls.md)**, which does something to the machine or
 to the run, an **[if block](07_if%20blocks.md)**, which guards the statements inside it with a
-condition and holds the `else` that runs when the condition does not hold, and a
-**[loop block](08_loop%20blocks.md)**, which runs the statements inside it again and again. Any of them can hold an **[AI slot](05_AI%20slot.md)** — a piece of a statement that is a
+condition and holds the `else` that runs when the condition does not hold, a
+**[loop block](08_loop%20blocks.md)**, which runs the statements inside it again and again, and a
+**[once block](09_once%20blocks.md)**, which watches the screen for as long as the run lasts and
+runs the statements inside it each time it changes into something the condition holds of. Any of them can hold an **[AI slot](05_AI%20slot.md)** — a piece of a statement that is a
 prompt rather than a value, filled in as the replay reaches it.
 
 A slot can also stand where a whole statement goes, written on a line of its own. That one is
@@ -33,4 +35,4 @@ See also
 
 - [Comments](04_Comments.md) — `//` and `/* … */`
 - [Calls](06_Calls.md) — every statement and its arguments
-- [How it runs](12_How%20it%20runs.md) — the origin, and the delay between statements
+- [How it runs](13_How%20it%20runs.md) — the origin, and the delay between statements

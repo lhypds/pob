@@ -20,14 +20,21 @@ adds no delay of its own — the model call is the wait — and neither does goi
 stepping into a `call`: the gap between one pass or one file and the next is the delay after the
 last statement before it, as it would be anywhere else.
 
+A [`once`](09_once%20blocks.md) has a wait of its own, `once_interval`, which is the pause between
+the screenshots it compares rather than a delay between statements — the statements inside it are
+spaced by `macro_default_delay` like everything else.
+
 Stop halts the run between statements, and during a `sleep()` rather than after it. A run that
 reaches the end fires `stop_hook`, if one is set; a stopped run does not. A run that reached a
-`stop()` statement did reach its end, and fires it.
+`stop()` statement did reach its end, and fires it. A run watching inside a `once` has no end of its
+own to reach: Stop is what ends it, so `stop_hook` fires only where the block itself reached a
+`stop()`.
 
 
 See also
 --------
 
-- [stop](09_stop.md) — the Stop button reached from inside the macro
-- [Settings](../Pob/06_Settings.md) — `macro_default_delay` and `stop_hook`
+- [stop](10_stop.md) — the Stop button reached from inside the macro
+- [once blocks](09_once%20blocks.md) — the run that waits for the screen instead of ending
+- [Settings](../Pob/06_Settings.md) — `macro_default_delay`, `once_interval` and `stop_hook`
 - [Calls](06_Calls.md) — `resetCursor()`, `sleep()` and the rest of the vocabulary

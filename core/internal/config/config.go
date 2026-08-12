@@ -37,6 +37,8 @@ var defaults = map[string]any{
 	"psl":                 psl.DefaultBinary,
 	"image_scale":         DefaultImageScale,
 	"macro_default_delay": 1000,
+	"once_interval":       DefaultOnceInterval,
+	"once_change_percent": DefaultOnceChangePercent,
 	"editor":              "system",
 	"terminal":            "system",
 	"stop_hook":           "",
@@ -336,6 +338,28 @@ func (c *Config) floatVal(key string, fallback, minimum, maximum float64) float6
 	return min(maximum, max(minimum, n))
 }
 
+// percentVal reads a setting written as a percentage, clamped the way floatVal
+// clamps its own.
+//
+// The sign may be written or left off — `0.1`, `"0.1%"` and `"10%"` are all read
+// as the number in front of it. A percentage is one of the few units someone
+// writing a settings file by hand will type out, and a file that says `10%`
+// where it means ten percent is saying the right thing: refusing it and quietly
+// using the default would leave a watch behaving as though the line were not
+// there.
+func (c *Config) percentVal(key string, fallback, minimum, maximum float64) float64 {
+	switch v := c.readSettings()[key].(type) {
+	case float64:
+		return min(maximum, max(minimum, v))
+	case string:
+		text := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "%"))
+		if n, err := strconv.ParseFloat(text, 64); err == nil {
+			return min(maximum, max(minimum, n))
+		}
+	}
+	return fallback
+}
+
 func (c *Config) intVal(key string, fallback, minimum int) int {
 	switch v := c.readSettings()[key].(type) {
 	case float64:
@@ -465,6 +489,60 @@ func (c *Config) MCPHost() string {
 }
 
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
+
+// DefaultOnceInterval is how long a `once` block waits between the screenshots
+// it compares, and MinOnceInterval is as short as it can be asked to wait.
+//
+// A second is the rate a person notices something at, and the block is written
+// to notice things a person would: a message arriving, a dialog opening. It
+// costs one screen capture per interval and nothing else — the model is asked
+// only once the picture has actually changed — so the setting trades how soon
+// a change is acted on against how much of this machine goes on watching for
+// one.
+//
+// The floor is there because a capture is not free and an interval of none is
+// almost always a typo: what it asks for is the shell capturing the screen as
+// fast as it can hand a picture back, for as long as the run lasts.
+const (
+	DefaultOnceInterval = 1000
+	MinOnceInterval     = 100
+)
+
+// OnceInterval is the pause between the screenshots a `once` block compares,
+// in milliseconds. See DefaultOnceInterval.
+func (c *Config) OnceInterval() int {
+	return c.intVal("once_interval", DefaultOnceInterval, MinOnceInterval)
+}
+
+// DefaultOnceChangePercent is how much of the picture has to be different
+// before a `once` block calls it a change: a tenth of a percent of the pixels,
+// which is a patch about 45×45 on a 1920×1080 screen.
+//
+// Not a single pixel, because a screen is never quite still — a clock's minute,
+// a caret blinking in a text box, the last frame of a fade — and a once woken by
+// those would put a question to a model every interval, all day, about a screen
+// where nothing had happened. Not much more than a tenth of a percent either:
+// what these blocks are written to notice is usually small, a row arriving in a
+// list or a badge appearing on an icon, and a threshold that ignores those
+// ignores the point of the block.
+//
+// It is a setting because the right number is a thing about the screen being
+// watched rather than about Pob: a still page of text and a dashboard redrawing
+// a graph every second want opposite ends of the range. Lower is more sensitive
+// — 0.01 acts on a patch a tenth this size — and higher is less, up to a 100
+// that no change can reach.
+const (
+	DefaultOnceChangePercent = 0.1
+	MinOnceChangePercent     = 0
+	MaxOnceChangePercent     = 100
+)
+
+// OnceChangePercent is how much of the picture a `once` block needs to see
+// differ before it asks its condition, as a percentage. See
+// DefaultOnceChangePercent.
+func (c *Config) OnceChangePercent() float64 {
+	return c.percentVal("once_change_percent", DefaultOnceChangePercent, MinOnceChangePercent, MaxOnceChangePercent)
+}
 
 func (c *Config) Macro() string {
 	data, err := os.ReadFile(c.MacroFile())

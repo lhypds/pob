@@ -13,7 +13,7 @@ entry point; Reset (↻) empties it.
     +--- open-inbox.macro    called by main, with no slots in it at all
 ```
 
-A [call](10_call.md) names a file relative to the one the call is written in, so files sitting beside
+A [call](11_call.md) names a file relative to the one the call is written in, so files sitting beside
 each other in `src/` are named by their bare names — `call("sign-out.macro.psl")`.
 
 
@@ -36,7 +36,7 @@ It also gives the two kinds different costs. A `.macro` is a recording — it re
 machine with no compiler and no API key behind it. A `.macro.psl` is a program with judgement in it,
 and the price of that judgement is psl on the `PATH`.
 
-A `:: … ::` written in a `.macro` is a contradiction, and the [check](11_When%20something%20is%20wrong.md)
+A `:: … ::` written in a `.macro` is a contradiction, and the [check](12_When%20something%20is%20wrong.md)
 names it before the run starts rather than letting the replay skip the statement halfway down:
 
 ```
@@ -74,7 +74,7 @@ See also
 --------
 
 - [Structure](03_Structure.md) — what the lines in the file are
-- [call](10_call.md) — replaying another file where the statement stands
+- [call](11_call.md) — replaying another file where the statement stands
 - [UI](../Pob/02_UI.md) — the Macro PSL, record and Execute buttons
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools, recorded into the same file
 - [Logs](../Pob/05_Logs.md) — the session a run writes

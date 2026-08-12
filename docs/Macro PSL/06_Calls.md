@@ -104,8 +104,8 @@ The run
 -------
 
 These two never reach the machine. They are what a macro says about its own replay — where it ends,
-and which file it goes on with — and each has a page of its own: [stop](09_stop.md) and
-[call](10_call.md).
+and which file it goes on with — and each has a page of its own: [stop](10_stop.md) and
+[call](11_call.md).
 
 | Statement | Arguments | What it does |
 |-----------|-----------|--------------|
@@ -119,4 +119,4 @@ See also
 - [Key names](../Pob/04_Keys.md) — what `keyPress` accepts
 - [AI slot](05_AI%20slot.md) — writing a prompt where an argument goes
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools
-- [When something is wrong](11_When%20something%20is%20wrong.md) — a call the check refuses
+- [When something is wrong](12_When%20something%20is%20wrong.md) — a call the check refuses

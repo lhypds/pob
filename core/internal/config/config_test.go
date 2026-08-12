@@ -361,6 +361,57 @@ func TestImageScaleIsAThirdByDefaultAndClamped(t *testing.T) {
 	}
 }
 
+// once_change_percent is a percentage, and is read as one however it is written:
+// a settings file is edited by hand, and a hand that means ten percent writes
+// either 10 or "10%". A number outside the range is clamped rather than refused,
+// the same as every other setting that has one.
+func TestOnceChangePercentIsReadHoweverItIsWritten(t *testing.T) {
+	root := t.TempDir()
+	if got := New(root, "pb-aaaa").OnceChangePercent(); got != DefaultOnceChangePercent {
+		t.Errorf("OnceChangePercent() = %v on a fresh machine, want %v", got, DefaultOnceChangePercent)
+	}
+
+	for _, c := range []struct{ set, want any }{
+		{0.01, 0.01},
+		{10, 10.0},
+		{"10%", 10.0},
+		{"0.01 %", 0.01},
+		{"0.5", 0.5},
+		{200, float64(MaxOnceChangePercent)},
+		{-1, float64(MinOnceChangePercent)},
+		{"a tenth", DefaultOnceChangePercent},
+	} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "settings.json"), map[string]any{"once_change_percent": c.set})
+		if got := New(dir, "pb-aaaa").OnceChangePercent(); got != c.want {
+			t.Errorf("OnceChangePercent() = %v with once_change_percent %v, want %v", got, c.set, c.want)
+		}
+	}
+}
+
+// The interval has a floor under it: an interval of none asks the shell for a
+// picture as fast as it can hand one back, for as long as the run lasts, and is
+// almost always a typo.
+func TestOnceIntervalIsASecondByDefaultAndFloored(t *testing.T) {
+	root := t.TempDir()
+	if got := New(root, "pb-aaaa").OnceInterval(); got != DefaultOnceInterval {
+		t.Errorf("OnceInterval() = %v on a fresh machine, want %v", got, DefaultOnceInterval)
+	}
+	for _, c := range []struct{ set, want any }{
+		{5000, 5000},
+		{"250", 250},
+		{0, MinOnceInterval},
+		{-1, MinOnceInterval},
+		{"soon", DefaultOnceInterval},
+	} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "settings.json"), map[string]any{"once_interval": c.set})
+		if got := New(dir, "pb-aaaa").OnceInterval(); got != c.want {
+			t.Errorf("OnceInterval() = %v with once_interval %v, want %v", got, c.set, c.want)
+		}
+	}
+}
+
 // A macro written while an instance kept exactly one file is carried down into
 // src/ under the name the entry point has now. It is the same rule as the rename
 // before it: work someone did with the app moves rather than being left behind

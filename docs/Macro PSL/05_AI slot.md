@@ -20,7 +20,7 @@ instead.)
 
 The instruction between the markers is a question for the model rather than something Pob carries
 out itself. It goes **anywhere in a statement** — a whole argument, part of one, the condition of an
-`if` or of a `loop`:
+`if`, of a `loop` or of a `once`:
 
 ```
 move(:: the x offset to the Save button ::, 0)
@@ -86,6 +86,7 @@ has to leave a statement that reads as PSL:
 | `if (:: … ::)` | `true` or `false` |
 | `} else if (:: … ::)` | `true` or `false` — it is the `if` it says it is |
 | `loop (:: … ::, 5)` | `true` or `false` |
+| `once (:: … ::)` | `true` or `false` — asked again at every change in the screen |
 
 How much of a statement a slot stands for is what is written around it, which is the second and third
 rows above. A slot that is one argument of several is answered with that argument;
@@ -149,7 +150,7 @@ would have to be, because it is not a value that goes there, and a statement slo
 in the language where what comes back is program rather than data.
 
 What comes back is replayed where the line stands, as a file of its own — the same thing
-[`call`](10_call.md) does with the file it names, and for the same reason. Every statement in a macro
+[`call`](11_call.md) does with the file it names, and for the same reason. Every statement in a macro
 is found by its line number: that is how an answer goes back where it came from, how a loop puts its
 statements back, and how Pob and psl stay on the same slot at all. Statements written into the macro
 where the one line was would move every statement under them off the number the parse found it at.
@@ -164,7 +165,7 @@ Everything that follows from that is what follows from a `call`:
 - **A slot inside the block is the block's own.** The model may leave one, and it is filled when the
   block's replay reaches it, off a screenshot taken then, against the block's file. A statement slot
   inside a generated block generates another block under it.
-- **`stop()` inside it ends everything**, the macro included. See [stop](09_stop.md).
+- **`stop()` inside it ends everything**, the macro included. See [stop](10_stop.md).
 - **A relative path in a `call` inside it** is resolved against the directory of the file that asked,
   which is where the macro is — the only place the block could have meant.
 - **Eight files deep is as far as it goes**, counted together with `call`: both are a file replayed
@@ -216,12 +217,13 @@ its own from that moment and a slot the model wrote into it belongs to that file
 about here, and a slot left on one of them would be answered in place of the statement below it,
 from a screenshot taken for something else.
 
-A `loop` is the one thing that puts a slot back into the file, which is the same step run backwards
-and holds for the same reason. What it puts back is its own header and the statements under it —
-everything above them is filled or written out by the time a pass begins, and everything below is
-still as it was written — so the first slot left in the file is again the one the replay is waiting
-on. A statement slot in a loop's body goes back to the `:: … ::` it was written as, and generates a
-block of its own on every pass: the screen a pass is about is the one the pass before it changed.
+A [`loop`](08_loop%20blocks.md) and a [`once`](09_once%20blocks.md) are the two things that put a
+slot back into the file, which is the same step run backwards and holds for the same reason. What
+goes back is the block's own header and the statements under it — everything above them is filled or
+written out by the time a pass begins, and everything below is still as it was written — so the
+first slot left in the file is again the one the replay is waiting on. A statement slot in there
+goes back to the `:: … ::` it was written as, and generates a block of its own each time: the screen
+a pass is about is the one the pass before it changed.
 
 A macro with no slot never runs psl at all, and needs nothing installed. A macro that has one needs
 psl to be found — Pob checks over the whole macro, and over the files it `call`s, before the first
@@ -229,15 +231,16 @@ statement runs rather than partway through, and puts up **psl needed** instead o
 Every fill is kept under `logs/<session>/slots/<n>/` with the screenshot it was answered from and
 what psl said while filling it (see [Logs](../Pob/05_Logs.md)); `pob --session <id>` lists them. Beside
 them is `main.macro.psl`, the macro as it was written — the fills are read against it rather than
-written into a copy of it, since a slot in a `loop` has an answer per pass and a slot never reached has
-none.
+written into a copy of it, since a slot in a `loop` has an answer per pass, a slot in a `once` one
+per change it acted on, and a slot never reached has none.
 
 
 See also
 --------
 
 - [Calls](06_Calls.md) — the vocabulary a fill is described with
-- [call](10_call.md) — the other way a file is replayed inside another, and the bound they share
+- [call](11_call.md) — the other way a file is replayed inside another, and the bound they share
 - [loop blocks](08_loop%20blocks.md) — the slots a pass asks again
+- [once blocks](09_once%20blocks.md) — the slots a change asks again
 - [Settings](../Pob/06_Settings.md) — `image_scale`, and where the `psl` executable is
 - [Logs](../Pob/05_Logs.md) — where each slot the AI filled is kept

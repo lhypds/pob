@@ -2,6 +2,8 @@
   "psl": "psl",
   "image_scale": 0.35,
   "macro_default_delay": 1000,
+  "once_interval": 1000,
+  "once_change_percent": 0.1,
   "editor": "system",
   "terminal": "iterm2",
   "stop_hook": "",

@@ -199,7 +199,7 @@ func deterministicProblems(nodes []macroNode, name string) []macroProblem {
 func checkStatements(nodes []macroNode) []macroProblem {
 	var probs []macroProblem
 	for _, node := range nodes {
-		if node.isIf || node.isLoop {
+		if node.isIf || node.isLoop || node.isOnce {
 			probs = append(probs, checkStatements(node.body)...)
 			probs = append(probs, checkStatements(node.elseBody)...)
 			continue
@@ -483,7 +483,7 @@ func checkComments(source string) []macroProblem {
 func checkCalls(nodes []macroNode, dir, name string, chain []string) []MacroProblem {
 	var problems []MacroProblem
 	for _, node := range nodes {
-		if node.isIf || node.isLoop {
+		if node.isIf || node.isLoop || node.isOnce {
 			problems = append(problems, checkCalls(node.body, dir, name, chain)...)
 			problems = append(problems, checkCalls(node.elseBody, dir, name, chain)...)
 			continue

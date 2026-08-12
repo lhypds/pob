@@ -25,8 +25,12 @@ not start.
 | An `if` missing its parentheses or the `{` at the end of the line, or holding neither a slot nor `true`/`false` | The header, and that its whole block is dropped |
 | A `loop` missing its parentheses or the `{`, or whose count is not a whole number of 1 or more — `loop (:: how many ::)`, `loop (2.5)`, `loop (0)` | The header, and that its whole block is dropped |
 | A `loop` whose condition is neither a slot nor `true`/`false` | The same |
-| An `if` or `loop` whose `}` is missing | The line the block was opened on, and that the end of the file closes it |
-| A `}` with no `if` or `loop` above it | `} closes a block that was never opened` |
+| A `once` missing its parentheses or the `{`, or holding neither a slot nor `true`/`false` — `once {`, `once () {` | The header, and that its whole block is dropped. A `once` is never written without a condition |
+| A `once` inside an `if`, a `loop` or another `once` | `once watches the screen until the run is stopped and is written at the top level of a file, not inside another block`, and that its whole block is dropped |
+| Anything written under a `once` — another `once`, a statement, a block | `nothing here runs — the once block opened on line 5 watches the screen until the run is stopped`. Said at the first of them, since a tail of unreachable statements is one mistake |
+| An `else` on a `once` | That an `else` belongs to an `if`, and that its whole block is dropped |
+| An `if`, `loop` or `once` whose `}` is missing | The line the block was opened on, and that the end of the file closes it |
+| A `}` with no block above it | `} closes a block that was never opened` |
 | An `else` with no `if` above it, or one whose `}` is missing | `else belongs to the if whose block the } above it closes — } else {, or the else on a line of its own under the }`, and that its whole block is dropped |
 | An `else` on a `loop` | That an `else` belongs to an `if`, and that its whole block is dropped |
 | A second `else` on one `if` | `the if above this one already has an else`, and that its whole block is dropped |
@@ -59,6 +63,8 @@ and the ones around it still run:
 | A slot psl cannot fill — no model configured, no answer, no screenshot | The statement is skipped, with the reason in the log; a condition then has no verdict, so its block is skipped — and an `if` written with an `else` skips that too |
 | An `if` whose condition fills to something other than `true` or `false` | No verdict: the block is skipped, with what it filled to in the log. An `if` written with an `else` runs neither block — an `else` is what runs when the answer is false, and there is no answer |
 | A `loop` whose condition fills to something other than `true` or `false` | Reads as false: the loop ends there, with what it filled to in the log |
+| A `once` whose condition fills to something other than `true` or `false` | No verdict: the block does not run, and the `once` goes back to watching. Nothing ends it but Stop |
+| A `once` whose screenshot cannot be taken, or cannot be read | Logged, and the watch carries on: a picture that cannot be compared is taken as a change, since the cost of asking about a still screen is one model call and the cost the other way is a watch that never notices anything |
 | A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
 | A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |
 | A statement slot that fills to nothing that reads as a statement | Logged with what it filled to, and nothing is replayed for that line |

@@ -54,4 +54,4 @@ See also
 --------
 
 - [AI slot](05_AI%20slot.md) — the `:: … ::` a comment is written out of
-- [When something is wrong](11_When%20something%20is%20wrong.md) — a `/*` nothing closes, and a `*/` with no `/*` above it
+- [When something is wrong](12_When%20something%20is%20wrong.md) — a `/*` nothing closes, and a `*/` with no `/*` above it

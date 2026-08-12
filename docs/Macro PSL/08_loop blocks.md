@@ -71,5 +71,6 @@ See also
 --------
 
 - [if blocks](07_if%20blocks.md) — the same condition, judged once
+- [once blocks](09_once%20blocks.md) — the same restoring, driven by the screen changing rather than by a count
 - [AI slot](05_AI%20slot.md) — how a slot goes back into the file before a pass
 - [Logs](../Pob/05_Logs.md) — one numbered slot directory per pass

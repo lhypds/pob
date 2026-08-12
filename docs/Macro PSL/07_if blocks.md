@@ -105,5 +105,6 @@ See also
 --------
 
 - [loop blocks](08_loop%20blocks.md) — the same condition, checked before every pass
-- [stop](09_stop.md) — what an `if` that noticed something usually does
+- [once blocks](09_once%20blocks.md) — the same condition, asked each time the screen changes
+- [stop](10_stop.md) — what an `if` that noticed something usually does
 - [AI slot](05_AI%20slot.md) — what a condition is filled from

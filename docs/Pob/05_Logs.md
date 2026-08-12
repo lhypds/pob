@@ -64,10 +64,13 @@ This is what the toolbar's `ins.log` button opens.
 separately timestamped rows, so nothing leaves unlabelled continuation lines.
 
 A few events carry a marker so a run can be found by eye in a long file, one arrow per level of it:
-`>>> MACRO START REQUEST` opens a run, `>> LOOP START` a loop inside it, and `> STEP START` each
+`>>> MACRO START REQUEST` opens a run, `>> LOOP START` a loop inside it — `>> ONCE START` a
+[`once`](03_Macro%20PSL.md) — and `> STEP START` each
 statement. What ends is left unmarked — an opening is what gets scanned for. `STEP START` and `STEP END` name the
 line, resolved statement, and completion state for each statement that reaches execution; condition
-checks and loop passes are included too. The session and macro file appear on the surrounding `MACRO
+checks and loop passes are included too. A `once` adds `ONCE CHANGE` for each change it saw in the
+screen, with how much of the picture moved, and `ONCE RUN` where the condition then held and the
+block ran; the intervals where the screen sat still say nothing at all. The session and macro file appear on the surrounding `MACRO
 START` event instead of being repeated on every step and loop row; `MACRO STOP` repeats only the
 session so the boundary remains explicit.
 
@@ -91,7 +94,7 @@ screen-related instructions. Protect or remove `instance.log` when sharing an in
 `instance.json`, and points `INSTANCE` at it. `pob launch` lists the instances by name and asks
 which one to start — see [CLI](07_CLI.md).  
 `<session>` is a unique session ID named as a unixtime.  
-`<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`) — a `loop` asks the slots inside it once per pass, and each of those is one of these.  
+`<n>` is the position of an [AI slot](03_Macro%20PSL.md) in the order the macro filled them (e.g. `1`, `2`, `3`) — a `loop` asks the slots inside it once per pass and a `once` asks its own at every change it acts on, and each of those is one of these.  
 A slot written on a line of its own is filled with statements rather than with a value, and `slot.json` holds the whole block it filled to.  
 There is no second copy of the macro with the answers written into it. For much of a macro there is no one answer to write down: a slot inside a `loop` is asked once per pass and only the last pass's could go in, and a slot the replay never reached was never asked at all. `main.macro.psl` is the macro, and `slots/` is what each fill was, in the order the fills happened — the `line` in every `slot.json` counts to that one file, which does not move.  
 

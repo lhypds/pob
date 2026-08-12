@@ -49,10 +49,11 @@ The pages
 | [Calls](06_Calls.md) | Every statement, its arguments and what it does |
 | [if blocks](07_if%20blocks.md) | Guarding a block with a condition, and the `else` that runs when it does not hold |
 | [loop blocks](08_loop%20blocks.md) | Running a block again and again, with a count and a condition |
-| [stop](09_stop.md) | Ending the run from inside the macro |
-| [call](10_call.md) | Replaying another PSL file where the statement stands |
-| [When something is wrong](11_When%20something%20is%20wrong.md) | The check before the run, the replay's own forgiveness, and `pob macro --check` |
-| [How it runs](12_How%20it%20runs.md) | The origin, the delay between statements, and what Stop does |
+| [once blocks](09_once%20blocks.md) | Watching the screen, and running a block each time it changes into something the condition holds of |
+| [stop](10_stop.md) | Ending the run from inside the macro |
+| [call](11_call.md) | Replaying another PSL file where the statement stands |
+| [When something is wrong](12_When%20something%20is%20wrong.md) | The check before the run, the replay's own forgiveness, and `pob macro --check` |
+| [How it runs](13_How%20it%20runs.md) | The origin, the delay between statements, and what Stop does |
 
 
 See also

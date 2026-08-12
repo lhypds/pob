@@ -22,7 +22,11 @@ runs what it holds when the condition holds, } else { } after it runs what it
 holds when the condition does not, with } else if (condition) { } in between to
 go on asking; loop (count) { } runs it that many times, and
 loop (condition, count) { } runs it while the condition holds, count being the
-most passes it may make. A value is one of three things: a number,
+most passes it may make; once (condition) { } watches the screen and asks the
+condition each time the picture changes, running what it holds every time the
+answer is true — it is written at the top level of a file, never inside another
+block, and it never ends, so nothing is written under it. A value is one of
+three things: a number,
 written plainly (398, -615, 0.5); a string, in double quotes with a backslash
 escaping the character after it; or a time, a number with its unit on the end —
 250ms, 3s, 10m, 5h, and units running together as 10h5m. A time is never written
@@ -84,8 +88,9 @@ what a value would have to be, because it is not a value that goes there. Write
 as many statements as the instruction asks for and no more, and write nothing
 that is not a statement — no prose, no fences, no heading.
 
-An if, else if or loop condition is answered with true or false and nothing
-else — an else has none of its own and is never written with one. A loop
-asks its condition again before every pass, over a fresh image, and the answer
-is about the screen as that image shows it — nothing in the file says which pass
-is being asked about, and nothing has to.`
+An if, else if, loop or once condition is answered with true or false and
+nothing else — an else has none of its own and is never written with one. A loop
+asks its condition again before every pass, over a fresh image, and a once asks
+its own again at every change it sees; the answer is about the screen as the
+image shows it — nothing in the file says which pass or which change is being
+asked about, and nothing has to.`

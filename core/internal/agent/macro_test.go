@@ -20,7 +20,7 @@ import (
 func nodeSummary(nodes []macroNode, indent string) []string {
 	var out []string
 	for _, n := range nodes {
-		if n.isIf || n.isLoop {
+		if n.isIf || n.isLoop || n.isOnce {
 			out = append(out, indent+macroBlockLabel(n))
 			out = append(out, nodeSummary(n.body, indent+"  ")...)
 			switch {

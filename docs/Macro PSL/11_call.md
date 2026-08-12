@@ -58,6 +58,6 @@ the session; what the run made of it is in the log and in the slots it filled.
 See also
 --------
 
-- [When something is wrong](11_When%20something%20is%20wrong.md) — what the check says about a ring, a depth and a missing file
-- [stop](09_stop.md) — ending the calling file as well as the called one
+- [When something is wrong](12_When%20something%20is%20wrong.md) — what the check says about a ring, a depth and a missing file
+- [stop](10_stop.md) — ending the calling file as well as the called one
 - [Logs](../Pob/05_Logs.md) — which file each fill was a line of
