@@ -161,7 +161,7 @@ func TestLoopEventsDoNotRepeatTheMacroSession(t *testing.T) {
 		t.Fatalf("reading instance.log: %v", err)
 	}
 	log := string(data)
-	for _, event := range []string{"LOOP START", "LOOP PASS", "LOOP STOP"} {
+	for _, event := range []string{">> LOOP START", "LOOP PASS", "LOOP STOP"} {
 		if !strings.Contains(log, event+` line=1`) {
 			t.Errorf("instance.log has no %s event with its line:\n%s", event, log)
 		}

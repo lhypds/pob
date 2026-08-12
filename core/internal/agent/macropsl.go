@@ -551,7 +551,7 @@ func macroStepStatus(ctx context.Context, run *macroRun) string {
 func (r *Runner) runMacroLoop(ctx context.Context, run *macroRun, node macroNode) {
 	label := macroBlockLabel(node)
 	passes := 0
-	r.store.LogInstancef("LOOP START", "line=%d loop=%q count=%d",
+	r.store.LogInstancef(">> LOOP START", "line=%d loop=%q count=%d",
 		node.line, label, node.count)
 
 	for passes < node.count {

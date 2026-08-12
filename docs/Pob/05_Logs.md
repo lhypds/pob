@@ -63,8 +63,9 @@ This is what the toolbar's `ins.log` button opens.
 3339 UTC timestamp with six fractional digits and an event name. Multiline content is logged as
 separately timestamped rows, so nothing leaves unlabelled continuation lines.
 
-A few events carry a marker so a run can be found by eye in a long file: `>>> MACRO START REQUEST`
-opens a run, and `> STEP START` opens each statement inside it. `STEP START` and `STEP END` name the
+A few events carry a marker so a run can be found by eye in a long file, one arrow per level of it:
+`>>> MACRO START REQUEST` opens a run, `>> LOOP START` a loop inside it, and `> STEP START` each
+statement. What ends is left unmarked — an opening is what gets scanned for. `STEP START` and `STEP END` name the
 line, resolved statement, and completion state for each statement that reaches execution; condition
 checks and loop passes are included too. The session and macro file appear on the surrounding `MACRO
 START` event instead of being repeated on every step and loop row; `MACRO STOP` repeats only the
