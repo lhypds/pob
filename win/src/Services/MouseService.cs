@@ -179,6 +179,19 @@ public static class MouseService
 
     private static void RestorePointer(int x, int y) => NativeMethods.SetCursorPos(x, y);
 
+    // Walks the pointer to (x, y) and gives whatever sits there a moment to
+    // notice before a button goes down on it. An app decides what a press landed
+    // on from where it believes the pointer is, and SetCursorPos returning only
+    // says the position changed — the window it lands in still has to pick the
+    // WM_MOUSEMOVE off its own queue and hit-test. Pressing inside that gap is a
+    // click the app can only half place, and reads as a click that never
+    // happened. 50 ms, matching the macOS and Linux shells.
+    private static void ArriveAt(int x, int y)
+    {
+        NativeMethods.SetCursorPos(x, y);
+        Thread.Sleep(50);
+    }
+
     private static void ButtonEvent(bool right, bool press)
     {
         uint flag = right
@@ -193,7 +206,7 @@ public static class MouseService
         if (!ToScreen(px, py, out int rx, out int ry)) return;
 
         SavePointer(out int sx, out int sy);
-        NativeMethods.SetCursorPos(rx, ry);
+        ArriveAt(rx, ry);
         ButtonEvent(right, press: true);
         Thread.Sleep(50); // match macOS: 50 ms between down and up
         ButtonEvent(right, press: false);
@@ -206,7 +219,7 @@ public static class MouseService
         if (!ToScreen(px, py, out int rx, out int ry)) return;
 
         SavePointer(out int sx, out int sy);
-        NativeMethods.SetCursorPos(rx, ry);
+        ArriveAt(rx, ry);
         for (int i = 0; i < 2; i++)
         {
             ButtonEvent(right: false, press: true);
@@ -225,7 +238,7 @@ public static class MouseService
         if (ToScreen(px, py, out int rx, out int ry) && ToScreen(endX, endY, out int ex, out int ey))
         {
             SavePointer(out int sx, out int sy);
-            NativeMethods.SetCursorPos(rx, ry);
+            ArriveAt(rx, ry);
             ButtonEvent(right: false, press: true);
             Thread.Sleep(50);
             const int steps = 20; // match macOS: 20 interpolated moves, ~16 ms apart
@@ -256,7 +269,7 @@ public static class MouseService
         if (!ToScreen(px, py, out int rx, out int ry)) return;
 
         SavePointer(out int sx, out int sy);
-        NativeMethods.SetCursorPos(rx, ry);
+        ArriveAt(rx, ry);
 
         // Windows scrolls in wheel notches (120 units); ~40 px per notch
         // approximates the macOS pixel-unit scroll amounts.

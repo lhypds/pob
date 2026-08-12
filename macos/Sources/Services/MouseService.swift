@@ -56,7 +56,7 @@ class MouseService: ObservableObject {
     // MARK: - Mouse actions
 
     func performClick(at cgPoint: CGPoint) async {
-        await passThrough {
+        await passThrough(arrivingAt: cgPoint) {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                   mouseCursorPosition: cgPoint, mouseButton: .left)
             {
@@ -72,7 +72,7 @@ class MouseService: ObservableObject {
     }
 
     func performRightClick(at cgPoint: CGPoint) async {
-        await passThrough {
+        await passThrough(arrivingAt: cgPoint) {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
                                   mouseCursorPosition: cgPoint, mouseButton: .right)
             {
@@ -88,7 +88,7 @@ class MouseService: ObservableObject {
     }
 
     func performDoubleClick(at cgPoint: CGPoint) async {
-        await passThrough {
+        await passThrough(arrivingAt: cgPoint) {
             for clickCount in [1, 2] {
                 if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                       mouseCursorPosition: cgPoint, mouseButton: .left)
@@ -112,7 +112,7 @@ class MouseService: ObservableObject {
     /// step, so the overlay cursor can track the real pointer instead of
     /// sitting at the start position until the drag completes.
     func performDrag(from: CGPoint, to: CGPoint, onProgress: ((CGFloat) -> Void)? = nil) async {
-        await passThrough {
+        await passThrough(arrivingAt: from) {
             if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                                   mouseCursorPosition: from, mouseButton: .left)
             {
@@ -140,7 +140,7 @@ class MouseService: ObservableObject {
     }
 
     func performScroll(at cgPoint: CGPoint, dx: Int32, dy: Int32) async {
-        await passThrough {
+        await passThrough(arrivingAt: cgPoint) {
             // wheel1 = vertical (negative = scroll down), wheel2 = horizontal
             if let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
                                     wheelCount: 2, wheel1: -dy, wheel2: dx, wheel3: 0)
@@ -227,7 +227,19 @@ class MouseService: ObservableObject {
 
     /// Runs `body` with the overlay window set to click-through and the real mouse cursor frozen
     /// in place, so automation events reach the app below without moving the user's pointer.
-    private func passThrough(_ body: () async -> Void) async {
+    ///
+    /// `arrivingAt` is where the action is aimed. The pointer is walked there
+    /// and given a moment before `body` posts anything, because an app decides
+    /// what a button-press landed on from where it believes the pointer is — the
+    /// element under it, the hover state that element is in, whether a window
+    /// that was not frontmost takes this click or merely comes forward on it.
+    /// A press arriving out of nowhere is one it can only half place: the window
+    /// activates and the thing under the cursor never hears about it, which
+    /// reads exactly like a click that did not happen and takes a second call
+    /// to land. The Linux and Windows shells always did this — XTestFakeMotionEvent
+    /// and SetCursorPos, respectively, before any button event — and macOS was
+    /// the one shell that pressed without ever arriving.
+    private func passThrough(arrivingAt target: CGPoint? = nil, _ body: () async -> Void) async {
         await MainActor.run {
             self.window?.ignoresMouseEvents = true
         }
@@ -237,6 +249,19 @@ class MouseService: ObservableObject {
         // Freeze the visible cursor so it never moves during the action.
         let savedPos = Self.cgCursorPosition()
         CGAssociateMouseAndMouseCursorPosition(0)
+
+        if let target {
+            if let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                                  mouseCursorPosition: target, mouseButton: .left)
+            {
+                move.post(tap: .cghidEventTap)
+            }
+            // Long enough for the app to have run its own hit-test off the move.
+            // It is the app's main thread doing that work, not the window
+            // server's, so flushing the event is not the same as it having
+            // been acted on.
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         await body()
 

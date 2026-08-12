@@ -78,8 +78,15 @@ class ScreenshotService {
                 quality: Int) -> EncodedShot?
     {
         var source = image
-        if let crop, let cropped = source.cropping(to: cgCropRect(crop, in: source)) {
+        // The rect actually cropped to, which is the asked-for one held inside
+        // the image. The cursor is placed against this same rect below: a crop
+        // that had to be clamped and a cursor offset by the unclamped origin
+        // would disagree about where the picture starts.
+        var cropRect = crop.map { cgCropRect($0, in: source) }
+        if let cropRect, let cropped = source.cropping(to: cropRect) {
             source = cropped
+        } else {
+            cropRect = nil
         }
         let sourceW = source.width
         let sourceH = source.height
@@ -115,8 +122,8 @@ class ScreenshotService {
             if let cursor {
                 // Into the shrunk picture's own coordinates: past the crop's
                 // origin, then scaled by however much the picture shrank.
-                let px = (cursor.x - (crop?.origin.x ?? 0)) * CGFloat(factor)
-                let py = (cursor.y - (crop?.origin.y ?? 0)) * CGFloat(factor)
+                let px = (cursor.x - (cropRect?.origin.x ?? 0)) * CGFloat(factor)
+                let py = (cursor.y - (cropRect?.origin.y ?? 0)) * CGFloat(factor)
                 drawCursor(into: ctx, at: CGPoint(x: px, y: py), pixelHeight: outH, factor: CGFloat(factor))
             }
             guard let drawn = ctx.makeImage() else { return nil }
@@ -128,13 +135,26 @@ class ScreenshotService {
                            sourceWidth: sourceW, sourceHeight: sourceH)
     }
 
-    /// CGImage.cropping works in Y-from-bottom; screenshot pixels are
-    /// Y-from-top.
+    /// The crop rect in the pixel space `CGImage.cropping` reads it in, which is
+    /// the image's own — origin top-left, Y down — and so already the space
+    /// screenshot coordinates are quoted in. This used to flip Y on the way
+    /// through, on the assumption that cropping worked bottom-up the way
+    /// drawing does: it does not, and the flip only put the crop as far from
+    /// where it was asked for as the window is tall. Every coordinate read off
+    /// such a crop then pointed somewhere else, which is a click that lands on
+    /// nothing.
+    ///
+    /// Clamped to the image, because cropping answers nil for a rect that
+    /// leaves it — a crop running past the edge should return the part that
+    /// exists, as it does on the Linux and Windows shells, rather than
+    /// silently falling back to the whole frame.
     private func cgCropRect(_ rect: CGRect, in image: CGImage) -> CGRect {
-        CGRect(x: rect.origin.x,
-               y: CGFloat(image.height) - rect.origin.y - rect.height,
-               width: rect.width,
-               height: rect.height)
+        let x = min(max(rect.origin.x, 0), CGFloat(image.width))
+        let y = min(max(rect.origin.y, 0), CGFloat(image.height))
+        return CGRect(x: x,
+                      y: y,
+                      width: min(rect.width, CGFloat(image.width) - x),
+                      height: min(rect.height, CGFloat(image.height) - y))
     }
 
     /// Draws the arrow cursor with its hotspot at (point) in a context that is

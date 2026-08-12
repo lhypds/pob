@@ -158,6 +158,18 @@ static void move_pointer(Display *dpy, int x, int y) {
     XSync(dpy, False);
 }
 
+// Walks the pointer to (x, y) and gives whatever sits there a moment to notice
+// before a button goes down on it. An app decides what a press landed on from
+// where it believes the pointer is, and XSync only says the X server has the
+// motion — the client whose window it lands in still has to read it off its own
+// queue and hit-test. Pressing inside that gap is a click the app can only half
+// place, and reads as a click that never happened. 50 ms, matching the macOS
+// and Windows shells.
+static void arrive_at(Display *dpy, int x, int y) {
+    move_pointer(dpy, x, y);
+    g_usleep(50 * 1000);
+}
+
 static void do_click(Display *dpy, unsigned int button) {
     int rx, ry;
     double px, py;
@@ -166,7 +178,7 @@ static void do_click(Display *dpy, unsigned int button) {
 
     int sx, sy;
     save_pointer(dpy, &sx, &sy);
-    move_pointer(dpy, rx, ry);
+    arrive_at(dpy, rx, ry);
     fake_button(dpy, button, True);
     g_usleep(50 * 1000); // match macOS: 50 ms between down and up
     fake_button(dpy, button, False);
@@ -181,7 +193,7 @@ static void do_double_click(Display *dpy) {
 
     int sx, sy;
     save_pointer(dpy, &sx, &sy);
-    move_pointer(dpy, rx, ry);
+    arrive_at(dpy, rx, ry);
     for (int i = 0; i < 2; i++) {
         fake_button(dpy, Button1, True);
         g_usleep(30 * 1000);
@@ -200,7 +212,7 @@ static void do_drag(Display *dpy, double dx, double dy) {
     if (to_root(px, py, &rx, &ry) && to_root(end_x, end_y, &ex, &ey)) {
         int sx, sy;
         save_pointer(dpy, &sx, &sy);
-        move_pointer(dpy, rx, ry);
+        arrive_at(dpy, rx, ry);
         fake_button(dpy, Button1, True);
         g_usleep(50 * 1000);
         const int steps = 20; // match macOS: 20 interpolated moves, ~16 ms apart
@@ -232,7 +244,7 @@ static void do_scroll(Display *dpy, double dx, double dy) {
 
     int sx, sy;
     save_pointer(dpy, &sx, &sy);
-    move_pointer(dpy, rx, ry);
+    arrive_at(dpy, rx, ry);
 
     // X11 scrolls in wheel notches; ~40 px per notch approximates the macOS
     // pixel-unit scroll amounts.
