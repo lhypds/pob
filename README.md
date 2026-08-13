@@ -25,7 +25,20 @@ Features:
 Getting started
 ---------------
 
-1. From the repository  
+1. One command (Linux)  
+
+Downloads the release for this machine and installs it — the app goes
+somewhere permanent and the `pob` command lands on your `PATH`:  
+
+```
+curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sh        # just you
+curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sudo sh   # everyone
+```
+
+Anything after `sh -s --` is passed on: `--prefix DIR`, `--bin DIR`,
+`--version VER`, or `--uninstall` to take it back off again.  
+
+2. From the repository  
 
 Clone it and `cd` into the repo.  
 
@@ -34,7 +47,7 @@ Clone it and `cd` into the repo.
 ./start.sh      # run it
 ```
 
-2. From a [release](https://github.com/lhypds/pob/releases) zip
+3. From a [release](https://github.com/lhypds/pob/releases) zip
 
 Unzip it and install — the app goes somewhere permanent
 and the `pob` command lands on your `PATH`:
