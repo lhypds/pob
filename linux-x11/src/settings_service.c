@@ -628,6 +628,16 @@ void settings_open_instance_log(void) {
     g_free(path);
 }
 
+// The app log, behind Alt-click on the same button: when the question is about
+// the app rather than a run — which instances started, which stopped, what
+// failed — the answer is across instances, not inside one.
+void settings_open_app_log(void) {
+    gchar *path = g_build_filename(settings_project_root(), "app.log", NULL);
+    ensure_file(path);
+    open_with_editor(path);
+    g_free(path);
+}
+
 void settings_open_logs_folder(void) {
     gchar *path = instance_path("logs");
     g_mkdir_with_parents(path, 0755);

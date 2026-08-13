@@ -57,7 +57,8 @@ redirect the shell's own output there too, so a crash lands beside the line it s
 Everything else is detail, and detail belongs to the instance. Both the shell and pob-core write
 `instance.log`, so the toolbar's, the shell's and the core's side of a run read in order in the one
 file — and the lifecycle and error lines are repeated there, beside the detail that led to them.
-This is what the toolbar's `.log` button opens.
+This is what the toolbar's `.log` button opens. Hold Option (Alt on Linux and Windows) while clicking
+it for `app.log` instead — the same button, the wider record.
 
 `instance.log` is append-only across starts and sessions. Every row begins with a fixed-width RFC
 3339 UTC timestamp with six fractional digits and an event name. Multiline content is logged as

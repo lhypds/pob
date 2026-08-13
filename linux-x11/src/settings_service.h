@@ -51,6 +51,7 @@ void settings_save_click_through(gboolean on);
 void settings_open_settings_file(void);
 void settings_open_macro_file(void);
 void settings_open_instance_log(void);
+void settings_open_app_log(void);
 void settings_open_logs_folder(void);
 
 // Contents of src/main.macro.psl ("" when missing); caller frees.

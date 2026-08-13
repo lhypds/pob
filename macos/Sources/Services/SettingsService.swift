@@ -370,6 +370,17 @@ class SettingsService {
         openWithEditor(log)
     }
 
+    /// The app log, behind ⌥-click on the same button: when the question is
+    /// about the app rather than a run — which instances started, which
+    /// stopped, what failed — the answer is across instances, not inside one.
+    func openAppLog() {
+        let log = projectRoot.appendingPathComponent("app.log")
+        if !fileManager.fileExists(atPath: log.path) {
+            fileManager.createFile(atPath: log.path, contents: Data())
+        }
+        openWithEditor(log)
+    }
+
     private func openWithEditor(_ url: URL) {
         let editor = getEditor()
         let process = Process()

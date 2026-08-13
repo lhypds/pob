@@ -352,7 +352,13 @@ struct InstanceContentView: View {
             .help("Logs")
         }
         ToolbarItem(placement: .automatic) {
-            InstanceLogButton { instance.settings.openInstanceLog() }
+            InstanceLogButton { isOptionDown in
+                if isOptionDown {
+                    instance.settings.openAppLog()
+                } else {
+                    instance.settings.openInstanceLog()
+                }
+            }
         }
         ToolbarItem(placement: .automatic) {
             Button(action: { instance.settings.openMacroFile() }) {
@@ -545,11 +551,13 @@ struct InstanceContentView: View {
 }
 
 private struct InstanceLogButton: View {
-    let action: () -> Void
+    /// Called with whether Option was held: the same button opens the app log
+    /// instead, so the wider record costs a modifier rather than a toolbar slot.
+    let action: (Bool) -> Void
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: { action(NSEvent.modifierFlags.contains(.option)) }) {
             Text(".log")
                 .font(.system(size: 9, design: .monospaced))
                 .padding(.horizontal, 4)
@@ -561,7 +569,7 @@ private struct InstanceLogButton: View {
                 .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
         )
         .overlay(HoverDetectorView(isHovered: $isHovered))
-        .help("Instance Log")
+        .help("Instance Log — ⌥ for app.log")
     }
 }
 

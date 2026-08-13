@@ -489,9 +489,16 @@ static void on_logs_clicked(GtkButton *b, gpointer d) {
     settings_open_logs_folder();
 }
 
+// Alt-click asks for the app log instead — same button, the wider record.
+// The state comes from the event that raised "clicked", which GtkButton emits
+// while that event is still current.
 static void on_inslog_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
-    settings_open_instance_log();
+    GdkModifierType state = 0;
+    if (gtk_get_current_event_state(&state) && (state & GDK_MOD1_MASK))
+        settings_open_app_log();
+    else
+        settings_open_instance_log();
 }
 
 static void on_macro_clicked(GtkButton *b, gpointer d) {
@@ -591,7 +598,7 @@ static GtkWidget *build_inslog_button(void) {
     GtkWidget *label = gtk_label_new(".log");
     gtk_style_context_add_class(gtk_widget_get_style_context(label), "pob-inslog-label");
     gtk_container_add(GTK_CONTAINER(btn), label);
-    gtk_widget_set_tooltip_text(btn, "Instance Log");
+    gtk_widget_set_tooltip_text(btn, "Instance Log — Alt for app.log");
     gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     return btn;
 }

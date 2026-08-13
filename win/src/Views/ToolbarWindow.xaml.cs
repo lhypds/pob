@@ -140,7 +140,12 @@ public partial class ToolbarWindow : Window
 
     private void OnLogsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenLogsFolder();
 
-    private void OnInsLogClicked(object sender, RoutedEventArgs e) => SettingsService.OpenInstanceLog();
+    // Alt-click asks for the app log instead — same button, the wider record.
+    private void OnInsLogClicked(object sender, RoutedEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0) SettingsService.OpenAppLog();
+        else SettingsService.OpenInstanceLog();
+    }
 
     private void OnMacroClicked(object sender, RoutedEventArgs e) => SettingsService.OpenMacroFile();
 

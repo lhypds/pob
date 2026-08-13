@@ -460,6 +460,16 @@ public static class SettingsService
         OpenWithEditor(path);
     }
 
+    // The app log, behind Alt-click on the same button: when the question is
+    // about the app rather than a run — which instances started, which stopped,
+    // what failed — the answer is across instances, not inside one.
+    public static void OpenAppLog()
+    {
+        string path = RootPath("app.log");
+        EnsureFile(path);
+        OpenWithEditor(path);
+    }
+
     public static void OpenLogsFolder()
     {
         string path = InstancePath("logs");
