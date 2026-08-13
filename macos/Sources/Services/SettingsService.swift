@@ -48,7 +48,7 @@ class SettingsService {
         projectRoot.appendingPathComponent(instanceID)
     }
 
-    /// This instance's log — what the toolbar's ins.log button opens, and what
+    /// This instance's log — what the toolbar's .log button opens, and what
     /// pob-core writes every step and psl call to. Resolved statically and
     /// cached, because AppLogger writes to it from anywhere in the shell,
     /// including before any SettingsService has been built.

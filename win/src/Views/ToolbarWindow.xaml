@@ -74,10 +74,7 @@
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8A5;"/>
                 </Button>
                 <Button x:Name="InsLogBtn" Style="{StaticResource ToolButton}" ToolTip="Instance Log" Click="OnInsLogClicked">
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="ins" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
-                        <TextBlock Text=".log" FontFamily="Consolas" FontSize="7" TextAlignment="Center" Margin="0,-1"/>
-                    </StackPanel>
+                    <TextBlock Text=".log" FontFamily="Consolas" FontSize="10" TextAlignment="Center"/>
                 </Button>
                 <Button x:Name="MacroBtn" Style="{StaticResource ToolButton}" ToolTip="Macro PSL" Click="OnMacroClicked">
                     <!-- LightningBolt — closest MDL2 match to the macOS wand

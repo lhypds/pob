@@ -8,7 +8,7 @@ import Foundation
 /// did anything break" without scrolling.
 ///
 /// Everything else is detail, and detail belongs to the instance —
-/// `~/.pob/<instance>/instance.log`, the file the toolbar's ins.log button
+/// `~/.pob/<instance>/instance.log`, the file the toolbar's .log button
 /// opens and the one pob-core writes its own steps to. Every message logged
 /// here lands there whatever its level, so the shell's side of a run reads in
 /// order beside the core's.

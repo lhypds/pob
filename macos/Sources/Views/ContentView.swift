@@ -550,13 +550,10 @@ private struct InstanceLogButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 0) {
-                Text("ins")
-                Text(".log")
-            }
-            .font(.system(size: 6, design: .monospaced))
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+            Text(".log")
+                .font(.system(size: 9, design: .monospaced))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
         .background(

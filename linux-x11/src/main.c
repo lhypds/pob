@@ -588,14 +588,9 @@ static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpoi
 
 static GtkWidget *build_inslog_button(void) {
     GtkWidget *btn = gtk_button_new();
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    GtkWidget *l1 = gtk_label_new("ins");
-    GtkWidget *l2 = gtk_label_new(".log");
-    gtk_style_context_add_class(gtk_widget_get_style_context(l1), "pob-inslog-label");
-    gtk_style_context_add_class(gtk_widget_get_style_context(l2), "pob-inslog-label");
-    gtk_box_pack_start(GTK_BOX(box), l1, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(box), l2, FALSE, FALSE, 0);
-    gtk_container_add(GTK_CONTAINER(btn), box);
+    GtkWidget *label = gtk_label_new(".log");
+    gtk_style_context_add_class(gtk_widget_get_style_context(label), "pob-inslog-label");
+    gtk_container_add(GTK_CONTAINER(btn), label);
     gtk_widget_set_tooltip_text(btn, "Instance Log");
     gtk_widget_set_valign(btn, GTK_ALIGN_CENTER);
     return btn;
@@ -860,7 +855,7 @@ static void install_css(void) {
         "}\n"
         ".pob-active { color: " POB_ACCENT_CSS "; }\n"
         ".pob-recording { color: " POB_RED_CSS "; }\n"
-        ".pob-inslog-label { font-family: monospace; font-size: 6pt; }\n"
+        ".pob-inslog-label { font-family: monospace; font-size: 7pt; }\n"
         // App name at the leading edge: bare text like the instance id beside
         // it, a touch larger and in the UI font. Same qualified selector, for
         // the same reason — the compact-button rule below would otherwise win.
