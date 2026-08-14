@@ -8,9 +8,9 @@ button (🪄) in the toolbar opens `main.macro.psl`, the entry point, in the edi
 
 ```
 ~/.pob/<instance>/src/
-    +--- main.macro.psl      the entry point — what Execute runs and Record writes
-    +--- sign-out.macro.psl  called by main, with slots of its own
-    +--- open-inbox.macro    called by main, with no slots in it at all
+├── main.macro.psl      the entry point — what Execute runs and Record writes
+├── sign-out.macro.psl  called by main, with slots of its own
+└── open-inbox.macro    called by main, with no slots in it at all
 ```
 
 A [call](11_call.md) names a file relative to the one the call is written in, so files sitting beside

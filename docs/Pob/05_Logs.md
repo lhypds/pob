@@ -5,31 +5,31 @@ Logs
 Structure  
 
 ```
-~/.pob/  
-    +--- INSTANCE                                 names the instance directory below.
-    +--- settings.json                            this machine's [settings](06_Settings.md), shared by every instance.
-    +--- app.log                                  the machine's short record across instances: the app starting and stopping, an instance starting and stopping, and errors.
-
-    +--- pb-<uid>/                                an instance directory; the one INSTANCE names is the one in use.
-         +--- instance.json                       which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
-         +--- instance.log                        timestamped instance and macro lifecycle, every executed step, important core messages, and what each `:: … ::` slot was filled with.
-         +--- src/                                this instance's [macros](03_Macro%20PSL.md).
-         |    +--- main.macro.psl                 the entry point: what Record writes and Execute replays. `.macro.psl` says psl fills its `:: … ::` slots.
-         |    +--- <name>.macro.psl               anything `main` calls that has slots of its own.
-         |    +--- <name>.macro                   anything it calls that has none — replayed as written, without psl.
-         +--- .lock                               held locked while Pob runs; this is what a second launch trips over.
-         +--- screenshots/                        screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
-
-         +--- logs/
-              +--- <session>/                    one replay of main.macro.psl.
-                   +--- session.json              session details, start time and end time.
-                   +--- main.macro.psl            the macro as it stood when this session ran, slots and all.
-                   +--- slots/                    one directory per `:: … ::` slot filled, numbered in the order they were filled.
-                        +--- <n>/
-                             +--- slot.json       the instruction, the statement and the file and line it came from, what was filled in, and which model filled it.
-                             +--- psl.txt         what the compiler said while filling it.
-                             +--- screenshot.png  what the slot was filled from.
-                   +--- screenshots/              screenshots taken during the session with `takeScreenshot()` tool.
+~/.pob/
+├── INSTANCE                                      names the instance directory below.
+├── settings.json                                 this machine's [settings](06_Settings.md), shared by every instance.
+├── app.log                                       the machine's short record across instances: the app starting and stopping, an instance starting and stopping, and errors.
+│
+└── pb-<uid>/                                     an instance directory; the one INSTANCE names is the one in use.
+    ├── instance.json                             which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
+    ├── instance.log                              timestamped instance and macro lifecycle, every executed step, important core messages, and what each `:: … ::` slot was filled with.
+    ├── src/                                      this instance's [macros](03_Macro%20PSL.md).
+    │   ├── main.macro.psl                        the entry point: what Record writes and Execute replays. `.macro.psl` says psl fills its `:: … ::` slots.
+    │   ├── <name>.macro.psl                      anything `main` calls that has slots of its own.
+    │   └── <name>.macro                          anything it calls that has none — replayed as written, without psl.
+    ├── .lock                                     held locked while Pob runs; this is what a second launch trips over.
+    ├── screenshots/                              screenshots taken with the toolbar Screenshot button. Yours, not a run's, so they sit here rather than under logs/.
+    │
+    └── logs/
+        └── <session>/                            one replay of main.macro.psl.
+            ├── session.json                      session details, start time and end time.
+            ├── main.macro.psl                    the macro as it stood when this session ran, slots and all.
+            ├── slots/                            one directory per `:: … ::` slot filled, numbered in the order they were filled.
+            │   └── <n>/
+            │       ├── slot.json                 the instruction, the statement and the file and line it came from, what was filled in, and which model filled it.
+            │       ├── psl.txt                   what the compiler said while filling it.
+            │       └── screenshot.png            what the slot was filled from.
+            └── screenshots/                      screenshots taken during the session with `takeScreenshot()` tool.
 ```
 
 `<instance>` is the instance ID, of the form `pb-<4 hex>` (the last two bytes of a fresh UID in
