@@ -25,7 +25,7 @@ Features:
 Getting started
 ---------------
 
-1. One command (Linux)  
+1. One command (Linux and macOS)  
 
 Downloads the release for this machine and installs it — the app goes
 somewhere permanent and the `pob` command lands on your `PATH`:  
@@ -34,6 +34,10 @@ somewhere permanent and the `pob` command lands on your `PATH`:
 curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sh        # just you
 curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sudo sh   # everyone
 ```
+
+On macOS this puts `Pob.app` in `/Applications` — an admin account needs no
+`sudo` for that — and links the bundled `pob` command. You still have to grant
+Accessibility and Screen Recording by hand; see the macOS note below.  
 
 Anything after `sh -s --` is passed on: `--prefix DIR`, `--bin DIR`,
 `--version VER`, or `--uninstall` to take it back off again.  

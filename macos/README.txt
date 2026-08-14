@@ -19,6 +19,14 @@ This folder holds:
 
 Drag Pob.app to your Applications folder, then open it.
 
+(There is no need to download anything next time: one command does all of this
+— the app, the `pob` command, and the quarantine flag below — and again for
+every later version. Add --uninstall to take it back off.
+
+    curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sh
+
+The permissions in this section still have to be granted by hand.)
+
 The app is not notarized, so that first open is blocked. Try it anyway, then
 go to System Settings ▸ Privacy & Security — the Security section, under
 "Allow applications from", then offers Open Anyway for Pob. On macOS 15 and
