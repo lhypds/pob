@@ -110,6 +110,7 @@ that opens it, or:
     pob screenshot          Capture the screen; prints the file it saved
     pob sessions            List past sessions with duration and token usage
     pob mcp start           Start the MCP server for Claude Code, Gemini CLI…
+    pob update              Install the latest release over this one
     pob version             Print the version
 
 `pob` works whether you started Pob from the Dock or from the terminal — it
@@ -131,6 +132,23 @@ Everything is under ~/.pob:
         logs/               sessions, AI slots, screenshots
 
 Uninstalling never touches ~/.pob.
+
+
+Update
+------
+
+    pob update              Install the latest release over this one
+    pob update --check      Say whether there is a newer one, and change nothing
+
+Quit Pob first: the app cannot be replaced while it is running. It replaces the
+copy this pob came from, wherever that is, and keeps ~/.pob as it stands.
+
+macOS ties the two permissions to the exact copy it was shown, and Pob is not
+signed with a Developer ID — so after an update the switches stay on while
+clicks are dropped and screenshots come back empty. Clear them and grant them
+again:
+
+    tccutil reset All com.gcc3.pob
 
 
 Uninstall

@@ -86,6 +86,7 @@ that opens it, or:
     pob screenshot          Capture the screen; prints the file it saved
     pob sessions            List past sessions with duration and token usage
     pob mcp start           Start the MCP server for Claude Code, Gemini CLI…
+    pob update              Install the latest release over this one
     pob version             Print the version
 
 The command on your PATH is the CLI, not the app: `pob` on its own reports
@@ -107,6 +108,17 @@ Everything is under ~/.pob:
         logs/               sessions, AI slots, screenshots
 
 Uninstalling never touches ~/.pob.
+
+
+Update
+------
+
+    pob update              Install the latest release over this one
+    pob update --check      Say whether there is a newer one, and change nothing
+
+Quit Pob first. It replaces the install this pob came from, wherever that is,
+and keeps ~/.pob as it stands — so an install made with sudo (/opt/pob) wants
+sudo pob update, and it says so if you forget.
 
 
 Uninstall

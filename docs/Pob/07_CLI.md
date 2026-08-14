@@ -53,6 +53,8 @@ Flags:
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
 | `mcp start [port]` | Register the MCP server in the user settings of installed agent CLIs (`claude`, `gemini`) and print its info. The server starts with the instance, so there is usually nothing to start; `[port]` moves it to that port first |
 | `mcp stop` | Stop the MCP server and remove those registrations |
+| `update` | Install the latest release over this install — see **Updating** below. `--version VER` installs that release instead, which is how one is reinstalled over itself or an older one gone back to; `--prefix DIR` installs somewhere else, `--bin DIR` (Linux and macOS) moves the symlink. Pob has to be closed |
+| `update --check` | Print what is installed and what the latest release is, and install nothing. Exits `1` when there is a newer one, so a script can ask without reading the text |
 | `version` | Print the Pob version |
 
 Examples:
@@ -66,7 +68,54 @@ pob macro                                # replay src/main.macro.psl
 pob macro --check                        # read it and say what is wrong with it
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
+pob update --check                       # is there a newer release?
+pob update                               # install it over this one
 ```
+
+
+Updating
+--------
+
+`pob update` reinstalls Pob from its releases, over the install the `pob` that
+ran it belongs to. No installer of its own is involved: on Linux and macOS it
+fetches [`get.sh`](https://github.com/lhypds/pob/blob/master/get.sh) — the
+script the one-line install pipes into `sh` — and runs it with `--version` and
+`--prefix` filled in; on Windows, where there is no such script, it downloads
+`Pob-<version>-windows-<arch>.zip` and runs the `install.ps1` inside it. Either
+way what installs the release is the release's own installer, and the answer to
+"what will this do to my machine" is the same one the README's install has.
+
+Which release is the latest is read off the tag page GitHub redirects
+`/releases/latest` to, so there is no API call and no token needed.
+
+Three things the command adds to doing it by hand:
+
+- **It installs over this copy.** The install is found from the CLI's own path
+  — every install puts the CLI in a `Helpers` directory beside the app — so an
+  app in `~/Applications` is replaced there rather than a second one appearing
+  in `/Applications`. A `pob` that is *not* in such a directory is a build in a
+  checkout, and the command says so instead of installing over it: there, `git
+  pull` is the update. `--prefix DIR` overrides all of this.
+- **It stops if Pob is running.** The app being replaced is the app running:
+  Windows will not overwrite its files at all, and elsewhere it would be left
+  as a live process with a different install underneath it. `pob kill` first.
+- **It says when the install needs `sudo`** rather than failing halfway through
+  a tree it cannot write — a root install (`/opt/pob`) is updated with `sudo pob
+  update`.
+
+On Unix the installer replaces the `pob` process rather than running as a child
+of it, since that process lives inside the very bundle being taken apart; its
+output and its exit status are the command's. On Windows nothing may delete a
+running `.exe`, but anything may rename one, so the CLI moves itself to
+`Helpers\pob.exe.old` before the installer writes the new one and the next
+update sweeps the file up.
+
+`~/.pob` is not touched by any of it — settings, instances, macros and logs
+survive an update as they survive a reinstall. On macOS the Accessibility and
+Screen Recording grants do not: they are tied to the exact copy of the app
+macOS was shown, and Pob is not signed with a Developer ID, so a replaced app
+keeps switches that look on while clicks are dropped in silence. The installer
+prints the `tccutil reset All com.gcc3.pob` that clears them.
 
 
 How it reaches the app

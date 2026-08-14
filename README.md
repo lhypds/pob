@@ -1,5 +1,4 @@
 
-
 Pob
 ===
 
@@ -46,6 +45,11 @@ Accessibility and Screen Recording by hand; see the macOS note below.
 
 Anything after `sh -s --` is passed on: `--prefix DIR`, `--bin DIR`,
 `--version VER`, or `--uninstall` to take it back off again.  
+
+Once it is installed, `pob update` does this again for the latest release —
+over the same install, with Pob closed — and `pob update --check` says whether
+there is one. On Windows it downloads the release and runs its `install.ps1`
+instead; either way `~/.pob` is untouched. See [CLI](docs/Pob/07_CLI.md).  
 
 2. From the repository  
 

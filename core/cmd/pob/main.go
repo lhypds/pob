@@ -16,6 +16,7 @@
 //	pob macro                        run src/main.macro.psl
 //	pob macro --check                read the macro and say what is wrong with it
 //	pob mcp start                    register the MCP server with the agent CLIs
+//	pob update                       install the latest release over this one
 package main
 
 import (
@@ -63,8 +64,19 @@ Commands:
                      agent CLIs (claude, gemini) and print its info. The server
                      itself starts with the instance; [port] moves it there
   mcp stop           Stop the MCP server and remove those registrations
+  update             Install the latest release over this one — the same
+                     installer the one-line install uses, pointed at this
+                     install. Pob has to be closed first
+  update --check     Say what is installed and what the latest release is, and
+                     install nothing; exits 1 when there is a newer one
   version            Print the Pob version
   help               Show this help
+
+Update options (after "update"):
+  --version VER      Install that release instead of the latest — how a release
+                     is reinstalled over itself, or an older one gone back to
+  --prefix DIR       Install there rather than over this install
+  --bin DIR          Where the pob symlink goes (Linux and macOS)
 
 Examples:
   pob                          # what's running?
@@ -74,6 +86,8 @@ Examples:
   pob macro --check            # read it and print what is wrong with it
   pob --session 1752712400
   pob mcp start
+  pob update --check           # is there a newer release?
+  pob update                   # install it
 `
 
 func fail(format string, args ...any) {
@@ -144,6 +158,12 @@ func main() {
 
 	case "screenshot":
 		cmdScreenshot(runningInstance(root))
+
+	// Not runningInstance either: an update replaces the app, so a running one
+	// is what stops it — cmdUpdate says so itself, once it knows there is
+	// anything to install.
+	case "update":
+		cmdUpdate(root, args[1:])
 
 	case "mcp":
 		sub := ""

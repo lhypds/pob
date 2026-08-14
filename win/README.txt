@@ -67,6 +67,7 @@ that opens it, or:
     pob screenshot          Capture the screen; prints the file it saved
     pob sessions            List past sessions with duration and token usage
     pob mcp start           Start the MCP server for Claude Code, Gemini CLI…
+    pob update              Install the latest release over this one
     pob version             Print the version
 
 The command on your PATH is the CLI, not the app: `pob` on its own reports
@@ -90,6 +91,17 @@ Everything is under %USERPROFILE%\.pob:
         logs\               sessions, AI slots, screenshots
 
 Uninstalling never touches it.
+
+
+Update
+------
+
+    pob update              Install the latest release over this one
+    pob update --check      Say whether there is a newer one, and change nothing
+
+Quit Pob first: Windows will not let a running app be replaced. It downloads
+the release, hands it to the install.ps1 that came with it, and installs over
+the copy this pob came from — %USERPROFILE%\.pob is left as it stands.
 
 
 Uninstall

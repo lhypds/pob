@@ -15,6 +15,10 @@
 #   curl -fsSL .../get.sh | sh -s -- --prefix /opt/pob --bin /usr/local/bin
 #   curl -fsSL .../get.sh | sh -s -- --uninstall
 #
+# `pob update` fetches this script and runs it the same way, with --version and
+# --prefix already filled in for the install it is replacing — so an update is
+# this install, and there is one installer rather than two.
+#
 # Env:
 #   POB_VERSION=0.2.3      install this version instead of the latest release
 
