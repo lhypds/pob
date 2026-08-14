@@ -35,6 +35,7 @@ reads the log tree directly, so it also works when the app is not running.
 Usage: pob [flags] [command] [args]
 
 Flags:
+  -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
 ```
 
@@ -55,7 +56,7 @@ Flags:
 | `mcp stop` | Stop the MCP server and remove those registrations |
 | `update` | Install the latest release over this install — see **Updating** below. `--version VER` installs that release instead, which is how one is reinstalled over itself or an older one gone back to; `--prefix DIR` installs somewhere else, `--bin DIR` (Linux and macOS) moves the symlink. Pob has to be closed |
 | `update --check` | Print what is installed and what the latest release is, and install nothing. Exits `1` when there is a newer one, so a script can ask without reading the text |
-| `version` | Print the Pob version |
+| `version` | Print the Pob version. `pob -v` and `pob --version` print the same thing — they are read before the flags are parsed, so they answer wherever a version is asked for. What is printed is stamped into the CLI at build time, so a build from a checkout says `dev` |
 
 Examples:
 

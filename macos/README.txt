@@ -111,7 +111,7 @@ that opens it, or:
     pob sessions            List past sessions with duration and token usage
     pob mcp start           Start the MCP server for Claude Code, Gemini CLI…
     pob update              Install the latest release over this one
-    pob version             Print the version
+    pob version             Print the version (pob -v too)
 
 `pob` works whether you started Pob from the Dock or from the terminal — it
 finds the running instance through ~/.pob and talks to it.

@@ -68,7 +68,7 @@ that opens it, or:
     pob sessions            List past sessions with duration and token usage
     pob mcp start           Start the MCP server for Claude Code, Gemini CLI…
     pob update              Install the latest release over this one
-    pob version             Print the version
+    pob version             Print the version (pob -v too)
 
 The command on your PATH is the CLI, not the app: `pob` on its own reports
 what is running, and `pob launch` is what opens the window. Both Pob.exe and

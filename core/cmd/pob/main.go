@@ -40,6 +40,7 @@ directory holds its src/ macros and logs/.
 Usage: pob [flags] [command] [args]
 
 Flags:
+  -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
 
 Commands:
@@ -96,6 +97,19 @@ func fail(format string, args ...any) {
 }
 
 func main() {
+	// -v and --version are what every other command answers its version to, so
+	// they answer here too. They are read before the flag package sees them:
+	// it knows only the flags declared below and would refuse these two as
+	// undefined, printing the whole usage over a question with a one-line
+	// answer.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-v", "--version":
+			fmt.Println(version)
+			return
+		}
+	}
+
 	sessionFlag := flag.String("session", "", "target session ID")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
