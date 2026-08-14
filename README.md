@@ -31,8 +31,13 @@ Downloads the release for this machine and installs it — the app goes
 somewhere permanent and the `pob` command lands on your `PATH`:  
 
 ```
-curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sh        # just you
-curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sudo sh   # everyone
+curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sh
+```
+
+sudo:  
+
+```
+curl -fsSL https://raw.githubusercontent.com/lhypds/pob/master/get.sh | sudo sh
 ```
 
 On macOS this puts `Pob.app` in `/Applications` — an admin account needs no
