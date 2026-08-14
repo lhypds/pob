@@ -99,14 +99,29 @@ func problemf(line int, format string, a ...any) macroProblem {
 // the files it calls, in the order the lines are written.
 //
 // It is the check Execute runs before the cursor moves, said in the terminal
-// instead of in a dialog — one reading, so that what `pob macro --check` says
-// about a macro is what would have stopped it from running.
+// instead of in a dialog — one reading, so that what `pob check` says about a
+// macro is what would have stopped it from running.
 func CheckMacroFile(path string) ([]MacroProblem, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	return checkMacroSource(string(data), path), nil
+}
+
+// MacroFileNeedsPSL reports whether replaying this file would start the psl
+// compiler: a `:: … ::` in it, or in a file it calls. It is the second reading
+// runMacro takes before the cursor moves — see macroNeedsPSL — so what
+// `pob check` says about psl being installed is what would have stopped the run.
+//
+// A file that cannot be read needs nothing. What is wrong with it is then the
+// problem, and CheckMacroFile is what says so.
+func MacroFileNeedsPSL(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return macroNeedsPSL(parseMacro(string(data)), path, map[string]bool{path: true})
 }
 
 // checkMacroSource checks a macro that has already been read — the source

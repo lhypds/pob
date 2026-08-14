@@ -80,14 +80,18 @@ Two things are not mistakes at all, and neither reading has anything to say abou
 Checking it without running it
 
 ```
-pob macro --check
+pob check
 ```
 
 is the same reading Execute does, said in the terminal: it reads `src/main.macro.psl` and the files it calls,
-prints what is wrong with them and runs nothing. It talks to no one, so it is the one macro command
-that works with Pob closed — which is the point of it, since a hand-edited macro is worth checking
-before it is ever loaded. It exits `1` when there is anything to fix, so a commit hook can hold the
-line.
+prints what is wrong with them and runs nothing. It talks to no one, so it is the command that works
+with Pob closed — which is the point of it, since a hand-edited macro is worth checking before it is
+ever loaded. It exits `1` when there is anything to fix, so a commit hook can hold the line.
+
+The same command goes on to check the machine the macro would run on — that psl is installed and has
+something to fill a slot with, that the app and its core are where they are looked for — since a
+macro with nothing wrong in it still does not run without those. See
+[CLI](../Pob/07_CLI.md#checking).
 
 Nothing else checks. Opening the macro with the Macro PSL button (🪄) opens it and does no more,
 and a macro is read when it is about to be played or when you ask.
@@ -97,5 +101,5 @@ See also
 --------
 
 - [Calls](06_Calls.md) — the names and argument counts the check reads against
-- [CLI](../Pob/07_CLI.md) — `pob macro --check` and the rest of the command
+- [CLI](../Pob/07_CLI.md) — `pob check` and the rest of the command
 - [Logs](../Pob/05_Logs.md) — where a skipped statement is written down

@@ -1,5 +1,5 @@
 // Package agent runs an instance's main macro — the Prompt Script Language
-// program the Play button, `pob macro` and the control API all replay. All
+// program the Play button, `pob start` and the control API all replay. All
 // screen perception and operation goes through the bridge to the native shell,
 // and the :: … :: slots in the program are filled by running the psl compiler.
 package agent

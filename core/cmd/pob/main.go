@@ -12,9 +12,11 @@
 //	pob                              show the instance
 //	pob new "Work laptop"            create an instance and switch to it
 //	pob launch                       start the app (asks which, with several)
+//	pob launch --start               start the app and run its macro
+//	pob check                        read the macro and this machine, and say
+//	                                 what is wrong with either
+//	pob start                        run src/main.macro.psl (pob stop stops it)
 //	pob --session Y                  show one session's details
-//	pob macro                        run src/main.macro.psl
-//	pob macro --check                read the macro and say what is wrong with it
 //	pob mcp start                    register the MCP server with the agent CLIs
 //	pob update                       install the latest release over this one
 package main
@@ -49,14 +51,18 @@ Commands:
   launch [instance]  Start the app. With more than one instance and nothing
                      named, lists them and asks which to start — arrow keys to
                      move, enter to start. <instance> is a name or an id
+  launch --start     Start the app and run its macro as soon as it is up
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
   sessions           List the instance's sessions
-  macro              Execute src/main.macro.psl (the toolbar Execute button)
-  macro --check      Read that macro and the files it calls, print what is wrong
-                     with them, and run nothing. Works with nothing running,
-                     and exits 1 when there is anything to fix
+  check              Read src/main.macro.psl and the files it calls, and look
+                     over what a run needs of this machine — psl, what psl fills
+                     slots with, the app and the core behind it, settings.json.
+                     Prints everything wrong and runs nothing. Works with
+                     nothing running, and exits 1 when there is anything to fix
+  start              Execute src/main.macro.psl (the toolbar Execute button) —
+                     the run stop stops
   stop               Stop the running session
   kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
@@ -83,8 +89,9 @@ Examples:
   pob                          # what's running?
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
-  pob macro                    # replay this instance's main macro
-  pob macro --check            # read it and print what is wrong with it
+  pob launch --start           # start it and run the macro straight away
+  pob check                    # is the macro sound, and can this machine run it?
+  pob start                    # replay this instance's main macro
   pob --session 1752712400
   pob mcp start
   pob update --check           # is there a newer release?
@@ -140,7 +147,8 @@ func main() {
 		showInstance(root)
 
 	case "launch":
-		cmdLaunch(root, strings.TrimSpace(strings.Join(args[1:], " ")))
+		wanted, start := parseLaunchArgs(args[1:])
+		cmdLaunch(root, wanted, start)
 
 	case "new":
 		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))
@@ -151,16 +159,17 @@ func main() {
 	case "status":
 		showStatus(runningInstance(root))
 
-	case "macro":
-		// --check reads the file rather than driving the app, so it is the one
-		// macro command that works with nothing running — which is the point of
-		// it: a macro is checked while it is being written, and what is being
-		// written is usually not yet what is loaded.
-		if len(args) > 1 && args[1] == "--check" {
-			cmdMacroCheck(theInstance(root))
-			return
-		}
-		cmdMacro(runningInstance(root))
+	// Not runningInstance: the check reads files and talks to nothing, which is
+	// the point of it — a macro is checked while it is being written, and an
+	// install is checked before it has ever been started.
+	case "check":
+		cmdCheck(root)
+
+	// Not runningInstance either: `start` is the one command whose "nothing is
+	// running" is worth more than the standard line, since it is also what
+	// `launch --start` is for.
+	case "start":
+		cmdStart(root)
 
 	case "stop":
 		cmdStop(runningInstance(root))

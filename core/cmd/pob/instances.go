@@ -56,12 +56,39 @@ func cmdNew(root, name string) {
 // comes first: a Pob that is already up would refuse the launch anyway, and
 // refusing it after INSTANCE had been repointed would leave the machine
 // naming an instance it is not running.
-func cmdLaunch(root, wanted string) {
+//
+// With start, the macro runs as soon as the app is up — the two commands a
+// scheduled or scripted run is otherwise a wait between, since `pob start` on
+// its own has nothing to talk to until the launch has finished.
+func cmdLaunch(root, wanted string, start bool) {
 	if inst := theInstance(root); inst.Running {
 		fail("Pob is already running (%s)", inst.ID)
 	}
 	selectInstance(root, wanted)
-	launchInstance(root)
+	inst := launchInstance(root)
+	if start {
+		cmdMacro(inst)
+	}
+}
+
+// parseLaunchArgs splits what follows `launch` into the instance wanted and
+// whether --start came with it. Everything that is not the flag is the name,
+// joined back up: an instance called "Work laptop" arrives as two arguments.
+// A mistyped flag is said rather than taken for a name, which would otherwise
+// be reported as an instance nobody has.
+func parseLaunchArgs(args []string) (wanted string, start bool) {
+	var name []string
+	for _, arg := range args {
+		switch {
+		case arg == "--start":
+			start = true
+		case strings.HasPrefix(arg, "-"):
+			fail("unknown launch option %q — run `pob help`", arg)
+		default:
+			name = append(name, arg)
+		}
+	}
+	return strings.TrimSpace(strings.Join(name, " ")), start
 }
 
 // selectInstance decides which instance `pob launch` should start: the one

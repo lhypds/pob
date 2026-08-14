@@ -34,5 +34,5 @@ See also
 - [Key names](04_Keys.md) — what `keyPress` accepts
 - [Settings](06_Settings.md) — `macro_default_delay`, `image_scale`, and where the `psl` executable is
 - [Logs](05_Logs.md) — the session a run writes, and where each slot the AI filled is kept
-- [CLI](07_CLI.md) — `pob macro` runs `src/main.macro.psl` from the terminal
+- [CLI](07_CLI.md) — `pob start` runs `src/main.macro.psl` from the terminal, and `pob check` reads it without running it
 - [MCP Server](08_MCP.md) — the same actions as MCP tools, recorded into the same file

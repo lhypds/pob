@@ -34,7 +34,7 @@ keyPress("return")
 
 Three things write a macro and one thing runs it. Recording writes it from what you, the AI and the
 [MCP](../Pob/08_MCP.md) clients do; you write it by hand in an editor; the AI writes it as it works.
-Execute, `pob macro` and the [Control API](../Pob/11_Control%20API.md) all run it the same way.
+Execute, `pob start` and the [Control API](../Pob/11_Control%20API.md) all run it the same way.
 
 
 The pages
@@ -52,7 +52,7 @@ The pages
 | [once blocks](09_once%20blocks.md) | Watching the screen, and running a block each time it changes into something the condition holds of |
 | [stop](10_stop.md) | Ending the run from inside the macro |
 | [call](11_call.md) | Replaying another PSL file where the statement stands |
-| [When something is wrong](12_When%20something%20is%20wrong.md) | The check before the run, the replay's own forgiveness, and `pob macro --check` |
+| [When something is wrong](12_When%20something%20is%20wrong.md) | The check before the run, the replay's own forgiveness, and `pob check` |
 | [How it runs](13_How%20it%20runs.md) | The origin, the delay between statements, and what Stop does |
 
 
@@ -64,5 +64,5 @@ See also
 - [Settings](../Pob/06_Settings.md) — `macro_default_delay`, `image_scale`, and where the `psl` executable is
 - [psl](https://github.com/pob/psl) — the compiler, its `.pslrc`, and the models it is pointed at
 - [Logs](../Pob/05_Logs.md) — the session a run writes, and where each slot the AI filled is kept
-- [CLI](../Pob/07_CLI.md) — `pob macro` runs `src/main.macro.psl` from the terminal
+- [CLI](../Pob/07_CLI.md) — `pob start` runs `src/main.macro.psl` from the terminal, and `pob check` reads it without running it
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools, recorded into the same file

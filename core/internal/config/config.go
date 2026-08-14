@@ -86,7 +86,7 @@ func (c *Config) legacySettingsFile() string {
 
 // MainMacroName is what an instance's own macro is called. The `.macro.psl`
 // says psl fills its slots — see psl.MacroPSLExt — and `main` says it is the one
-// the toolbar's Execute and `pob macro` start from, out of however many files
+// the toolbar's Execute and `pob start` start from, out of however many files
 // are in src/ beside it.
 const MainMacroName = "main" + psl.MacroPSLExt
 
@@ -99,7 +99,7 @@ const MainMacroName = "main" + psl.MacroPSLExt
 func (c *Config) SrcDir() string { return filepath.Join(c.InstanceDir(), "src") }
 
 // MacroFile is <root>/<instance>/src/main.macro.psl, the Prompt Script Language
-// program Execute and `pob macro` run. It is the path and not only the text
+// program Execute and `pob start` run. It is the path and not only the text
 // because a call() in the macro names another file relative to the directory
 // this one is in — which is src/, so the files beside it are named by their bare
 // names. See runMacroCall.

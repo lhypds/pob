@@ -13,14 +13,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"pob/core/internal/agent"
-	"pob/core/internal/config"
 	"pob/core/internal/storage"
 )
 
@@ -232,33 +229,7 @@ func cmdMacro(inst *Instance) {
 	}
 }
 
-// cmdMacroCheck reads the instance's main macro and prints everything wrong
-// with it and with the files it calls — the check Execute runs before the
-// cursor moves, said in the terminal instead of in a dialog.
-//
-// It reads the file and talks to nothing, which is what makes it the macro
-// command that works with Pob closed. A macro is checked while it is being
-// written, and a hand-edited file is checked before it is ever loaded.
-//
-// The exit status is what a script goes by: 0 when there is nothing to fix, 1
-// when there is, which is the same answer Execute acts on.
-func cmdMacroCheck(inst *Instance) {
-	path := filepath.Join(inst.Dir, "src", config.MainMacroName)
-	problems, err := agent.CheckMacroFile(path)
-	if err != nil {
-		fail("cannot read %s: %v", path, err)
-	}
-	if len(problems) == 0 {
-		fmt.Printf("%s: nothing to fix.\n", path)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "%s: %s\n", path, problemCount(len(problems)))
-	for _, p := range problems {
-		fmt.Fprintf(os.Stderr, "  %s\n", p)
-	}
-	os.Exit(1)
-}
-
+// problemCount counts what `pob check` found, for the line above the list.
 func problemCount(n int) string {
 	if n == 1 {
 		return "1 problem"
@@ -285,6 +256,18 @@ func waitForSession(inst *Instance) string {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return ""
+}
+
+// cmdStart is `pob start`: the run `pob stop` stops, and what the toolbar's
+// Execute button starts. What it adds to cmdMacro is what it says when there is
+// nothing to start a run on, since "start" is also the word for starting the
+// app — and `pob launch --start` is that.
+func cmdStart(root string) {
+	inst := theInstance(root)
+	if !inst.Running {
+		fail("Pob is not running — `pob launch` starts the app, `pob launch --start` starts it and runs the macro")
+	}
+	cmdMacro(inst)
 }
 
 func cmdStop(inst *Instance) {

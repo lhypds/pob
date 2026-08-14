@@ -10,7 +10,7 @@ macro — and every file it `call`s — when Execute is pressed, and puts up **M
 the line numbers instead of moving the cursor. A macro is often half-recorded and half-typed, and
 what a bad line in the middle of one costs is not the thirty-nine statements around it but the
 half of them that would have played before anyone noticed. See
-[When something is wrong](12_When%20something%20is%20wrong.md), and `pob macro --check` to read a
+[When something is wrong](12_When%20something%20is%20wrong.md), and `pob check` to read a
 macro without running it.
 
 There are four kinds of statement: a **[call](06_Calls.md)**, which does something to the machine or

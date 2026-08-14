@@ -103,8 +103,10 @@ that opens it, or:
 
     pob                     What is running: the instance and its sessions
     pob launch              Start the app
+    pob launch --start      Start the app and run its macro as soon as it is up
     pob status              Live status — executing, model, MCP, server address
-    pob macro               Replay macro.psl
+    pob check               Read the macro and this machine, and print what is wrong
+    pob start               Replay the macro — what pob stop stops
     pob stop                Stop the running session
     pob kill                Quit the running instance
     pob screenshot          Capture the screen; prints the file it saved

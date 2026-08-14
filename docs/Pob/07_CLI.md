@@ -39,15 +39,20 @@ Flags:
   --session <id>     Target session; with no command, shows its details
 ```
 
+`launch` takes one option of its own, `--start`; everything else after it is the
+instance, so `pob launch --start "Work laptop"` is that instance, started and
+running.
+
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
+| `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"` |
 | `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
-| `macro` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) (same as the toolbar Execute button) |
-| `macro --check` | Read `src/main.macro.psl` and the files it `call`s, print what is wrong with them line by line, and run nothing. The same check Execute refuses a run over, so a macro this passes is one that will start. It reads the file and talks to no one, which makes it the one `macro` command that works with Pob closed; exits `1` when there is anything to fix |
+| `check` | Everything that has to be right before a run, in one report — see **Checking** below. `src/main.macro.psl` and the files it `call`s, line by line, and then this machine: psl, what psl fills a slot with, the app and the `pob-core` behind it, `settings.json`, `stop_hook`. It reads files and talks to no one, which makes it the command that answers with Pob closed; exits `1` when there is anything to fix |
+| `start` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) on the running instance — the same run as the toolbar's Execute button, and what `stop` stops. With nothing running it says so and names `launch --start`, since starting the app is also called starting |
 | `stop` | Stop the running session |
 | `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
@@ -65,12 +70,67 @@ pob                                      # what's running?
 pob new "Work laptop"                    # create an instance and switch to it
 pob launch                               # start the app (asks which, if there are several)
 pob launch "Work laptop"                 # start that one
-pob macro                                # replay src/main.macro.psl
-pob macro --check                        # read it and say what is wrong with it
+pob launch --start "Work laptop"         # start that one and run its macro
+pob check                                # is the macro sound, and can this machine run it?
+pob start                                # replay src/main.macro.psl; pob stop stops it
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
 pob update --check                       # is there a newer release?
 pob update                               # install it over this one
+```
+
+
+Checking
+--------
+
+`pob check` is the report to read before a run. It asks nothing of the app, so it
+answers with Pob closed — the state a macro is written in, and the state a new
+install is in.
+
+Two groups come out of it, printed apart because they are fixed apart.
+
+**The macro** — `src/main.macro.psl` and every file it `call`s, line by line.
+This is the same reading Execute takes before the cursor moves (see
+[When something is wrong](../Macro%20PSL/12_When%20something%20is%20wrong.md)),
+so a macro this passes is a macro that will start: an unknown statement, a call
+written with the wrong number of arguments, a `call()` naming a file that is not
+there, a `/*` nobody closed, a `:: … ::` in a `.macro` that psl is never run for.
+
+**This machine** — what a run needs of it besides the file:
+
+| Checked | Why |
+|---------|-----|
+| `settings.json` parses | The app and the core read a file they cannot parse as an empty one, so one stray comma quietly puts every setting back to its default and nothing says so |
+| psl is where `settings.json` says | A `:: … ::` is filled by running psl, and a macro with slots in it cannot start without one. Not checked for a macro that has none — psl is never started then, and the summary says as much |
+| psl has something to fill with | A `.pslrc` in `~/.pob` or in your home directory, or a key in the environment. With neither, every slot fails at the moment the replay reaches it |
+| The app, and `pob-core` behind it | The app is the window and core is what runs the macro. Both are looked for exactly where the CLI and the shells look for them, the checkout layouts included |
+| The libraries the app is linked against | Linux only, by asking `ldd` — the same reading `get.sh` takes after an install, repeated because they also go missing later: an upgrade takes one away and the app stops starting with nothing on screen to say why |
+| `stop_hook` names something that exists | It is started with a shell and never waited for, so a hook naming a command that is not installed is the quietest failure there is — the run ends, nothing announces it, and no log line says why |
+
+```
+$ pob check
+Instance:   pb-b424 (Work laptop)
+Macro:      /Users/you/.pob/pb-b424/src/main.macro.psl
+psl:        /opt/homebrew/bin/psl
+App:        /Applications/Pob.app
+Core:       /Applications/Pob.app/Contents/MacOS/pob-core
+
+main.macro.psl — 2 problems:
+  line 1: move takes 2 arguments, and 1 was written
+  line 4: call("sign-out.macro.psl") names /Users/you/.pob/pb-b424/src/sign-out.macro.psl, and there is no such file
+
+2 problems to fix.
+```
+
+That summary is most of the answer when nothing is wrong: which psl and which
+app were found is what `Nothing to fix.` is about.
+
+The problems go to stderr and the summary to stdout, and the exit status is what
+a script goes by — `0` when there is nothing to fix, `1` when there is — so it
+can stand in front of a run:
+
+```
+pob check && pob launch --start
 ```
 
 
@@ -141,12 +201,13 @@ stdin and stdout, a pipe a `pob` typed into a terminal has no way to join. So
 The port is whatever the OS hands out, so it is a different one on every
 launch and the file is the only way to find it. The two fields are there only
 while the instance runs — it stops advertising itself by clearing them, so a
-file without a `port` is a stopped instance. `status`, `macro`, `stop`,
+file without a `port` is a stopped instance. `status`, `start`, `stop`,
 `screenshot` and the `mcp` commands are each one call to that
 API; the rest read the `logs/` tree directly, which is why they still work
-with the app closed. `macro --check` is the odd one of that first group: it
-reads `src/main.macro.psl` itself rather than asking the instance about it, so a macro
-can be checked while it is being written and before anything is running.
+with the app closed. `check` is in neither group: it reads `src/main.macro.psl`
+and this machine itself rather than asking the instance anything, which is what
+lets a macro be checked while it is being written and an install before it has
+ever been started.
 
 `kill` uses the API for one thing only — asking the instance which process it
 is — and then works on the processes themselves. The pid it gets back is
@@ -160,7 +221,7 @@ the signal itself rather than handing it to the terminal.
 See also
 --------
 
-- [Macro PSL](03_Macro%20PSL.md) — what `pob macro` runs
+- [Macro PSL](03_Macro%20PSL.md) — what `pob start` runs and `pob check` reads
 - [Control API](11_Control%20API.md) — the endpoints behind these commands
 - [Logs](05_Logs.md) — the tree `pob` reads for session detail
 - [MCP Server](08_MCP.md) — the server `pob mcp start` registers
