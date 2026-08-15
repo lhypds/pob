@@ -1,4 +1,4 @@
-# Setup script for the Pob Windows shell.
+﻿# Setup script for the Pob Windows shell.
 # Checks toolchain dependencies, then builds the Go core and the shell.
 # Run from anywhere:  powershell -ExecutionPolicy Bypass -File win\setup.ps1
 

@@ -1,4 +1,4 @@
-# Builds the Go core + Windows shell and launches Pob detached.
+﻿# Builds the Go core + Windows shell and launches Pob detached.
 # Run it again — or pass -Count — to start additional instances side by side.
 #
 # Usage: .\start.ps1 [-Count <n>]

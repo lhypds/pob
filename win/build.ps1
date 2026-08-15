@@ -1,4 +1,4 @@
-# Builds a distributable Windows release natively (run on a Windows machine):
+﻿# Builds a distributable Windows release natively (run on a Windows machine):
 # Go core (pob-core.exe) + WPF shell, assembled side by side (the shell looks
 # for pob-core.exe next to its own binary, like the macOS bundle layout).
 # Produces: .\win\dist\Pob\  and  Pob-<version>-windows-<arch>.zip

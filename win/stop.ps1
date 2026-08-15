@@ -1,4 +1,4 @@
-# Stops the Pob shell and the core process.
+﻿# Stops the Pob shell and the core process.
 # The Go core exits on its own when the shell dies (stdin EOF), but clean up
 # any stragglers.
 

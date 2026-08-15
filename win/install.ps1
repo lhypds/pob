@@ -1,4 +1,4 @@
-# Installs Pob on this machine: the app tree goes somewhere it can stay, the
+﻿# Installs Pob on this machine: the app tree goes somewhere it can stay, the
 # `pob` command lands on the PATH, and Pob turns up in the Start menu — the
 # Windows counterpart of the macOS app's "Install 'pob' Command…" menu item.
 #
@@ -12,6 +12,11 @@
 # Everything is per-user (no administrator prompt): the app goes under
 # %LOCALAPPDATA%\Programs\Pob and the PATH entry is the user's, not the
 # machine's. -InstallDir puts it somewhere else.
+#
+# Keep this file saved as UTF-8 *with* a BOM. Windows PowerShell 5.1 reads a
+# BOM-less script in the machine's ANSI codepage, where the third byte of an
+# em dash or an emoji decodes to a curly quote — which the parser accepts as a
+# string delimiter, so the script dies on a syntax error before it runs.
 
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "Programs\Pob"),

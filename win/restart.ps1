@@ -1,4 +1,4 @@
-# Rebuilds the Go core + Windows shell and relaunches the app in the background.
+﻿# Rebuilds the Go core + Windows shell and relaunches the app in the background.
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
