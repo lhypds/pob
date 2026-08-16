@@ -48,7 +48,7 @@ func newMacroTest(t *testing.T) *macroTest {
 	applog.Init(root)
 
 	cfg := config.New(root, "pob-test")
-	store := storage.New(root, "pob-test", cfg.SettingsDict, cfg.Macro)
+	store := storage.New(root, "pob-test", cfg.SettingsDict)
 	// The same sink pob-core sets: what the runner logs is the instance's, so
 	// it lands in instance.log whatever its level.
 	applog.SetInstanceSink(func(level, message string) {
@@ -85,6 +85,20 @@ func (m *macroTest) replay(t *testing.T, source string) *macroRun {
 	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	nodes := parseMacro(source)
+	run := newMacroRun("test", path, source, "")
+	run.spendUncovered(nodes)
+	m.runner.runMacroNodes(context.Background(), run, nodes)
+	return run
+}
+
+// replayFile replays a file that is not the instance's own macro, from wherever
+// it sits — what `pob start --macropsl` starts, minus the screen. The entry
+// point is the named file, so the calls in it are resolved against its own
+// directory rather than against src/.
+func (m *macroTest) replayFile(t *testing.T, name, source string) *macroRun {
+	t.Helper()
+	path := m.write(t, name, source)
 	nodes := parseMacro(source)
 	run := newMacroRun("test", path, source, "")
 	run.spendUncovered(nodes)
@@ -323,6 +337,21 @@ func TestACalledFileResolvesItsOwnCalls(t *testing.T) {
 	m.replay(t, "call(\"../shared/outer.psl\")\nsleep(4ms)")
 
 	checkRan(t, m.ran(t), []string{"2", "3", "4"})
+}
+
+// A macro started on a file of its own — `pob start --macropsl` — is that file's
+// replay and not the instance's: its calls name its own neighbours, so a macro
+// kept beside the thing it automates runs from where it is kept rather than
+// having to be moved into src/ first.
+func TestANamedFileResolvesItsCallsAgainstItsOwnDirectory(t *testing.T) {
+	m := newMacroTest(t)
+	m.write(t, "elsewhere/helper.psl", "sleep(2ms)")
+	// Named the same as a file beside the instance's macro, to say which of the
+	// two the call reaches: the one beside the file the run was started on.
+	m.write(t, filepath.Join(filepath.Base(m.dir), "helper.psl"), "sleep(9ms)")
+	m.replayFile(t, "elsewhere/login.macro.psl", "sleep(1ms)\ncall(\"helper.psl\")\nsleep(3ms)")
+
+	checkRan(t, m.ran(t), []string{"1", "2", "3"})
 }
 
 // stop() ends the replay, not the file the statement is in: the file that called

@@ -18,10 +18,10 @@ func TestSessionKeepsTheMacroAsItWasWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	written := "move(:: the x offset ::, 40)\nclick()\n"
-	store := New(root, info.ID, func() map[string]any { return nil }, func() string { return written })
+	store := New(root, info.ID, func() map[string]any { return nil })
 
 	sessionID := store.CreateSession()
-	store.SaveMacro(sessionID)
+	store.SaveMacro(sessionID, SessionMacroName, written)
 
 	dir := filepath.Join(root, info.ID, "logs", sessionID)
 	if text, err := os.ReadFile(filepath.Join(dir, SessionMacroName)); err != nil || string(text) != written {
@@ -29,5 +29,30 @@ func TestSessionKeepsTheMacroAsItWasWritten(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "macro.txt")); err == nil {
 		t.Error("macro.txt is in the session — the compiled macro is not kept any more")
+	}
+}
+
+// A session started on another file — `pob start --macropsl` — keeps its copy
+// under that file's own name, which is the name its slots were logged against
+// and the name the replay knew it by. Kept as main.macro.psl instead, a session
+// directory would say it replayed the instance's entry point when it did not.
+func TestSessionKeepsANamedMacroUnderItsOwnName(t *testing.T) {
+	root := t.TempDir()
+	info, err := CreateInstance(root, "Work laptop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := "click()\n"
+	store := New(root, info.ID, func() map[string]any { return nil })
+
+	sessionID := store.CreateSession()
+	store.SaveMacro(sessionID, "login.macro.psl", written)
+
+	dir := filepath.Join(root, info.ID, "logs", sessionID)
+	if text, err := os.ReadFile(filepath.Join(dir, "login.macro.psl")); err != nil || string(text) != written {
+		t.Errorf("login.macro.psl = %q (%v), want the macro as it was written", text, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, SessionMacroName)); err == nil {
+		t.Errorf("%s is in the session — it ran login.macro.psl", SessionMacroName)
 	}
 }

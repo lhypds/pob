@@ -216,13 +216,25 @@ func dashboardURL(addr string) string {
 	return parsed.Scheme + "://" + parsed.Host + "/"
 }
 
-// cmdMacro replays the instance's main macro. After starting it polls briefly
-// so it can print the new session's ID.
-func cmdMacro(inst *Instance) {
-	if _, err := inst.post("/run/macro", nil, 5*time.Second); err != nil {
+// cmdMacro replays a macro on the running instance: its own main macro, or the
+// file --macropsl named, already resolved to an absolute path. After starting
+// it polls briefly so it can print the new session's ID.
+//
+// A named file is printed back. It is the one thing about the run that is not
+// what it would usually be, and a session started over the wrong file is worth
+// noticing before the cursor has finished moving.
+func cmdMacro(inst *Instance, macro string) {
+	var body any
+	if macro != "" {
+		body = map[string]any{"file": macro}
+	}
+	if _, err := inst.post("/run/macro", body, 5*time.Second); err != nil {
 		fail("macro failed: %v", err)
 	}
 	fmt.Printf("Macro session started on instance %s.\n", inst.ID)
+	if macro != "" {
+		fmt.Printf("Macro:    %s\n", macro)
+	}
 	if session := waitForSession(inst); session != "" {
 		fmt.Printf("Session:  %s\n", session)
 		fmt.Printf("Logs:     %s\n", filepath.Join(inst.LogsDir, session))
@@ -262,12 +274,18 @@ func waitForSession(inst *Instance) string {
 // Execute button starts. What it adds to cmdMacro is what it says when there is
 // nothing to start a run on, since "start" is also the word for starting the
 // app — and `pob launch --start` is that.
-func cmdStart(root string) {
+//
+// file is what --macropsl named, "" for the instance's own macro.
+func cmdStart(root, file string) {
 	inst := theInstance(root)
 	if !inst.Running {
 		fail("Pob is not running — `pob launch` starts the app, `pob launch --start` starts it and runs the macro")
 	}
-	cmdMacro(inst)
+	macro := ""
+	if file != "" {
+		macro = resolveMacroPSL(inst, file)
+	}
+	cmdMacro(inst, macro)
 }
 
 func cmdStop(inst *Instance) {

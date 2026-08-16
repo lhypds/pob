@@ -59,24 +59,38 @@ func cmdNew(root, name string) {
 //
 // With start, the macro runs as soon as the app is up — the two commands a
 // scheduled or scripted run is otherwise a wait between, since `pob start` on
-// its own has nothing to talk to until the launch has finished.
-func cmdLaunch(root, wanted string, start bool) {
+// its own has nothing to talk to until the launch has finished. file is what
+// --macropsl named, "" for the instance's own macro.
+func cmdLaunch(root, wanted string, start bool, file string) {
 	if inst := theInstance(root); inst.Running {
 		fail("Pob is already running (%s)", inst.ID)
 	}
 	selectInstance(root, wanted)
+	// Resolved before the app is started, and against the instance selectInstance
+	// has just settled on, since a bare name is looked for in that instance's
+	// src/. A path that is not there is then answered on the spot, rather than
+	// after a launch that has nothing left to run.
+	macro := ""
+	if file != "" {
+		macro = resolveMacroPSL(theInstance(root), file)
+	}
 	inst := launchInstance(root)
 	if start {
-		cmdMacro(inst)
+		cmdMacro(inst, macro)
 	}
 }
 
-// parseLaunchArgs splits what follows `launch` into the instance wanted and
-// whether --start came with it. Everything that is not the flag is the name,
-// joined back up: an instance called "Work laptop" arrives as two arguments.
-// A mistyped flag is said rather than taken for a name, which would otherwise
-// be reported as an instance nobody has.
-func parseLaunchArgs(args []string) (wanted string, start bool) {
+// parseLaunchArgs splits what follows `launch` into the instance wanted, whether
+// --start came with it, and the file --macropsl named. Everything that is not a
+// flag is the name, joined back up: an instance called "Work laptop" arrives as
+// two arguments. A mistyped flag is said rather than taken for a name, which
+// would otherwise be reported as an instance nobody has.
+//
+// --macropsl says which macro to run, so on a launch that is not running one it
+// is an instruction with nothing to carry it out: said rather than ignored,
+// since what was asked for was a run.
+func parseLaunchArgs(args []string) (wanted string, start bool, file string) {
+	args, file = takeMacroPSL(args)
 	var name []string
 	for _, arg := range args {
 		switch {
@@ -88,7 +102,10 @@ func parseLaunchArgs(args []string) (wanted string, start bool) {
 			name = append(name, arg)
 		}
 	}
-	return strings.TrimSpace(strings.Join(name, " ")), start
+	if file != "" && !start {
+		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, file)
+	}
+	return strings.TrimSpace(strings.Join(name, " ")), start, file
 }
 
 // selectInstance decides which instance `pob launch` should start: the one

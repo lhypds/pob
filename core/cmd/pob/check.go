@@ -48,8 +48,12 @@ type checkReport struct {
 	machine       []string
 }
 
-func cmdCheck(root string) {
-	r := newCheckReport(root)
+// cmdCheck is `pob check`. file is what --macropsl named, "" for the instance's
+// own macro — the check reads whichever file the run it stands in front of
+// would, so `pob check --macropsl x && pob start --macropsl x` is one question
+// and then the answer.
+func cmdCheck(root, file string) {
+	r := newCheckReport(root, file)
 	r.printSummary()
 	r.printProblems()
 }
@@ -58,11 +62,15 @@ func cmdCheck(root string) {
 // check that cannot be made is a problem to print beside the others, since a
 // report that stopped at the first thing wrong would be read as the only thing
 // wrong.
-func newCheckReport(root string) *checkReport {
+func newCheckReport(root, file string) *checkReport {
 	inst := theInstance(root)
+	macro := filepath.Join(inst.Dir, "src", config.MainMacroName)
+	if file != "" {
+		macro = resolveMacroPSL(inst, file)
+	}
 	r := &checkReport{
 		inst:  inst,
-		macro: filepath.Join(inst.Dir, "src", config.MainMacroName),
+		macro: macro,
 	}
 
 	settings, problem := readSettings(root)
@@ -116,7 +124,7 @@ func (r *checkReport) checkPSL(root string) {
 	if !r.compiler.Available() {
 		r.machine = append(r.machine, fmt.Sprintf(
 			"%s, and %s (or a file it calls) has a :: … :: slot that only psl can fill — install it (%s), or set \"psl\" in settings.json to the path of the executable",
-			pslMissing(binary), config.MainMacroName, pslRepo))
+			pslMissing(binary), filepath.Base(r.macro), pslRepo))
 		return
 	}
 	// Only asked once psl is there: what a compiler nobody has is configured

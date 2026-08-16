@@ -11,7 +11,8 @@
 //	POST /mcp/start        — start the MCP server; optional body {"port": 8032}
 //	                         moves a running one to that port
 //	POST /mcp/stop         — stop the MCP server
-//	POST /run/macro        — run src/main.macro.psl
+//	POST /run/macro        — run src/main.macro.psl; optional body
+//	                         {"file": "/abs/path.macro.psl"} runs that file instead
 //	POST /run/stop         — stop the running session
 //	POST /screenshot       — capture and save a screenshot, returns its path
 package ctlserver
@@ -22,6 +23,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"pob/core/internal/agent"
 	"pob/core/internal/applog"
@@ -209,15 +212,57 @@ func (s *Server) handleMCPStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.mcpInfo())
 }
 
+// handleRunMacro replays the instance's own src/main.macro.psl, or the file the
+// body names — what `pob start --macropsl` sends.
+//
+// Both things wrong with that path are answered here rather than left to the
+// run. The caller is still on the terminal at this point and a mistyped path is
+// its own to fix; found at the replay instead, the answer would be a dialog on
+// whichever screen the app is on, and a 200 already printed saying the session
+// started.
 func (s *Server) handleRunMacro(w http.ResponseWriter, r *http.Request) {
 	if !requirePost(w, r) {
 		return
 	}
-	if !s.runner.RunMacro() {
+	var body struct {
+		File string `json:"file"`
+	}
+	// An empty body is the whole of the old request and still means the
+	// instance's own macro, so a decode that finds nothing is not an error.
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	file := strings.TrimSpace(body.File)
+
+	if file != "" {
+		// Absolute, because the caller and the core are two processes in two
+		// working directories: the core is started by the app and runs wherever
+		// the app was started from, so a relative path resolved here would name a
+		// file relative to somewhere nobody typed it. The CLI resolves it against
+		// the directory it was typed in, which is the one that was meant.
+		if !filepath.IsAbs(file) {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf(
+				"%s is not an absolute path — the caller resolves the macro file, since the core runs in a different directory", file))
+			return
+		}
+		info, err := os.Stat(file)
+		if err != nil {
+			writeError(w, http.StatusNotFound, fmt.Sprintf("cannot read %s: %v", file, err))
+			return
+		}
+		if info.IsDir() {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("%s is a directory, not a PSL file", file))
+			return
+		}
+	}
+
+	if !s.runner.RunMacroFile(file) {
 		writeError(w, http.StatusConflict, "a session is already running")
 		return
 	}
-	applog.Log("CtlServer: macro session started")
+	started := config.MainMacroName
+	if file != "" {
+		started = file
+	}
+	applog.Logf("CtlServer: macro session started (%s)", started)
 	writeJSON(w, http.StatusOK, map[string]any{"started": true})
 }
 

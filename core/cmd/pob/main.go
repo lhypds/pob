@@ -16,6 +16,7 @@
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
 //	pob start                        run src/main.macro.psl (pob stop stops it)
+//	pob start --macropsl F           run F instead of src/main.macro.psl
 //	pob --session Y                  show one session's details
 //	pob mcp start                    register the MCP server with the agent CLIs
 //	pob update                       install the latest release over this one
@@ -45,13 +46,20 @@ Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
 
+Macro options (on start, check, and launch --start):
+  --macropsl <file>  Work on that PSL file instead of the instance's own
+                     src/main.macro.psl. A relative path is from the current
+                     directory; a bare name not found there is looked for in
+                     the instance's src/
+
 Commands:
   (none)             Show the instance and its sessions; with --session show
                      that session
   launch [instance]  Start the app. With more than one instance and nothing
                      named, lists them and asks which to start — arrow keys to
                      move, enter to start. <instance> is a name or an id
-  launch --start     Start the app and run its macro as soon as it is up
+  launch --start     Start the app and run its macro as soon as it is up.
+                     --macropsl runs that file in its place
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
@@ -60,9 +68,10 @@ Commands:
                      over what a run needs of this machine — psl, what psl fills
                      slots with, the app and the core behind it, settings.json.
                      Prints everything wrong and runs nothing. Works with
-                     nothing running, and exits 1 when there is anything to fix
+                     nothing running, and exits 1 when there is anything to fix.
+                     --macropsl reads that file in its place
   start              Execute src/main.macro.psl (the toolbar Execute button) —
-                     the run stop stops
+                     the run stop stops. --macropsl runs that file in its place
   stop               Stop the running session
   kill               Quit the running instance: the app and its core
   screenshot         Capture a screenshot; prints the saved file path
@@ -92,6 +101,7 @@ Examples:
   pob launch --start           # start it and run the macro straight away
   pob check                    # is the macro sound, and can this machine run it?
   pob start                    # replay this instance's main macro
+  pob start --macropsl login.macro.psl   # replay that file instead
   pob --session 1752712400
   pob mcp start
   pob update --check           # is there a newer release?
@@ -147,8 +157,8 @@ func main() {
 		showInstance(root)
 
 	case "launch":
-		wanted, start := parseLaunchArgs(args[1:])
-		cmdLaunch(root, wanted, start)
+		wanted, start, macro := parseLaunchArgs(args[1:])
+		cmdLaunch(root, wanted, start, macro)
 
 	case "new":
 		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))
@@ -163,13 +173,13 @@ func main() {
 	// the point of it — a macro is checked while it is being written, and an
 	// install is checked before it has ever been started.
 	case "check":
-		cmdCheck(root)
+		cmdCheck(root, macroPSLOnly(args[1:], "check"))
 
 	// Not runningInstance either: `start` is the one command whose "nothing is
 	// running" is worth more than the standard line, since it is also what
 	// `launch --start` is for.
 	case "start":
-		cmdStart(root)
+		cmdStart(root, macroPSLOnly(args[1:], "start"))
 
 	case "stop":
 		cmdStop(runningInstance(root))

@@ -37,22 +37,30 @@ Usage: pob [flags] [command] [args]
 Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
+
+Macro options (on start, check, and launch --start):
+  --macropsl <file>  Work on that PSL file instead of the instance's own
+                     src/main.macro.psl. A relative path is from the current
+                     directory; a bare name not found there is looked for in
+                     the instance's src/
 ```
 
 `launch` takes one option of its own, `--start`; everything else after it is the
 instance, so `pob launch --start "Work laptop"` is that instance, started and
 running.
 
+`--macropsl` says which file to work on. See **Another macro** below.
+
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
-| `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"` |
+| `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"`, and with `--macropsl <file>` to run that file rather than the instance's own |
 | `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
-| `check` | Everything that has to be right before a run, in one report — see **Checking** below. `src/main.macro.psl` and the files it `call`s, line by line, and then this machine: psl, what psl fills a slot with, the app and the `pob-core` behind it, `settings.json`, `stop_hook`. It reads files and talks to no one, which makes it the command that answers with Pob closed; exits `1` when there is anything to fix |
-| `start` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) on the running instance — the same run as the toolbar's Execute button, and what `stop` stops. With nothing running it says so and names `launch --start`, since starting the app is also called starting |
+| `check` | Everything that has to be right before a run, in one report — see **Checking** below. `src/main.macro.psl` and the files it `call`s, line by line, and then this machine: psl, what psl fills a slot with, the app and the `pob-core` behind it, `settings.json`, `stop_hook`. It reads files and talks to no one, which makes it the command that answers with Pob closed; exits `1` when there is anything to fix. `--macropsl <file>` reads that file in its place |
+| `start` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) on the running instance — the same run as the toolbar's Execute button, and what `stop` stops. With nothing running it says so and names `launch --start`, since starting the app is also called starting. `--macropsl <file>` runs that file in its place |
 | `stop` | Stop the running session |
 | `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
 | `screenshot` | Capture a screenshot; prints the saved file path |
@@ -73,11 +81,55 @@ pob launch "Work laptop"                 # start that one
 pob launch --start "Work laptop"         # start that one and run its macro
 pob check                                # is the macro sound, and can this machine run it?
 pob start                                # replay src/main.macro.psl; pob stop stops it
+pob start --macropsl login.macro.psl     # replay that file instead
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
 pob update --check                       # is there a newer release?
 pob update                               # install it over this one
 ```
+
+
+Another macro
+-------------
+
+An instance has one entry point, `src/main.macro.psl`, and that is what the
+toolbar's Execute button runs. `--macropsl <file>` is how the terminal says
+another one — `start` runs it, `check` reads it, `launch --start` starts the app
+on it:
+
+```
+pob check --macropsl login.macro.psl && pob start --macropsl login.macro.psl
+```
+
+It exists because a macro is written one piece at a time, and the piece being
+written is rarely the one `main` calls first. It is also how a macro gets to live
+outside the instance: a file kept beside the thing it automates, or in a repo
+next to the rest of a project, is run from where it is kept.
+
+Which file it names:
+
+| Written | Read as |
+|---------|---------|
+| `login.macro.psl` | That file in the current directory. Not there, and a bare name is looked for in the instance's `src/` — so the file beside `main.macro.psl` runs from wherever the command is typed. The current directory wins when both have one |
+| `./flows/login.macro.psl`, `../login.macro.psl` | A path, from the current directory, and looked for nowhere else |
+| `~/work/login.macro.psl` | Under the home directory, as `~` is read everywhere else it is written down |
+| `/abs/login.macro.psl` | Itself |
+
+A file that is not there ends the command before anything is started: it is the
+whole of what was asked for, and a run without it would be a run of something
+else. So is a flag misspelled — `pob start --macropslx f` is an error, not a
+`pob start`, since a mistyped flag passed over would replay the instance's own
+macro in answer to a command that named another file.
+
+Everything downstream of the name follows the file rather than the instance. A
+`call()` inside it names its own neighbours (see
+[call](../Macro%20PSL/11_call.md)); its extension decides whether psl is started
+for it at all, so a `.macro` named this way is replayed without the compiler
+exactly as one in `src/` is; and the session keeps its copy of the macro under
+that file's own name, so `pob --session <id>` says which file the run was of.
+
+The flag names one file, not a directory or a set: what a run of several files is
+remains a `call()`, written in the file that is started.
 
 
 Checking
@@ -89,7 +141,8 @@ install is in.
 
 Two groups come out of it, printed apart because they are fixed apart.
 
-**The macro** — `src/main.macro.psl` and every file it `call`s, line by line.
+**The macro** — `src/main.macro.psl`, or whichever file `--macropsl` named, and
+every file it `call`s, line by line.
 This is the same reading Execute takes before the cursor moves (see
 [When something is wrong](../Macro%20PSL/12_When%20something%20is%20wrong.md)),
 so a macro this passes is a macro that will start: an unknown statement, a call
@@ -204,8 +257,8 @@ while the instance runs — it stops advertising itself by clearing them, so a
 file without a `port` is a stopped instance. `status`, `start`, `stop`,
 `screenshot` and the `mcp` commands are each one call to that
 API; the rest read the `logs/` tree directly, which is why they still work
-with the app closed. `check` is in neither group: it reads `src/main.macro.psl`
-and this machine itself rather than asking the instance anything, which is what
+with the app closed. `check` is in neither group: it reads the macro and this
+machine itself rather than asking the instance anything, which is what
 lets a macro be checked while it is being written and an install before it has
 ever been started.
 

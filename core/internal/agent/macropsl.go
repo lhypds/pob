@@ -334,10 +334,28 @@ func (run *macroRun) spendUncovered(nodes []macroNode) {
 	}
 }
 
-// runMacro replays macro.psl statement by statement.
-func (r *Runner) runMacro(ctx context.Context) {
+// runMacro replays a macro statement by statement: the instance's own
+// src/main.macro.psl, or the file named in its place when one was — see
+// RunMacroFile.
+func (r *Runner) runMacro(ctx context.Context, file string) {
 	path := r.cfg.MacroFile()
 	source := r.cfg.Macro()
+
+	// A named file is read here rather than through config, which knows the one
+	// macro Pob wrote itself and hands back "" for a file it cannot read. That is
+	// the right answer for the instance's own — an instance nobody has opened has
+	// an empty one — and the wrong answer for a path someone typed, where it
+	// would replay a mistyped name as an empty macro and say nothing at all.
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			r.store.LogInstancef("MACRO NOT STARTED", "reason=%q file=%q error=%q", "the macro file cannot be read", file, err)
+			applog.Errorf("Macro not run: cannot read %s: %v", file, err)
+			r.br.ShowAlert("Macro not read", fmt.Sprintf("%s was not run — it cannot be read: %v", file, err))
+			return
+		}
+		path, source = file, string(data)
+	}
 
 	// The grammar first, since it is about the file rather than about the
 	// machine: a macro Pob cannot read is one to fix before asking whether the
@@ -403,7 +421,7 @@ func (r *Runner) runMacro(ctx context.Context) {
 	macroStart := time.Now()
 	sessionID := r.store.CreateSession()
 	r.setCurrentSession(sessionID)
-	r.store.SaveMacro(sessionID)
+	r.store.SaveMacro(sessionID, filepath.Base(path), source)
 	r.store.LogInstancef("MACRO START", "session=%s file=%q actions=%d", sessionID, path, actionCount)
 	applog.Logf("[%s] Macro session started", sessionID)
 

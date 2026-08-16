@@ -64,7 +64,7 @@ func main() {
 
 	applog.Init(*root)
 	cfg := config.New(*root, instanceID)
-	store := storage.New(*root, instanceID, cfg.SettingsDict, cfg.Macro)
+	store := storage.New(*root, instanceID, cfg.SettingsDict)
 	applog.SetInstanceSink(func(level, message string) {
 		store.LogInstance(level, message)
 	})

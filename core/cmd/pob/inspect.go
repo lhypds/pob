@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"pob/core/internal/config"
+	"pob/core/internal/psl"
 	"pob/core/internal/storage"
 )
 
@@ -191,14 +192,9 @@ func showSession(root, instanceID, sessionID string) {
 		fmt.Printf("Ended:     — (still running or interrupted)\n")
 	}
 	// The macro as it stood when this session ran, which is not necessarily
-	// the one in the instance directory now. The old name is read too: a log
-	// tree outlives the rename, and a session someone kept is one to still be
-	// able to open.
-	for _, name := range []string{storage.SessionMacroName, storage.LegacySessionMacroName} {
-		if text, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-			fmt.Printf("\nMacro:\n%s\n", indent(string(text), "  "))
-			break
-		}
+	// the one in the instance directory now.
+	if name, text, ok := sessionMacro(dir); ok {
+		fmt.Printf("\nMacro:     %s\n%s\n", name, indent(text, "  "))
 	}
 
 	if shots, err := os.ReadDir(filepath.Join(dir, "screenshots")); err == nil && len(shots) > 0 {
@@ -206,6 +202,40 @@ func showSession(root, instanceID, sessionID string) {
 	}
 
 	printSlots(dir)
+}
+
+// sessionMacro reads the copy of the macro a session kept, and the name it kept
+// it under — which is the entry point's own, so a session that ran another file
+// says which one.
+//
+// The two names Pob has used for the instance's own macro are tried first, in
+// that order, since that is nearly every session and the older tree is one
+// people still open. Failing those it is whatever PSL file is in the directory:
+// a session started with `--macropsl` keeps it under that file's name, and the
+// name is not known from here.
+func sessionMacro(dir string) (name, text string, ok bool) {
+	names := []string{storage.SessionMacroName, storage.LegacySessionMacroName}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && isMacroName(entry.Name()) {
+				names = append(names, entry.Name())
+			}
+		}
+	}
+	for _, candidate := range names {
+		if data, err := os.ReadFile(filepath.Join(dir, candidate)); err == nil {
+			return candidate, string(data), true
+		}
+	}
+	return "", "", false
+}
+
+// isMacroName reports whether a file in a session directory is the macro it
+// replayed. A macro is written under `.psl` — `.macro.psl` among them — or under
+// the slotless `.macro` (see psl.MacroExt), and nothing else in a session
+// directory ends in either, so the name is enough to tell.
+func isMacroName(name string) bool {
+	return filepath.Ext(name) == ".psl" || strings.HasSuffix(name, psl.MacroExt)
 }
 
 // printSlots renders the ::…:: slots a macro session filled, in the order it

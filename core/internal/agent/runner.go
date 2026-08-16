@@ -170,9 +170,21 @@ func (r *Runner) finish() {
 	}
 }
 
-// RunMacro starts a macro session asynchronously. It returns false when a
-// session is already running.
-func (r *Runner) RunMacro() bool {
+// RunMacro starts a session over the instance's own macro —
+// src/main.macro.psl, what the Execute button and a bare `pob start` replay. It
+// returns false when a session is already running.
+func (r *Runner) RunMacro() bool { return r.RunMacroFile("") }
+
+// RunMacroFile starts a session over the PSL file at path, or over the
+// instance's own macro when path is empty — what `pob start --macropsl` asks
+// for, and a run of a file that is not the instance's entry point.
+//
+// The file is replayed where it sits rather than copied anywhere: a call()
+// inside it names its neighbours (see resolveCallPath), and its own name is what
+// says whether psl is started for it at all (see psl.Deterministic). So a macro
+// kept beside the thing it automates runs from there, and the instance's src/ is
+// not the only place a macro can live.
+func (r *Runner) RunMacroFile(path string) bool {
 	ctx := r.start()
 	if ctx == nil {
 		r.store.LogInstance("MACRO START REJECTED", "another macro is already running")
@@ -183,7 +195,7 @@ func (r *Runner) RunMacro() bool {
 		defer r.finish()
 		r.br.NotifyExecutionState(true)
 		defer r.br.NotifyExecutionState(false)
-		r.runMacro(ctx)
+		r.runMacro(ctx, path)
 	}()
 	return true
 }

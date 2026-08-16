@@ -14,7 +14,7 @@ import (
 func TestStopAndWaitLetsTheMacroFinishLoggingBeforeShutdown(t *testing.T) {
 	root := t.TempDir()
 	cfg := config.New(root, "pb-test")
-	store := storage.New(root, "pb-test", cfg.SettingsDict, cfg.Macro)
+	store := storage.New(root, "pb-test", cfg.SettingsDict)
 	runner := NewRunner(cfg, store, psl.Compiler{}, nil)
 
 	ctx := runner.start()

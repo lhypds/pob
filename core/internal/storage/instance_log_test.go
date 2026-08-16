@@ -8,7 +8,7 @@ import (
 )
 
 func TestInstanceLogTimestampsEveryContentRow(t *testing.T) {
-	store := New(t.TempDir(), "pb-test", func() map[string]any { return nil }, func() string { return "" })
+	store := New(t.TempDir(), "pb-test", func() map[string]any { return nil })
 	store.LogInstance("MACRO SOURCE", "moveTo(10, 20)\nclick()")
 
 	data, err := os.ReadFile(store.InstanceLogFile())
@@ -31,7 +31,7 @@ func TestInstanceLogTimestampsEveryContentRow(t *testing.T) {
 }
 
 func TestInstanceLogAppendsAcrossEvents(t *testing.T) {
-	store := New(t.TempDir(), "pb-test", func() map[string]any { return nil }, func() string { return "" })
+	store := New(t.TempDir(), "pb-test", func() map[string]any { return nil })
 	store.LogInstance("INSTANCE START", "id=pb-test")
 	store.LogInstancef("MACRO STOP", "session=%s status=%q", "123", "completed")
 

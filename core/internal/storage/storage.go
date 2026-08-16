@@ -20,7 +20,6 @@ type Storage struct {
 	root         string
 	instanceID   string
 	settingsDict func() map[string]any
-	macro        func() string
 	instanceLog  sync.Mutex
 }
 
@@ -39,7 +38,7 @@ const instancePointer = "INSTANCE"
 // writes lives under that directory. instanceID is the one the shell resolved
 // and passed in; an empty one is resolved here, which is what the CLI does
 // when it runs without a shell.
-func New(root, instanceID string, settingsDict func() map[string]any, macro func() string) *Storage {
+func New(root, instanceID string, settingsDict func() map[string]any) *Storage {
 	if instanceID == "" {
 		instanceID = ResolveInstanceID(root)
 	}
@@ -47,7 +46,6 @@ func New(root, instanceID string, settingsDict func() map[string]any, macro func
 		root:         root,
 		instanceID:   instanceID,
 		settingsDict: settingsDict,
-		macro:        macro,
 	}
 	_ = os.MkdirAll(s.LogsDir(), 0o755)
 	return s
@@ -252,10 +250,10 @@ func (s *Storage) CreateSession() string {
 	return sessionID
 }
 
-// SessionMacroName is the copy of the macro a session ran, kept in its log
-// directory. It carries the entry point's own name so that it matches the `file`
-// each slot.json records — the name the replay knew the file by — rather than
-// making a reader hold two names for one file.
+// SessionMacroName is what the copy is called for a session that ran the
+// instance's own macro, which is nearly all of them. One started on another file
+// — `pob start --macropsl` — keeps it under that file's own name instead, so a
+// session directory always names the file it replayed.
 const SessionMacroName = "main.macro.psl"
 
 // LegacySessionMacroName is what that copy was called in sessions logged before
@@ -263,11 +261,19 @@ const SessionMacroName = "main.macro.psl"
 // written, so the old name is still one to look under — see cmdSession.
 const LegacySessionMacroName = "macro.psl"
 
-// SaveMacro copies the macro a session ran into logs/<session>/main.macro.psl,
-// so what happened can still be read against the lines it happened from after
-// the instance's own copy has been edited or re-recorded.
-func (s *Storage) SaveMacro(sessionID string) {
-	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), SessionMacroName), []byte(s.macro()), 0o644)
+// SaveMacro copies the macro a session ran into its log directory, so what
+// happened can still be read against the lines it happened from after the file
+// it came from has been edited or re-recorded.
+//
+// name is what the replay knew the entry point by and source is the text it
+// replayed, both handed in rather than read again here: the copy then matches
+// the `file` each slot.json records — one name for one file — and is the text
+// that ran rather than whatever is in that path by the time the session ends.
+func (s *Storage) SaveMacro(sessionID, name, source string) {
+	if name == "" {
+		name = SessionMacroName
+	}
+	_ = os.WriteFile(filepath.Join(s.sessionDir(sessionID), filepath.Base(name)), []byte(source), 0o644)
 }
 
 // A session used to keep a compiled macro beside the written one — every slot
