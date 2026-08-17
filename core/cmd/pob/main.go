@@ -13,10 +13,16 @@
 //	pob new "Work laptop"            create an instance and switch to it
 //	pob launch                       start the app (asks which, with several)
 //	pob launch --start               start the app and run its macro
+//	pob launch --fullscreen          start it covering the whole screen, with
+//	                                 no toolbar — driven from here on
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
 //	pob start                        run src/main.macro.psl (pob stop stops it)
 //	pob start --macropsl F           run F instead of src/main.macro.psl
+//	pob restart                      stop that run and start it again
+//	pob record start                 record what you do into the macro
+//	pob lock on                      hold the window to its size
+//	pob relaunch                     quit the app and start it again
 //	pob --session Y                  show one session's details
 //	pob mcp start                    register the MCP server with the agent CLIs
 //	pob update                       install the latest release over this one
@@ -45,6 +51,7 @@ Usage: pob [flags] [command] [args]
 Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
+  --fullscreen       With no command, the same as launch --fullscreen
 
 Macro options (on start, check, and launch --start):
   --macropsl <file>  Work on that PSL file instead of the instance's own
@@ -60,6 +67,11 @@ Commands:
                      move, enter to start. <instance> is a name or an id
   launch --start     Start the app and run its macro as soon as it is up.
                      --macropsl runs that file in its place
+  launch --fullscreen
+                     Start the app over the whole screen, with no toolbar and
+                     no window buttons — nothing on screen is Pob's to click,
+                     so the commands here are what drives it: start, stop,
+                     screenshot, status, and kill to quit it again
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
@@ -73,7 +85,24 @@ Commands:
   start              Execute src/main.macro.psl (the toolbar Execute button) —
                      the run stop stops. --macropsl runs that file in its place
   stop               Stop the running session
-  kill               Quit the running instance: the app and its core
+  restart            Stop the running session and start it again, once it has
+                     actually stopped. --macropsl runs that file in its place
+  reset              Stop the running session and send the cursor back to the
+                     corner every replay starts from
+  record start       Record what you do into src/main.macro.psl — the toolbar
+                     Record button. It appends, and never clears
+  record stop        Stop recording
+  lock on            Hold the window to its size; dragging it carries the
+                     windows underneath along, so a macro's coordinates keep
+                     landing where they were recorded
+  lock off           Let the window be resized again
+  clickthrough on    Pass clicks on the overlay down to the window underneath
+  clickthrough off   Keep them; the overlay takes the clicks itself
+  kill, shutdown     Quit the running instance: the app and its core
+  relaunch           Quit the running instance and start it again. This is also
+                     how fullscreen is left and entered on a Pob that is up:
+                     --fullscreen brings it back over the whole screen, and a
+                     plain relaunch brings a fullscreen one back as a window
   screenshot         Capture a screenshot; prints the saved file path
   mcp status         Show MCP server info (URL, tools, client config)
   mcp start [port]   Register the MCP server in the user settings of installed
@@ -99,9 +128,16 @@ Examples:
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
   pob launch --start           # start it and run the macro straight away
+  pob --fullscreen             # start it over the whole screen, no toolbar
   pob check                    # is the macro sound, and can this machine run it?
   pob start                    # replay this instance's main macro
   pob start --macropsl login.macro.psl   # replay that file instead
+  pob restart                  # stop that run and start it again
+  pob reset                    # stop it and put the cursor back in its corner
+  pob record start             # record what you do into src/main.macro.psl
+  pob lock on                  # hold the window to its size
+  pob clickthrough off         # let the overlay take clicks again
+  pob relaunch                 # quit the app and start it again
   pob --session 1752712400
   pob mcp start
   pob update --check           # is there a newer release?
@@ -128,6 +164,12 @@ func main() {
 	}
 
 	sessionFlag := flag.String("session", "", "target session ID")
+	// The short form of `pob launch --fullscreen`: a fullscreen Pob is one
+	// there is nothing to click, so it is started from the terminal and driven
+	// from the terminal, and this is the shortest way to say so. `launch` reads
+	// its own copy — flag parsing stops at the command word — so both forms
+	// exist and mean the same thing.
+	fullscreenFlag := flag.Bool("fullscreen", false, "launch covering the whole screen, with no toolbar")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
@@ -154,11 +196,15 @@ func main() {
 			showSession(root, theInstance(root).ID, *sessionFlag)
 			return
 		}
+		if *fullscreenFlag {
+			cmdLaunch(root, "", false, "", true)
+			return
+		}
 		showInstance(root)
 
 	case "launch":
-		wanted, start, macro := parseLaunchArgs(args[1:])
-		cmdLaunch(root, wanted, start, macro)
+		wanted, start, macro, fullscreen := parseLaunchArgs(args[1:])
+		cmdLaunch(root, wanted, start, macro, fullscreen)
 
 	case "new":
 		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))
@@ -184,10 +230,41 @@ func main() {
 	case "stop":
 		cmdStop(runningInstance(root))
 
+	// Not runningInstance either, and for the same reason as start: what it
+	// starts is a run, so what it says with nothing running is start's line.
+	case "restart":
+		cmdRestart(root, macroPSLOnly(args[1:], "restart"))
+
+	case "reset":
+		cmdReset(runningInstance(root))
+
+	// The word is read before the instance is looked for, so `pob lock onn` is
+	// answered as the typo it is whether or not Pob happens to be running —
+	// otherwise the reply to a mistyped state would be about something else
+	// entirely.
+	case "lock":
+		locked := onOffWord(args[1:], "lock", "on", "off")
+		cmdLock(runningInstance(root), locked)
+
+	case "clickthrough":
+		enabled := onOffWord(args[1:], "clickthrough", "on", "off")
+		cmdClickThrough(runningInstance(root), enabled)
+
+	case "record":
+		recording := onOffWord(args[1:], "record", "start", "stop")
+		cmdRecord(runningInstance(root), recording)
+
 	// Not runningInstance: cmdKill decides for itself what a stopped Pob
 	// means, and an already-stopped one is an answer rather than an error.
-	case "kill":
+	// shutdown is the same command said the way an app is quit rather than the
+	// way a process is.
+	case "kill", "shutdown":
 		cmdKill(root)
+
+	// Not runningInstance either: half of what it does is a launch, and a
+	// stopped Pob is something it can still finish rather than refuse.
+	case "relaunch":
+		cmdRelaunch(root, fullscreenOnly(args[1:], "relaunch"))
 
 	case "screenshot":
 		cmdScreenshot(runningInstance(root))
@@ -242,4 +319,42 @@ func runningInstance(root string) *Instance {
 		fail("Pob is not running — start it with `pob launch`")
 	}
 	return inst
+}
+
+// onOffWord reads the one word a switch takes — `lock on`, `record stop` — and
+// answers true for the first of the two.
+//
+// Nothing is assumed for a missing word. `pob lock` could only be read as one
+// of the two states or as a question about which it is in, and guessing either
+// would move the window in answer to a command that did not say to.
+// fullscreenOnly reads the arguments of a command whose only option is
+// --fullscreen and says whether it was given. Anything else is said rather than
+// passed over: a mistyped flag taken for nothing would start the app in the
+// mode the command was typed to change.
+func fullscreenOnly(args []string, command string) bool {
+	fullscreen := false
+	for _, arg := range args {
+		if arg != "--fullscreen" {
+			fail("%s takes no arguments besides --fullscreen — %q is not one, run `pob help`", command, arg)
+		}
+		fullscreen = true
+	}
+	return fullscreen
+}
+
+func onOffWord(args []string, command, on, off string) bool {
+	if len(args) == 0 {
+		fail("%s takes %s or %s — `pob %s %s`", command, on, off, command, on)
+	}
+	if len(args) > 1 {
+		fail("%s takes one word, %s or %s — %q is a second", command, on, off, args[1])
+	}
+	switch args[0] {
+	case on:
+		return true
+	case off:
+		return false
+	}
+	fail("%s takes %s or %s, and %q is neither", command, on, off, args[0])
+	return false
 }

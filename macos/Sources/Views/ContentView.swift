@@ -160,13 +160,21 @@ struct InstanceContentView: View {
         .onChange(of: bridge.flashTick) { _ in
             flashScreenshot()
         }
+        .onChange(of: bridge.uiCommand) { command in
+            if let command { apply(command) }
+        }
         .onChange(of: isLocked) { locked in
             updateWindowLock()
             instance.settings.saveWindowLocked(locked)
         }
         .onChange(of: isClickThrough) { enabled in
             updateClickThrough()
-            instance.settings.saveClickThrough(enabled)
+            // Fullscreen turns it on for the run rather than for the instance,
+            // so what the window was last left with is still there for the next
+            // ordinary launch.
+            if !AppOptions.fullscreen {
+                instance.settings.saveClickThrough(enabled)
+            }
         }
         .onChange(of: isTargeting) { _ in
             updateClickThrough()
@@ -175,12 +183,14 @@ struct InstanceContentView: View {
             updateClickThrough()
         }
         .onAppear {
-            AppLogger.event("Pob started")
             // The lock and the click-through the window was left with, so an
             // instance set up for a macro comes back the way it was rather than
-            // loose and catching clicks again.
+            // loose and catching clicks again. Fullscreen takes the
+            // click-through as read: the window is the whole display, so an
+            // instance last left catching clicks would come back having taken
+            // the desktop away with nothing on screen to give it back.
             isLocked = instance.settings.getWindowLocked()
-            isClickThrough = instance.settings.getClickThrough()
+            isClickThrough = AppOptions.fullscreen || instance.settings.getClickThrough()
             updateClickThrough()
             updateWindowLock()
         }
@@ -279,18 +289,25 @@ struct InstanceContentView: View {
     /// WindowGroup toolbar — a Spacer item is what NSToolbar honors.)
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // macOS 26 draws a light capsule behind every toolbar item; hidden for
-        // the badge, which is a label rather than a control — the id reads as
-        // the window's name, not as a button waiting to be pressed.
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .automatic) { instanceBadge }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .automatic) { instanceBadge }
+        // Fullscreen keeps none of it: the window is borderless, so there is no
+        // titlebar for a toolbar to sit in and nothing on screen to press. The
+        // items are left unbuilt rather than merely unseen, so a mode with no
+        // way in from the screen has no half of one either — `pob start`,
+        // `pob stop`, `pob screenshot` and `pob kill` are the whole of it.
+        if !AppOptions.fullscreen {
+            // macOS 26 draws a light capsule behind every toolbar item; hidden
+            // for the badge, which is a label rather than a control — the id
+            // reads as the window's name, not as a button waiting to be pressed.
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .automatic) { instanceBadge }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .automatic) { instanceBadge }
+            }
+            ToolbarItem(placement: .automatic) { Spacer() }
+            toolbarFileItems
+            toolbarActionItems
         }
-        ToolbarItem(placement: .automatic) { Spacer() }
-        toolbarFileItems
-        toolbarActionItems
     }
 
     /// The dashboard: the server's bare root, which answers with the index page
@@ -465,6 +482,31 @@ struct InstanceContentView: View {
 
     // MARK: - Helpers
 
+    /// Does what the toolbar button does, for a button pressed from a terminal
+    /// — `pob lock`, `pob clickthrough`, `pob record`.
+    ///
+    /// It goes through the same @State the buttons set rather than through the
+    /// services underneath, so everything that follows a press follows this
+    /// too: the icon changes, the state is written to instance.json, and a
+    /// recording started this way still locks the window and lets clicks
+    /// through to the app below.
+    private func apply(_ command: CoreBridge.UICommand) {
+        switch command.kind {
+        case .lock:
+            isLocked = command.on
+        case .clickThrough:
+            isClickThrough = command.on
+        case .record:
+            if command.on {
+                // No Clear/Keep question: there is nobody at the window to
+                // answer it, so the answer is the one that cannot lose work.
+                if !isRecording { startRecording(clearingMacro: false) }
+            } else if isRecording {
+                stopRecording()
+            }
+        }
+    }
+
     /// Starts macro recording, either over an emptied main.macro.psl or appending to
     /// what is already in it.
     private func startRecording(clearingMacro: Bool) {
@@ -529,6 +571,10 @@ struct InstanceContentView: View {
     /// below puts them back.
     private func updateWindowLock() {
         guard let window = instance.window else { return }
+        // A fullscreen window is already held to the display and has no
+        // titlebar to drag it by, so there is neither a resize to take away nor
+        // anything below to carry.
+        guard !AppOptions.fullscreen else { return }
         let shouldLock = isLocked || bridge.isExecuting
         instance.carry.setEnabled(shouldLock)
         if shouldLock {

@@ -54,6 +54,28 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | `POST /run/macro` | `macro` | Replays [`src/main.macro.psl`](03_Macro%20PSL.md). Body `{"file": "/abs/path.macro.psl"}` optional — `pob start --macropsl` sends it — and replays that file instead: 400 when the path is not absolute, since the caller and the core run in different directories and only the caller knows which one a relative path meant, and 404 when there is nothing there. 409 when a session is already running |
 | `POST /run/stop` | `stop` | Idempotent |
 | `POST /screenshot` | `screenshot` | Returns `{"path": "..."}`. 409 while a session is running — it owns the capture pipeline |
+| `POST /cursor/reset` | `reset` | Sends the virtual cursor back to the corner every replay starts from; returns `{"x": …, "y": …}`. 409 while a session is running — the run is driving the cursor, which is why `pob reset` stops it first |
+| `POST /window/lock` | `lock on`, `lock off` | Body `{"locked": true}` or `false` |
+| `POST /window/clickthrough` | `clickthrough on`, `clickthrough off` | Body `{"enabled": true}` or `false` |
+| `POST /record` | `record start`, `record stop` | Body `{"recording": true}` or `false`. Starting appends to `src/main.macro.psl` and never clears it: the toolbar asks which when there is something in the file already, and there is nobody at the window to answer |
+
+The boolean in those three bodies is required rather than defaulted. Each of
+them switches something off when it is false, so a body that says nothing — a
+field misspelled, a caller that sent none — would unlock the window or stop a
+recording in answer to a request that asked for neither; a 400 says so instead.
+
+They are also the three that do not stop here. The lock, click-through and
+recording belong to the window rather than to the core, so each is passed on to
+the shell as a `ui.lock`, `ui.clickThrough` or `ui.record` request and answered
+when the shell has taken it — which is what makes them the toolbar's own
+buttons rather than a second way of doing the same thing. A shell too old to
+know the method answers "Unknown method", and that is what the caller is told.
+
+What comes back from `/record` is what was asked for rather than what the core
+now believes: it is the shell that records, and it says so on the
+`recording.changed` line it always has — a notification still on its way here
+while the response is being written. `GET /status` is where the answer after
+the fact is read.
 
 A stopped MCP or Pob server — one turned off in `settings.json`, or one whose
 port would not bind — still reports the port it *would* take rather than `0`, so
@@ -73,8 +95,9 @@ Reach
 
 **This API binds `127.0.0.1` only, and carries no authentication** — the
 loopback bind is what stands in for one. It is the CLI's private channel, not
-a public interface: it can replay a macro and take screenshots, so putting
-it on a network interface would hand the machine to that network.
+a public interface: it can replay a macro, take screenshots and start a
+recording of what is typed at the machine, so putting it on a network
+interface would hand the machine to that network.
 
 That is also why it stays separate from the [Pob server](09_Server.md), which
 listens on every interface by design.

@@ -1,8 +1,9 @@
-// Stopping the running instance (`pob kill`). An instance is a pair of
-// processes — the shell app and the pob-core child it spawned — and it is the
-// shell that has to go: core exits on its own when the pipe to the shell
-// closes, writing the instance's end time on its way out. Killing core alone
-// would leave a shell with no brain behind it.
+// Stopping the running instance (`pob kill`, `pob shutdown`) and starting it
+// again (`pob relaunch`). An instance is a pair of processes — the shell app
+// and the pob-core child it spawned — and it is the shell that has to go: core
+// exits on its own when the pipe to the shell closes, writing the instance's
+// end time on its way out. Killing core alone would leave a shell with no
+// brain behind it.
 package main
 
 import (
@@ -12,15 +13,47 @@ import (
 	"time"
 )
 
-// cmdKill stops the instance this machine is running. Nothing running is not
-// a failure: the command's business is that Pob is stopped, and it is.
+// cmdKill stops the instance this machine is running — `pob kill`, and `pob
+// shutdown`, which is the same command under the word for it that reads like
+// what it does to an app rather than what it does to a process. Nothing
+// running is not a failure: the command's business is that Pob is stopped, and
+// it is.
 func cmdKill(root string) {
 	inst := theInstance(root)
 	if !inst.Running {
 		fmt.Printf("Pob is not running (instance %s).\n", inst.ID)
 		return
 	}
+	stopInstance(root, inst)
+}
 
+// cmdRelaunch is `pob relaunch`: the instance quit and started again, on the
+// same instance and the same settings.
+//
+// It is the one way back from a shell that is up but no longer doing what it
+// should — a window left somewhere unreachable, a permission granted since it
+// started — and it is a single command because the pair it replaces has a
+// wait between them that has to be right: a launch started before the old
+// instance has let go of its port would be refused as one already running.
+// stopInstance does not return until the port has stopped answering.
+//
+// It is also how a Pob changes between fullscreen and a window, since neither
+// is anything the running app can be talked into: --fullscreen brings it back
+// over the whole screen, and a relaunch without it brings a fullscreen one back
+// as an ordinary window — the way out, from the only place there is to type.
+func cmdRelaunch(root string, fullscreen bool) {
+	inst := theInstance(root)
+	if inst.Running {
+		stopInstance(root, inst)
+	} else {
+		fmt.Printf("Pob was not running (instance %s).\n", inst.ID)
+	}
+	launchInstance(root, fullscreen)
+}
+
+// stopInstance takes down an instance already established to be running, and
+// does not return until it has stopped answering its control port.
+func stopInstance(root string, inst *Instance) {
 	// Ask the instance itself for the pid rather than trusting instance.json:
 	// the same answer that established it is running.
 	status, err := inst.get("/status", 3*time.Second)

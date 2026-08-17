@@ -37,6 +37,13 @@ public static class AppState
     public static bool IsRecording;
     public static bool IsExecuting;
 
+    // --fullscreen: the overlay covers the whole display with no toolbar window
+    // above it, so there is nothing of Pob's on screen to click and the `pob`
+    // command is what drives it. A property of this run rather than of the
+    // instance — it is read from the command line and never written to
+    // instance.json, so an ordinary launch comes back an ordinary window.
+    public static bool IsFullscreen;
+
     // ── version ─────────────────────────────────────────────────────────────
 
     private static string? _version;
@@ -92,7 +99,13 @@ public static class AppState
         // when the user enabled click-through, or while executing — the
         // synthesized clicks must reach the window below the overlay.
         // Targeting and cropping need the content clickable, so they win.
-        bool pass = (IsClickThrough || IsExecuting) && !IsTargeting && !IsCropping;
+        //
+        // Fullscreen passes everything through whatever the rest of this says.
+        // It covers every pixel the user has: a window that took a click there
+        // would be one nothing could be done about, since there is no button on
+        // it to hand the desktop back.
+        bool pass = IsFullscreen ||
+                    ((IsClickThrough || IsExecuting) && !IsTargeting && !IsCropping);
         Overlay?.SetHitTestTransparent(pass);
     }
 
@@ -143,6 +156,18 @@ public static class AppState
         UpdateClickThrough();
         Overlay?.ContentView.InvalidateVisual();
     }
+
+    // The lock, click-through and recording as the `pob` CLI asks for them,
+    // over CoreBridge's ui.lock / ui.clickThrough / ui.record. Each does what
+    // pressing the toolbar button does — icon, tooltip and instance.json
+    // included — so a window set from a terminal is in every way a window set
+    // by hand. The toolbar window is built in fullscreen too, where it is only
+    // hidden, so all three work there as well.
+    public static void SetLocked(bool locked) => Toolbar?.SetLocked(locked);
+
+    public static void SetClickThrough(bool on) => Toolbar?.SetClickThrough(on);
+
+    public static void SetRecording(bool recording) => Toolbar?.SetRecording(recording);
 
     // Something outside the agent loop — an MCP client, a browser on the Pob
     // server — has started driving this instance.

@@ -268,6 +268,25 @@ public static class CoreBridge
                 if (id != null) RespondEmpty(id);
                 break;
 
+            // The three the `pob` CLI sets. Each does what the toolbar button
+            // does; the reply says only that this shell knows the method, which
+            // is the answer the terminal is waiting on — an older shell falls
+            // through to the error below.
+            case "ui.lock":
+                AppState.SetLocked(MemberBool(parameters, "locked", false));
+                if (id != null) RespondEmpty(id);
+                break;
+
+            case "ui.clickThrough":
+                AppState.SetClickThrough(MemberBool(parameters, "enabled", false));
+                if (id != null) RespondEmpty(id);
+                break;
+
+            case "ui.record":
+                AppState.SetRecording(MemberBool(parameters, "recording", false));
+                if (id != null) RespondEmpty(id);
+                break;
+
             case "ui.alert":
                 // Answered before the dialog goes up: it is modal, and the core
                 // is not waiting on it — it has already given up on whatever it

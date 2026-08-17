@@ -35,6 +35,13 @@ type Instance struct {
 	EndTime   int64
 	Port      int
 	Running   bool
+	// Locked and ClickThrough are the window as the shell last left it. They
+	// are read from instance.json rather than asked of the instance: the shell
+	// owns both and writes them there on every change — so that a launch comes
+	// back the way the last one was left — which makes the file the answer, and
+	// one that is there with the app closed.
+	Locked       bool
+	ClickThrough bool
 }
 
 // theInstance loads the machine's instance, running or not. It resolves the
@@ -51,7 +58,9 @@ func theInstance(root string) *Instance {
 
 func newInstance(root, id string) *Instance {
 	dir := filepath.Join(root, id)
-	return &Instance{ID: id, Dir: dir, LogsDir: filepath.Join(dir, "logs")}
+	// Click-through on is the overlay's resting state and what a shell that has
+	// never written the field starts with, so it is the default here too.
+	return &Instance{ID: id, Dir: dir, LogsDir: filepath.Join(dir, "logs"), ClickThrough: true}
 }
 
 // loadInstance reads one <root>/<id> directory and probes its control port.
@@ -66,6 +75,10 @@ func loadInstance(root, id string) *Instance {
 	inst.StartTime = intField(instanceJSON, "start_time")
 	inst.EndTime = intField(instanceJSON, "end_time")
 	inst.Port = int(intField(instanceJSON, "port"))
+	inst.Locked, _ = instanceJSON["is_locked"].(bool)
+	if through, ok := instanceJSON["is_click_through"].(bool); ok {
+		inst.ClickThrough = through
+	}
 	inst.probe()
 	return inst
 }
@@ -156,6 +169,12 @@ func showStatus(inst *Instance) {
 		fmt.Printf("Executing:  %s\n", yesNo(executing))
 	}
 	fmt.Printf("Recording:  %s\n", yesNo(recording))
+	// The two the terminal can set and nothing else reports back. They are the
+	// instance's own file rather than anything in the answer above — the shell
+	// owns them and writes them there — so they are printed beside it rather
+	// than read out of it.
+	fmt.Printf("Locked:     %s\n", yesNo(inst.Locked))
+	fmt.Printf("Clickthru:  %s\n", onOffText(inst.ClickThrough))
 	fmt.Printf("psl:        %s\n", compiler)
 
 	if mcp, ok := status["mcp"].(map[string]any); ok {
@@ -293,6 +312,118 @@ func cmdStop(inst *Instance) {
 		fail("stop failed: %v", err)
 	}
 	fmt.Printf("Stop signal sent to instance %s.\n", inst.ID)
+}
+
+// stopAndSettle is `stop`, waited out: the signal sent, and then the runner
+// watched until it is actually free.
+//
+// A stop is a cancel rather than a halt — the session ends when the step it is
+// on comes back, which is a keystroke away or a screenshot away — so anything
+// that acts on the machine afterwards has to wait for it. Without the wait,
+// `restart` would be refused by the run it just stopped and `reset` would send
+// the cursor home under a replay still aiming at it.
+func stopAndSettle(inst *Instance) {
+	if _, err := inst.post("/run/stop", nil, 5*time.Second); err != nil {
+		fail("stop failed: %v", err)
+	}
+	if !waitUntilIdle(inst, 10*time.Second) {
+		fail("the session on instance %s did not stop within 10s — `pob status` says what it is doing", inst.ID)
+	}
+}
+
+// waitUntilIdle polls /status until no session is executing; false when it is
+// still running at the deadline, or when the instance stopped answering.
+func waitUntilIdle(inst *Instance, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		status, err := inst.get("/status", 2*time.Second)
+		if err != nil {
+			return false
+		}
+		if executing, _ := status["executing"].(bool); !executing {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// cmdRestart is `pob restart`: the run stopped and started again, which is the
+// pair of commands the macro being written is read between. What it adds to
+// typing both is the wait in the middle — `pob stop` returns as soon as the
+// cancel is sent, and a `pob start` typed straight after it is refused by the
+// session that has not finished going.
+//
+// file is what --macropsl named, "" for the instance's own macro; the file the
+// run that was stopped was of is not remembered, so this starts the same run
+// `pob start` would.
+func cmdRestart(root, file string) {
+	inst := theInstance(root)
+	if !inst.Running {
+		fail("Pob is not running — `pob launch --start` starts the app and runs the macro")
+	}
+	macro := ""
+	if file != "" {
+		macro = resolveMacroPSL(inst, file)
+	}
+	stopAndSettle(inst)
+	cmdMacro(inst, macro)
+}
+
+// cmdReset is `pob reset`: the run stopped, and the cursor put back in the
+// corner every replay starts from.
+//
+// The two belong together because the cursor is where a stopped run left it,
+// which is nowhere in particular — and the next run starts by moving from
+// (20, 20). Resetting under a live session is refused by the instance, so the
+// stop is not a courtesy here: it is what makes the reset possible.
+func cmdReset(inst *Instance) {
+	stopAndSettle(inst)
+	result, err := inst.post("/cursor/reset", nil, 10*time.Second)
+	if err != nil {
+		fail("reset failed: %v", err)
+	}
+	// Not "instance stopped", which is what `kill` says and something else
+	// entirely: what stopped here is the run, and the app is still up.
+	fmt.Printf("Stopped, and the cursor is back at %d, %d.\n",
+		intField(result, "x"), intField(result, "y"))
+}
+
+// cmdLock is `pob lock on|off`: the window held to its size, or let go again.
+func cmdLock(inst *Instance, locked bool) {
+	if _, err := inst.post("/window/lock", map[string]any{"locked": locked}, 5*time.Second); err != nil {
+		fail("lock failed: %v", err)
+	}
+	fmt.Printf("Window %s.\n", pick(locked, "locked", "unlocked"))
+}
+
+// cmdClickThrough is `pob clickthrough on|off`: whether a click on the overlay
+// reaches the window underneath.
+func cmdClickThrough(inst *Instance, enabled bool) {
+	if _, err := inst.post("/window/clickthrough", map[string]any{"enabled": enabled}, 5*time.Second); err != nil {
+		fail("clickthrough failed: %v", err)
+	}
+	fmt.Printf("Click-through %s.\n", onOffText(enabled))
+}
+
+// cmdRecord is `pob record start|stop`: the toolbar's record button, pressed
+// from the terminal.
+//
+// Starting appends, and never clears. The button asks which when there is
+// something in the macro already, and there is nobody at the window to answer
+// it here — so the answer is the one that cannot lose work, and clearing the
+// file stays something done to the file itself.
+func cmdRecord(inst *Instance, recording bool) {
+	if _, err := inst.post("/record", map[string]any{"recording": recording}, 5*time.Second); err != nil {
+		fail("record failed: %v", err)
+	}
+	if recording {
+		fmt.Printf("Recording into %s.\n", filepath.Join(inst.Dir, "src", "main.macro.psl"))
+		return
+	}
+	fmt.Println("Recording stopped.")
 }
 
 func cmdScreenshot(inst *Instance) {
@@ -464,4 +595,17 @@ func yesNo(b bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+// onOffText says a state back in the words the command that sets it takes, so
+// what `pob status` prints is what `pob clickthrough` would be typed with.
+func onOffText(b bool) string {
+	return pick(b, "on", "off")
+}
+
+func pick(cond bool, yes, no string) string {
+	if cond {
+		return yes
+	}
+	return no
 }

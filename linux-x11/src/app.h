@@ -38,6 +38,13 @@ typedef struct AppState {
     gboolean is_locked;
     gboolean is_recording;
     gboolean is_executing;
+
+    // --fullscreen: the window covers the whole screen with none of its own
+    // chrome on it — no headerbar, no window buttons, nothing to click. It is
+    // a property of this run rather than of the instance, so it is read from
+    // the command line and never written to instance.json: the `pob` command
+    // is what drives a Pob started this way, and what quits it again.
+    gboolean is_fullscreen;
 } AppState;
 
 extern AppState g_state;
@@ -51,6 +58,13 @@ void app_set_executing(gboolean executing);  // called from core_bridge (main th
 void app_set_server_url(const char *url);
 void app_set_targeting(gboolean targeting);  // also syncs toolbar + click-through
 void app_set_cropping(gboolean cropping);
+// The lock, click-through and recording as the `pob` CLI asks for them, over
+// core_bridge's ui.lock / ui.clickThrough / ui.record. Each does what pressing
+// the toolbar button does — icon, tooltip and instance.json included — so a
+// window set from a terminal is in every way a window set by hand.
+void app_set_locked(gboolean locked);
+void app_set_click_through(gboolean on);
+void app_set_recording(gboolean recording);
 // Whatever the core has to say for itself, with an OK — the settings a macro's
 // IF needs and hasn't got, say. Both strings come from the core.
 void app_show_alert_dialog(const char *title, const char *message);

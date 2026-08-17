@@ -37,6 +37,7 @@ Usage: pob [flags] [command] [args]
 Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
+  --fullscreen       With no command, the same as launch --fullscreen
 
 Macro options (on start, check, and launch --start):
   --macropsl <file>  Work on that PSL file instead of the instance's own
@@ -45,24 +46,34 @@ Macro options (on start, check, and launch --start):
                      the instance's src/
 ```
 
-`launch` takes one option of its own, `--start`; everything else after it is the
-instance, so `pob launch --start "Work laptop"` is that instance, started and
-running.
+`launch` takes two options of its own, `--start` and `--fullscreen`; everything
+else after it is the instance, so `pob launch --start "Work laptop"` is that
+instance, started and running.
 
 `--macropsl` says which file to work on. See **Another macro** below.
+
+`--fullscreen` starts Pob over the whole screen with none of its own chrome on
+it. See **Fullscreen** below.
 
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
 | `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"`, and with `--macropsl <file>` to run that file rather than the instance's own |
+| `launch --fullscreen` | The same launch, over the whole screen: no toolbar, no window buttons, nothing on screen that is Pob's to click — see **Fullscreen** below. `pob --fullscreen`, with no command at all, is the short way to write it. Combines with everything else a launch takes: `pob launch --start --fullscreen "Work laptop"` |
 | `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
-| `status` | Live status (executing, recording, psl, MCP, server address) |
+| `status` | Live status (executing, recording, the window's lock and click-through, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
 | `check` | Everything that has to be right before a run, in one report — see **Checking** below. `src/main.macro.psl` and the files it `call`s, line by line, and then this machine: psl, what psl fills a slot with, the app and the `pob-core` behind it, `settings.json`, `stop_hook`. It reads files and talks to no one, which makes it the command that answers with Pob closed; exits `1` when there is anything to fix. `--macropsl <file>` reads that file in its place |
 | `start` | Execute [`src/main.macro.psl`](03_Macro%20PSL.md) on the running instance — the same run as the toolbar's Execute button, and what `stop` stops. With nothing running it says so and names `launch --start`, since starting the app is also called starting. `--macropsl <file>` runs that file in its place |
 | `stop` | Stop the running session |
-| `kill` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error |
+| `restart` | `stop` and `start` again, with the wait between them that makes the pair work: a stop is a cancel rather than a halt — the session ends when the step it is on comes back — and a `pob start` typed straight after a `pob stop` is refused by the run that has not finished going. `--macropsl <file>` runs that file in its place. The file the stopped run was of is not remembered, so this starts the run `pob start` would |
+| `reset` | The same stop, and then the virtual cursor put back in the corner every replay starts from — the toolbar's Reset Mouse Position button. The two belong together: a stopped run leaves the cursor wherever it had got to, and resetting it under a live session is refused, since the run is what is driving it |
+| `record start` / `record stop` | Record what you do at the machine into [`src/main.macro.psl`](03_Macro%20PSL.md) — the toolbar's Record button, and everything that follows a press of it: the window is locked, clicks are let through to the app underneath, and the state shows on the toolbar. Starting **appends and never clears**. The button asks which when there is something in the file already, and here there is nobody at the window to answer, so the answer is the one that cannot lose work |
+| `lock on` / `lock off` | Hold the window to its size, or let go. Locked, a drag carries the windows underneath along with the frame, so a macro's coordinates keep landing where they were recorded; only the resize is taken away. The state is written to `instance.json`, so the next launch comes back the way this one was left, and `pob status` prints it |
+| `clickthrough on` / `clickthrough off` | Whether a click on the overlay reaches the window underneath. On is the resting state — the overlay sits over the app it drives — and off is for working in Pob's own window. Written to `instance.json` like the lock |
+| `kill`, `shutdown` | Quit the running instance. It is the shell app that is signalled — `pob-core` exits with the pipe to it, writing the instance's end time — and only when it does not go within 10s is anything killed outright. Nothing running is reported, not an error. The two words are one command: `shutdown` is what quitting an app is called, `kill` what is done to a process |
+| `relaunch` | Quit the running instance and start it again, on the same instance and the same settings — the way back from a shell that is up but no longer doing what it should, a window left somewhere unreachable, or a permission granted since it started. One command rather than two because the wait between them has to be right: a launch started before the old instance has let go of its port would be refused as one already running. Nothing running is not an error; it launches. It is also how fullscreen is entered and left on a Pob that is already up, since neither is anything the running app can be talked into: `pob relaunch --fullscreen` brings it back over the whole screen, and a plain `pob relaunch` brings a fullscreen one back as an ordinary window |
 | `screenshot` | Capture a screenshot; prints the saved file path |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
 | `mcp start [port]` | Register the MCP server in the user settings of installed agent CLIs (`claude`, `gemini`) and print its info. The server starts with the instance, so there is usually nothing to start; `[port]` moves it to that port first |
@@ -79,14 +90,78 @@ pob new "Work laptop"                    # create an instance and switch to it
 pob launch                               # start the app (asks which, if there are several)
 pob launch "Work laptop"                 # start that one
 pob launch --start "Work laptop"         # start that one and run its macro
+pob --fullscreen                         # start it over the whole screen, no toolbar
 pob check                                # is the macro sound, and can this machine run it?
 pob start                                # replay src/main.macro.psl; pob stop stops it
 pob start --macropsl login.macro.psl     # replay that file instead
+pob restart                              # stop that run and start it again
+pob reset                                # stop it, and put the cursor back in its corner
+pob record start                         # record what you do into src/main.macro.psl
+pob record stop                          # and stop recording
+pob lock on                              # hold the window to its size
+pob clickthrough off                     # let the overlay take clicks again
+pob relaunch                             # quit the app and start it again
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
 pob update --check                       # is there a newer release?
 pob update                               # install it over this one
 ```
+
+
+Fullscreen
+----------
+
+`--fullscreen` starts Pob over the whole screen, and takes everything of its own
+off it:
+
+```
+pob --fullscreen              # the same as pob launch --fullscreen
+```
+
+No titlebar, no toolbar, no window buttons, no instance badge — nothing on
+screen that is Pob's to click. What is left is the overlay itself: the
+translucent wash, the virtual cursor, and the desktop underneath it, which is
+now the whole of what Pob frames. Every click, drag and keystroke passes
+straight through to the applications below, as it does under the ordinary
+window, so the machine goes on working normally with Pob over it.
+
+That leaves the terminal as the only way in, which is the point of the mode:
+
+```
+pob status                    # what it is doing
+pob start                     # replay the macro
+pob stop                      # stop that run
+pob screenshot                # capture what it frames — now the whole screen
+pob record start              # record what you do into the macro
+pob kill                      # quit it
+```
+
+The [web UI](12_Web%20UI.md) and the [MCP server](08_MCP.md) reach it as they
+always did — a fullscreen instance is an ordinary instance in every way except
+what it draws.
+
+What it is for is what the frame means. Every coordinate Pob works in is
+relative to the content area, so an ordinary window says "drive this much of the
+screen" and fullscreen says "drive the machine": screenshots come back as the
+whole display, and the macro's coordinates are screen coordinates.
+
+Some details worth knowing:
+
+- **It covers the menu bar, the Dock, and the taskbar.** The window sits above
+  them rather than beside them, on the display it came up on. Other displays are
+  left alone.
+- **It is a property of the run, not of the instance.** Nothing on disk
+  remembers it: the next `pob launch` is an ordinary window again. The frame the
+  window was left at, its lock and its click-through are not written to
+  `instance.json` during a fullscreen run either, so an instance set up for a
+  macro is still set up for it afterwards.
+- **`clickthrough off` does not take hold.** A fullscreen window that took
+  clicks would be one nothing could be done about — there is no button on it to
+  hand the desktop back — so it goes on passing them through.
+- **Getting out is a relaunch.** `pob relaunch` brings it back as an ordinary
+  window; `pob relaunch --fullscreen` takes a running one the other way. Neither
+  is something the app can be talked into while it is up: the mode is settled at
+  launch, which is why it is a launch that changes it.
 
 
 Another macro
@@ -255,12 +330,21 @@ The port is whatever the OS hands out, so it is a different one on every
 launch and the file is the only way to find it. The two fields are there only
 while the instance runs — it stops advertising itself by clearing them, so a
 file without a `port` is a stopped instance. `status`, `start`, `stop`,
-`screenshot` and the `mcp` commands are each one call to that
-API; the rest read the `logs/` tree directly, which is why they still work
-with the app closed. `check` is in neither group: it reads the macro and this
-machine itself rather than asking the instance anything, which is what
-lets a macro be checked while it is being written and an install before it has
-ever been started.
+`screenshot`, `lock`, `clickthrough`, `record` and the `mcp` commands are each
+one call to that API; `restart` and `reset` are two, with a wait in between for
+the run to actually stop; the rest read the `logs/` tree directly, which is why
+they still work with the app closed. `check` is in neither group: it reads the
+macro and this machine itself rather than asking the instance anything, which
+is what lets a macro be checked while it is being written and an install before
+it has ever been started.
+
+The three that set the window — `lock`, `clickthrough` and `record` — do not
+end at the core either. Those states belong to the window, so each is passed
+on to the shell and does exactly what pressing the toolbar button does, icon
+and `instance.json` included. Which is also how `pob status` answers for two of
+them with no question asked of anybody: the shell writes the lock and the
+click-through into `instance.json` as they change, so the file is where they
+are read from — and they are still there with the app closed.
 
 `kill` uses the API for one thing only — asking the instance which process it
 is — and then works on the processes themselves. The pid it gets back is
@@ -268,7 +352,8 @@ is — and then works on the processes themselves. The pid it gets back is
 gets signalled; core follows it down when their pipe closes. The parent is
 checked for the name the shell is built under (`Pob`, `pob`, `Pob.exe`) before
 anything is sent to it, so a `pob-core` started by hand from a terminal takes
-the signal itself rather than handing it to the terminal.
+the signal itself rather than handing it to the terminal. `relaunch` is that
+same stop, waited out until the port stops answering, and then the launch.
 
 
 See also

@@ -20,12 +20,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Root installs go where every user can reach them; a user install stays in
 # ~/.local, which needs no password and is where XDG says this belongs.
+#
+# DATA_DIR is the XDG data root the app menu entry and its icon go under, so
+# Pob turns up in the desktop's launcher — the Linux counterpart of the macOS
+# app bundle being visible in /Applications.
 if [ "$(id -u)" -eq 0 ]; then
     PREFIX="/opt/pob"
     BIN_DIR="/usr/local/bin"
+    DATA_DIR="/usr/local/share"
 else
     PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/pob"
     BIN_DIR="$HOME/.local/bin"
+    DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 fi
 
 usage() {
@@ -55,10 +61,21 @@ while [ $# -gt 0 ]; do
 done
 
 LINK="$BIN_DIR/pob"
+DESKTOP_FILE="$DATA_DIR/applications/pob.desktop"
+ICON_FILE="$DATA_DIR/icons/hicolor/256x256/apps/pob.png"
 
 # ── uninstall ────────────────────────────────────────────────────────────────
 
 if [ "$UNINSTALL" -eq 1 ]; then
+    # Same rule as the symlink below: only ever remove a desktop entry that
+    # launches *this* install — a system-wide copy is not a user uninstall's
+    # to delete, and the icon beside it belongs to the same entry.
+    if [ -f "$DESKTOP_FILE" ] && grep -qxF "Exec=$PREFIX/pob" "$DESKTOP_FILE"; then
+        rm -f "$DESKTOP_FILE" "$ICON_FILE"
+        echo "✅ Removed $DESKTOP_FILE"
+    elif [ -e "$DESKTOP_FILE" ]; then
+        echo "⏭  Left $DESKTOP_FILE alone — it does not launch $PREFIX/pob"
+    fi
     # Only ever remove a link that points into this install — someone else's
     # pob on the PATH is not ours to delete.
     if [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$PREFIX/Helpers/pob" ]; then
@@ -124,6 +141,11 @@ else
     if [ -f "$SRC/VERSION" ]; then
         install -m 644 "$SRC/VERSION" "$PREFIX/VERSION"
     fi
+    # The app looks for its icon beside its own binary, so it keeps that spot
+    # here too — the desktop entry below gets its own copy.
+    if [ -f "$SRC/pob.png" ]; then
+        install -m 644 "$SRC/pob.png" "$PREFIX/pob.png"
+    fi
     # The installer, the guide and the license go along too, so uninstalling
     # later — or reading what any of this was, or what it may be used for —
     # does not mean finding the zip again.
@@ -145,6 +167,37 @@ echo "✅ Installed:"
 echo "   app  $PREFIX/pob"
 echo "   core $PREFIX/pob-core"
 echo "   cli  $LINK → $PREFIX/Helpers/pob"
+
+# ── desktop entry ────────────────────────────────────────────────────────────
+
+# Puts Pob in the applications menu with its icon. Nothing here is needed to
+# run the app, so a desktop without these directories is not an error.
+if [ -f "$PREFIX/pob.png" ]; then
+    mkdir -p "$(dirname "$DESKTOP_FILE")" "$(dirname "$ICON_FILE")"
+    install -m 644 "$PREFIX/pob.png" "$ICON_FILE"
+    cat > "$DESKTOP_FILE" << DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Pob
+GenericName=Perception and Operation Bridge
+Comment=Translucent overlay that lets an AI see and drive your desktop
+Exec=$PREFIX/pob
+Icon=pob
+Terminal=false
+Categories=Utility;Development;
+StartupWMClass=Pob
+DESKTOP
+    chmod 644 "$DESKTOP_FILE"
+
+    # Both caches are advisory — the entry shows up on the next login without
+    # them, and neither tool is installed everywhere.
+    command -v update-desktop-database >/dev/null 2>&1 &&
+        update-desktop-database "$(dirname "$DESKTOP_FILE")" >/dev/null 2>&1 || true
+    command -v gtk-update-icon-cache >/dev/null 2>&1 &&
+        gtk-update-icon-cache -qtf "$DATA_DIR/icons/hicolor" >/dev/null 2>&1 || true
+
+    echo "   menu $DESKTOP_FILE"
+fi
 
 # ── is it actually reachable? ────────────────────────────────────────────────
 

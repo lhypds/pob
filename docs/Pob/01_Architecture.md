@@ -38,7 +38,8 @@ stdin/stdout with line-delimited JSON-RPC:
 
 - Shell → core: `run.macro`, `run.stop`, `recording.changed`
 - Core → shell: `screenshot.capture`, `cursor.move`, `mouse.click`,
-  `keyboard.type`, `ui.alert`, … and `session.state` notifications
+  `keyboard.type`, `ui.alert`, `ui.lock`, `ui.clickThrough`, `ui.record`, …
+  and `session.state` notifications
 
 Captured frames are the one thing that does not travel that way. They go down
 a second, binary connection instead: the core listens on loopback and offers

@@ -65,6 +65,40 @@ const char *app_version(void) {
     return version;
 }
 
+// ── app icon ────────────────────────────────────────────────────────────────
+
+// What the taskbar, alt-tab and the window itself show: the same drawing macOS
+// puts in AppIcon.icns and Windows embeds in Pob.exe, shipped here as a plain
+// 256×256 PNG. It is only decoration — a missing file is logged, not fatal.
+//
+// Packaged install: pob.png sits next to the shell binary (the installer keeps
+// that layout). Dev workflow: walk up from linux-x11/bin/pob towards the
+// repository root and use the master copy under assets/icon.
+static void install_app_icon(void) {
+    gchar *self = g_file_read_link("/proc/self/exe", NULL);
+    if (!self) return;
+    gchar *dir = g_path_get_dirname(self);
+    g_free(self);
+
+    gchar *path = g_build_filename(dir, "pob.png", NULL);
+    for (int i = 0; i < 6 && !g_file_test(path, G_FILE_TEST_IS_REGULAR); i++) {
+        gchar *parent = g_path_get_dirname(dir);
+        g_free(dir);
+        dir = parent;
+        g_free(path);
+        path = g_build_filename(dir, "assets", "icon", "pob.png", NULL);
+    }
+    g_free(dir);
+
+    GError *error = NULL;
+    if (!gtk_window_set_default_icon_from_file(path, &error)) {
+        app_logger_error("no window icon (%s): %s", path,
+                         error ? error->message : "not found");
+        g_clear_error(&error);
+    }
+    g_free(path);
+}
+
 // ── toolbar helpers ─────────────────────────────────────────────────────────
 
 // Toolbar icon size in logical pixels. The GTK default (16) reads larger
@@ -226,6 +260,18 @@ void app_update_click_through(void) {
     GtkWidget *win = GTK_WIDGET(g_state.window);
     if (!gtk_widget_get_realized(win) || !g_state.content) return;
 
+    // Fullscreen passes everything through, always. There is no headerbar to
+    // press and no edge to resize by — the frame is the screen and stays that
+    // way — and it covers every pixel the user has: a live area anywhere on it
+    // would be desktop that had stopped answering, with no button on screen to
+    // hand it back. An empty input region is the whole window given up.
+    if (g_state.is_fullscreen) {
+        cairo_region_t *nothing = cairo_region_create();
+        gtk_widget_input_shape_combine_region(win, nothing);
+        cairo_region_destroy(nothing);
+        return;
+    }
+
     // Pass clicks through the content area (toolbar stays interactive) when
     // the user enabled click-through, or while executing — on X11 the
     // synthesized XTest clicks must reach the window below the overlay.
@@ -282,6 +328,10 @@ void app_update_click_through(void) {
 // every pixel inside the frame sits, and no amount of moving the windows below
 // puts them back.
 void app_update_window_lock(void) {
+    // A fullscreen window is already held to the screen and has no headerbar to
+    // drag it by, so there is neither a resize to take away nor anything below
+    // to carry.
+    if (g_state.is_fullscreen) return;
     gboolean locked = g_state.is_locked || g_state.is_executing;
     gtk_window_set_resizable(g_state.window, !locked);
     carry_service_set_enabled(locked);
@@ -323,7 +373,10 @@ static void set_click_through(gboolean on) {
                                 on ? "Click-Through On (click to disable)"
                                    : "Click-Through Off (click to enable)");
     app_update_click_through();
-    settings_save_click_through(on);
+    // Not from a fullscreen run: the window is the whole screen there and goes
+    // on passing clicks through whatever this says, so what is written down
+    // would be a state the run never actually had.
+    if (!g_state.is_fullscreen) settings_save_click_through(on);
 }
 
 void app_set_targeting(gboolean targeting) {
@@ -400,6 +453,33 @@ static void stop_recording(void) {
     core_bridge_recording_changed(FALSE);
     content_view_show_message("Recording stopped");
     sync_record_button();
+}
+
+// ── the same three, asked for from the terminal ─────────────────────────────
+//
+// The toolbar's lock, click-through and record buttons, pressed by `pob lock`,
+// `pob clickthrough` and `pob record`. They go through the functions the button
+// handlers go through rather than at g_state directly, so everything that
+// follows a press follows this too.
+
+void app_set_locked(gboolean locked) {
+    set_locked(locked);
+}
+
+void app_set_click_through(gboolean on) {
+    set_click_through(on);
+}
+
+void app_set_recording(gboolean recording) {
+    if (recording == g_state.is_recording) return;
+    if (recording) {
+        // No Clear/Keep dialog: there is nobody at the window to answer it, so
+        // the answer is the one that cannot lose work — what is in the macro is
+        // kept and the recording is appended to it.
+        start_recording(FALSE);
+    } else {
+        stop_recording();
+    }
 }
 
 // ── dialogs ─────────────────────────────────────────────────────────────────
@@ -819,6 +899,10 @@ static void build_headerbar(void) {
 static gboolean save_frame_now(gpointer data) {
     (void)data;
     save_frame_timeout = 0;
+    // The frame is not saved in fullscreen: it is the screen rather than
+    // anything the user placed, and writing it down would bring the next
+    // ordinary launch up as a window the size of the display.
+    if (g_state.is_fullscreen) return G_SOURCE_REMOVE;
     int x, y, w, h;
     gtk_window_get_position(g_state.window, &x, &y);
     gtk_window_get_size(g_state.window, &w, &h);
@@ -983,6 +1067,8 @@ static void on_activate(GtkApplication *app, gpointer data) {
     }
 
     install_css();
+    // Before the window exists: this sets the default every window inherits.
+    install_app_icon();
 
     GtkWidget *win = gtk_application_window_new(app);
     g_state.window = GTK_WINDOW(win);
@@ -1014,7 +1100,12 @@ static void on_activate(GtkApplication *app, gpointer data) {
     // defaults to ON: the overlay sits on top of the app being driven, so
     // passing clicks through is the useful resting state. The headerbar stays
     // interactive (input shape) either way.
-    g_state.is_click_through = settings_get_click_through();
+    //
+    // Fullscreen takes it as read: the window is the whole screen, so an
+    // instance last left catching clicks would come back having taken the
+    // desktop away with nothing on screen to give it back.
+    g_state.is_click_through =
+        g_state.is_fullscreen ? TRUE : settings_get_click_through();
 
     build_headerbar();
     g_state.content = content_view_new();
@@ -1026,28 +1117,43 @@ static void on_activate(GtkApplication *app, gpointer data) {
 
     gtk_window_set_keep_above(g_state.window, TRUE); // macOS: window.level = .floating
 
-    int x, y, w, h;
-    if (settings_get_window_frame(&x, &y, &w, &h)) {
-        gtk_window_set_default_size(g_state.window, w, h);
-        gtk_window_move(g_state.window, x, y);
+    if (g_state.is_fullscreen) {
+        // The window manager's own fullscreen, so the screen is covered whole
+        // — panels, taskbars and docks included, which a window merely sized to
+        // the screen would still be shown under. GTK3 drops the CSD titlebar
+        // for a fullscreen window itself; it is hidden here as well, since that
+        // is a promise of the toolkit rather than of every window manager.
+        gtk_window_set_decorated(g_state.window, FALSE);
+        gtk_widget_set_no_show_all(g_state.headerbar, TRUE);
+        gtk_widget_hide(g_state.headerbar);
+        gtk_window_fullscreen(g_state.window);
     } else {
-        gtk_window_set_default_size(g_state.window, 600, 400);
-        gtk_window_set_position(g_state.window, GTK_WIN_POS_CENTER);
+        int x, y, w, h;
+        if (settings_get_window_frame(&x, &y, &w, &h)) {
+            gtk_window_set_default_size(g_state.window, w, h);
+            gtk_window_move(g_state.window, x, y);
+        } else {
+            gtk_window_set_default_size(g_state.window, 600, 400);
+            gtk_window_set_position(g_state.window, GTK_WIN_POS_CENTER);
+        }
+
+        // The lock comes back with the frame: applied rather than set, since it
+        // is what instance.json already says.
+        apply_locked(settings_get_window_locked());
+
+        // After the frame is placed, so the first drag is measured from where
+        // the window actually starts rather than from wherever GTK first put
+        // it. A fullscreen window is never dragged, so nothing is ever carried
+        // under it either.
+        carry_service_seed();
     }
-
-    // The lock comes back with the frame: applied rather than set, since it is
-    // what instance.json already says.
-    apply_locked(settings_get_window_locked());
-
-    // After the frame is placed, so the first drag is measured from where the
-    // window actually starts rather than from wherever GTK first put it.
-    carry_service_seed();
 
     g_signal_connect(win, "configure-event", G_CALLBACK(on_configure), NULL);
     g_signal_connect_swapped(win, "realize", G_CALLBACK(app_update_click_through), NULL);
     g_signal_connect(win, "realize", G_CALLBACK(on_window_realize), NULL);
 
     gtk_widget_show_all(win);
+    if (g_state.is_fullscreen) gtk_widget_hide(g_state.headerbar);
 
     // What the macOS shell checks its Accessibility grant for, in the form this
     // one can fail: input is synthesised through XTest, and an X server without
@@ -1065,7 +1171,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
             "cannot drive native Wayland windows), and check that libxtst6 is installed.");
     }
 
-    app_logger_event("Pob started");
+    app_logger_event(g_state.is_fullscreen ? "Pob started (fullscreen)" : "Pob started");
     mouse_service_init();
     core_bridge_start();
 }
@@ -1084,11 +1190,32 @@ static void on_shutdown(GApplication *app, gpointer data) {
     app_logger_event("Pob stopped");
 }
 
+// Takes --fullscreen out of the command line and says whether it was there.
+//
+// Taken out rather than read where it stands: what is left goes to
+// g_application_run, which knows only GTK's own options and refuses the rest
+// with "Unknown option" before a window is ever built.
+static gboolean take_fullscreen_flag(int *argc, char **argv) {
+    gboolean found = FALSE;
+    int kept = 1;
+    for (int i = 1; i < *argc; i++) {
+        if (g_strcmp0(argv[i], "--fullscreen") == 0) {
+            found = TRUE;
+            continue;
+        }
+        argv[kept++] = argv[i];
+    }
+    argv[kept] = NULL;
+    *argc = kept;
+    return found;
+}
+
 int main(int argc, char **argv) {
     XInitThreads(); // two X connections: GDK (main) + the mouse worker
     gdk_set_allowed_backends("x11");
 
     memset(&g_state, 0, sizeof(g_state));
+    g_state.is_fullscreen = take_fullscreen_flag(&argc, argv);
 
     // Unique, not NON_UNIQUE: a second launch should reach the Pob already
     // running and present its window, not start a rival for the pointer.

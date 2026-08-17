@@ -313,6 +313,21 @@ static void dispatch(JsonObject *msg) {
         content_view_flash();
         if (id) core_bridge_respond_empty(id);
 
+    // The three the `pob` CLI sets. Each does what the toolbar button does; the
+    // reply says only that this shell knows the method, which is the answer the
+    // terminal is waiting on — an older shell falls through to the error below.
+    } else if (g_str_equal(method, "ui.lock")) {
+        app_set_locked(params && json_object_get_boolean_member_with_default(params, "locked", FALSE));
+        if (id) core_bridge_respond_empty(id);
+
+    } else if (g_str_equal(method, "ui.clickThrough")) {
+        app_set_click_through(params && json_object_get_boolean_member_with_default(params, "enabled", FALSE));
+        if (id) core_bridge_respond_empty(id);
+
+    } else if (g_str_equal(method, "ui.record")) {
+        app_set_recording(params && json_object_get_boolean_member_with_default(params, "recording", FALSE));
+        if (id) core_bridge_respond_empty(id);
+
     } else if (g_str_equal(method, "ui.alert")) {
         const gchar *title = params
             ? json_object_get_string_member_with_default(params, "title", "Pob")

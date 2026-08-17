@@ -70,9 +70,13 @@ ICONSET_DIR="$MACOS_DIR/.build/Pob.iconset"
 ICNS_PATH="$CONTENTS/Resources/AppIcon.icns"
 mkdir -p "$ICONSET_DIR"
 
-# Generate 1024x1024 base PNG via Swift script
-BASE_PNG="$MACOS_DIR/.build/pob_icon_1024.png"
-swift "$MACOS_DIR/generate_icon.swift" "$BASE_PNG"
+# The master the Windows .ico and the Linux .png are cut from too, so all three
+# platforms show the same icon. assets/icon/generate_icon.swift redraws it.
+BASE_PNG="$ROOT_DIR/assets/icon/pob_icon_1024.png"
+if [ ! -f "$BASE_PNG" ]; then
+  echo "❌ Missing $BASE_PNG — regenerate it with: swift assets/icon/generate_icon.swift"
+  exit 1
+fi
 
 # Resize to all required iconset sizes
 for SIZE in 16 32 128 256 512; do

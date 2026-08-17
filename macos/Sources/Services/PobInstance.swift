@@ -86,11 +86,14 @@ final class PobInstance: NSObject, ObservableObject {
         window.title = "Pob \(AppDelegate.version)"
         window.toolbarStyle = .unifiedCompact
 
-        window.styleMask.insert(.resizable)
-        window.styleMask.insert(.miniaturizable)
-        window.styleMask.insert(.closable)
-
-        window.level = .floating
+        if AppOptions.fullscreen {
+            applyFullscreenStyle(to: window)
+        } else {
+            window.styleMask.insert(.resizable)
+            window.styleMask.insert(.miniaturizable)
+            window.styleMask.insert(.closable)
+            window.level = .floating
+        }
         window.ignoresMouseEvents = false
         // Without this the window never receives mouseMoved while it is key,
         // so the local monitor below could not keep the click-through state
@@ -101,7 +104,9 @@ final class PobInstance: NSObject, ObservableObject {
         // one window, whatever the last run left behind.
         window.isRestorable = false
 
-        if let savedFrame = settings.getWindowFrame() {
+        if AppOptions.fullscreen {
+            window.setFrame(fullscreenFrame(for: window), display: true)
+        } else if let savedFrame = settings.getWindowFrame() {
             window.setFrame(savedFrame, display: true)
         } else {
             window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
@@ -110,8 +115,11 @@ final class PobInstance: NSObject, ObservableObject {
 
         // After the frame is restored, so the first drag is measured from where
         // the window actually starts rather than from wherever SwiftUI first
-        // put it.
-        carry.attach(window: window)
+        // put it. A fullscreen window is never dragged — there is no titlebar
+        // to take hold of — so nothing is ever carried under it either.
+        if !AppOptions.fullscreen {
+            carry.attach(window: window)
+        }
 
         // Observe rather than replace window.delegate: the delegate belongs
         // to SwiftUI's WindowGroup scene bookkeeping, and stealing it makes
@@ -157,13 +165,46 @@ final class PobInstance: NSObject, ObservableObject {
         // restored to a locked instance must not be resizable in between. Last,
         // so it is the same order the view's own lock takes: the window set up
         // first, then held to its size.
-        if settings.getWindowLocked() {
+        //
+        // Nothing to apply in fullscreen: the frame is the display, and it is
+        // already held there by having no way to move or resize it.
+        if !AppOptions.fullscreen, settings.getWindowLocked() {
             window.styleMask.remove(.resizable)
             carry.setEnabled(true)
         }
 
         updateClickThroughPolling()
         updateIgnoresMouseEvents()
+    }
+
+    // MARK: - Fullscreen
+
+    /// The fullscreen overlay: the whole display, with nothing of Pob's own
+    /// drawn on it.
+    ///
+    /// Borderless rather than a titlebar hidden by other means, because the
+    /// titlebar is also what `contentLayoutRect` is measured against — the area
+    /// a screenshot covers, and the box the virtual cursor lives in. With no
+    /// titlebar at all the window's content *is* the display, which is what a
+    /// fullscreen Pob is for.
+    ///
+    /// The level clears the menu bar (`.mainMenu`, 24) and the Dock (20), so
+    /// "the whole display" includes the two strips a zoomed window leaves
+    /// alone. It joins every Space and stays out of macOS's own full-screen
+    /// mode, which would put it on a Space of its own with nothing underneath.
+    private func applyFullscreenStyle(to window: NSWindow) {
+        window.styleMask = [.borderless]
+        window.toolbar = nil
+        window.isMovable = false
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenNone]
+    }
+
+    /// The display the window came up on, whole: `frame` rather than
+    /// `visibleFrame`, which stops short of the menu bar and the Dock.
+    private func fullscreenFrame(for window: NSWindow) -> NSRect {
+        let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first
+        return screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
 
     // MARK: - Click-through
@@ -194,7 +235,10 @@ final class PobInstance: NSObject, ObservableObject {
     /// sticks — which is why a focused window could no longer be grabbed by
     /// its edge to resize. Poll for as long as click-through is on to cover it.
     private func updateClickThroughPolling() {
-        let wanted = clickThroughEnabled && window != nil
+        // Nothing for it to watch for in fullscreen: the decision there is the
+        // same wherever the pointer is, so a poll twenty times a second would
+        // only be arriving at it again.
+        let wanted = clickThroughEnabled && window != nil && !AppOptions.fullscreen
         guard wanted != (clickThroughPoll != nil) else { return }
 
         guard wanted else {
@@ -250,6 +294,18 @@ final class PobInstance: NSObject, ObservableObject {
             return
         }
 
+        // Fullscreen passes everything through, always. It has no live areas to
+        // keep — no toolbar to press, no edge to resize by, since the frame is
+        // the display and stays that way — and it covers every pixel the user
+        // has: a window that took a click here would be one nothing could be
+        // done about, since there is no button on it to hand the desktop back.
+        // Ahead of the check below for exactly that reason, so no saved state
+        // and no mode can end in a screen that answers to nobody.
+        guard !AppOptions.fullscreen else {
+            setIgnoresMouseEvents(true, on: window)
+            return
+        }
+
         guard clickThroughEnabled else {
             setIgnoresMouseEvents(false, on: window)
             return
@@ -295,8 +351,11 @@ final class PobInstance: NSObject, ObservableObject {
 }
 
 extension PobInstance {
+    /// The frame is not saved in fullscreen: it is the display rather than
+    /// anything the user placed, and writing it down would bring the next
+    /// ordinary launch up as a window the size of the screen.
     private func saveWindowFrame() {
-        guard let window else { return }
+        guard let window, !AppOptions.fullscreen else { return }
         settings.saveWindowFrame(window.frame)
     }
 }

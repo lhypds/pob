@@ -207,6 +207,17 @@ public partial class ToolbarWindow : Window
         SetRecordingVisual(false);
     }
 
+    // The record button pressed from a terminal — `pob record start|stop`, over
+    // AppState.SetRecording. No Clear/Keep question: there is nobody at the
+    // window to answer it, so the answer is the one that cannot lose work and
+    // what is in the macro already is kept.
+    public void SetRecording(bool recording)
+    {
+        if (recording == AppState.IsRecording) return;
+        if (recording) StartRecording(clearingMacro: false);
+        else StopRecording();
+    }
+
     private void OnPlayClicked(object sender, RoutedEventArgs e)
     {
         if (AppState.IsExecuting)
@@ -234,13 +245,16 @@ public partial class ToolbarWindow : Window
     // like the lock, so the next run starts the way this one was left: an
     // overlay left sitting over the app it drives would otherwise come back
     // swallowing the clicks meant for what is underneath.
-    private void SetClickThrough(bool on)
+    public void SetClickThrough(bool on)
     {
         if (AppState.IsClickThrough == on) return;
         AppState.IsClickThrough = on;
         SetClickThroughVisual(on);
         AppState.UpdateClickThrough();
-        SettingsService.SaveClickThrough(on);
+        // Not from a fullscreen run: the overlay is the whole display there and
+        // goes on passing clicks through whatever this says, so what would be
+        // written down is a state the run never actually had.
+        if (!AppState.IsFullscreen) SettingsService.SaveClickThrough(on);
     }
 
     private void OnLockClicked(object sender, RoutedEventArgs e) => SetLocked(!AppState.IsLocked);
@@ -253,7 +267,7 @@ public partial class ToolbarWindow : Window
     // The lock is written to instance.json so the next run starts the way this
     // one was left: a window locked to hold a macro's coordinates would
     // otherwise come back loose and have to be locked again.
-    private void SetLocked(bool locked)
+    public void SetLocked(bool locked)
     {
         if (AppState.IsLocked == locked) return;
         AppState.IsLocked = locked;

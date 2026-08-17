@@ -23,6 +23,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
 
+        // The app coming up, written once per process and only past the claim
+        // above — the other half of "Pob stopped". It is logged here rather
+        // than from the window's onAppear, which SwiftUI can run more than once
+        // for one launch (a fullscreen window is restyled as it is attached,
+        // and the view comes back with it) and runs even for the copy the claim
+        // has just refused.
+        AppLogger.event(AppOptions.fullscreen ? "Pob started (fullscreen)" : "Pob started")
+
         createMenu()
 
         // Monitors run for the full app lifetime — no start/stop needed.

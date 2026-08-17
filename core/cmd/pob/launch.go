@@ -18,7 +18,11 @@ import (
 // launchInstance starts the Pob app and returns the instance once its control
 // API is up; exits with an error when the app is already running, cannot be
 // found, or never answers.
-func launchInstance(root string) *Instance {
+//
+// fullscreen is passed on to the app as --fullscreen: it is a property of the
+// run rather than of the instance, so it is said at every launch that wants it
+// and nothing on disk remembers it.
+func launchInstance(root string, fullscreen bool) *Instance {
 	if inst := theInstance(root); inst.Running {
 		fail("Pob is already running (%s)", inst.ID)
 	}
@@ -28,7 +32,7 @@ func launchInstance(root string) *Instance {
 		fail("%v", err)
 	}
 	fmt.Printf("Launching %s…\n", app)
-	if err := startApp(app, root); err != nil {
+	if err := startApp(app, root, fullscreen); err != nil {
 		fail("launch failed: %v", err)
 	}
 
@@ -125,16 +129,28 @@ func exists(path string) bool {
 // Plain `open`, not `open -n`: the caller has already established that Pob is
 // not running, and -n exists to start a second copy alongside a first, which
 // is the thing that is no longer wanted.
-func startApp(app, root string) error {
+//
+// The app's own arguments go after `--args` on the bundle path, which is how
+// `open` tells them from its own; a bare binary takes them as they are.
+func startApp(app, root string, fullscreen bool) error {
+	var appArgs []string
+	if fullscreen {
+		appArgs = append(appArgs, "--fullscreen")
+	}
 	if strings.HasSuffix(app, ".app") {
-		return exec.Command("open", app).Run()
+		openArgs := []string{app}
+		if len(appArgs) > 0 {
+			openArgs = append(openArgs, "--args")
+			openArgs = append(openArgs, appArgs...)
+		}
+		return exec.Command("open", openArgs...).Run()
 	}
 	logFile, err := os.OpenFile(filepath.Join(root, "app.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
-	cmd := exec.Command(app)
+	cmd := exec.Command(app, appArgs...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = detachSysProcAttr

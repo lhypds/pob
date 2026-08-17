@@ -239,6 +239,40 @@ func (b *Bridge) FlashScreenshot() {
 	_, _ = b.ipc.Call("ui.flash", nil)
 }
 
+// SetWindowLock locks or unlocks the window — the toolbar's lock button,
+// pressed from somewhere else. What the shell does with it is the whole of
+// what the button does: the frame is held to its size, what it frames travels
+// with it, and the state is written to instance.json so the next launch comes
+// back the way this one was left.
+//
+// Requests rather than notifications, these three: they are typed at a
+// terminal that is waiting for an answer, and a shell too old to know the
+// method says so — "Unknown method: ui.lock" — where a notification would
+// leave the command reporting success at a window that never moved.
+func (b *Bridge) SetWindowLock(locked bool) error {
+	_, err := b.ipc.Call("ui.lock", map[string]any{"locked": locked})
+	return err
+}
+
+// SetClickThrough turns click-through on or off — whether the overlay passes
+// what is clicked on it down to the window underneath.
+func (b *Bridge) SetClickThrough(enabled bool) error {
+	_, err := b.ipc.Call("ui.clickThrough", map[string]any{"enabled": enabled})
+	return err
+}
+
+// SetRecording starts or stops recording the user's own actions into the
+// instance's macro — the toolbar's record button.
+//
+// The shell owns whether it is recording, so this asks rather than sets: it
+// answers by doing what the button does, and one of the things the button does
+// is tell the core, on the recording.changed line it always has. That is what
+// keeps /status honest about a recording nobody in this process started.
+func (b *Bridge) SetRecording(recording bool) error {
+	_, err := b.ipc.Call("ui.record", map[string]any{"recording": recording})
+	return err
+}
+
 // ShowAlert puts a message in front of the user and returns without waiting for
 // it to be dismissed — what the core reaches for when something it was asked to
 // run cannot run, and the log alone would leave the button looking dead.

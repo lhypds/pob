@@ -47,8 +47,11 @@ public partial class OverlayWindow : Window
     private bool _edgeHot;
     private DispatcherTimer? _edgeWatch;
 
-    // Matches the Root border's CornerRadius — see ClipContentToCorners.
-    private const double CornerRadius = 3;
+    // Matches the Root border's CornerRadius — see ClipContentToCorners. Not a
+    // constant, because fullscreen squares the shape off: the rounding is there
+    // to finish the window the toolbar starts, and a display has no corners of
+    // its own to round.
+    private double _cornerRadius = 3;
 
     public OverlayWindow()
     {
@@ -59,6 +62,15 @@ public partial class OverlayWindow : Window
         ContentArea.SizeChanged += (_, e) => ClipContentToCorners(e.NewSize);
     }
 
+    // The overlay as the whole display: no toolbar above it to finish the shape
+    // of, and nothing to grab it by. App.EnterFullscreen has already placed it.
+    public void EnterFullscreen()
+    {
+        _cornerRadius = 0;
+        Root.CornerRadius = new System.Windows.CornerRadius(0);
+        ClipContentToCorners(new Size(ContentArea.ActualWidth, ContentArea.ActualHeight));
+    }
+
     // A Border rounds the background it paints, not what a child draws over it
     // — so the content area gets a clip of its own, or the screenshot flash and
     // the crop overlay would square the corners off again. The clip starts one
@@ -66,8 +78,8 @@ public partial class OverlayWindow : Window
     // up there the toolbar window is glued on, where a notch would show.
     private void ClipContentToCorners(Size size)
     {
-        var area = new Rect(0, -CornerRadius, size.Width, size.Height + CornerRadius);
-        ContentArea.Clip = new RectangleGeometry(area, CornerRadius, CornerRadius);
+        var area = new Rect(0, -_cornerRadius, size.Width, size.Height + _cornerRadius);
+        ContentArea.Clip = new RectangleGeometry(area, _cornerRadius, _cornerRadius);
     }
 
     // ── extended-style flags ────────────────────────────────────────────────
@@ -88,7 +100,10 @@ public partial class OverlayWindow : Window
             _edgeHot = false;
         }
         ApplyHitTest();
-        if (pass) StartEdgeWatch();
+        // Nothing for the watch to find in fullscreen: there is no resize
+        // border to lift the flag for, so it would only be arriving at the same
+        // answer thirty times a second.
+        if (pass && !AppState.IsFullscreen) StartEdgeWatch();
     }
 
     private void ApplyHitTest()
@@ -165,8 +180,10 @@ public partial class OverlayWindow : Window
 
     // Targeting and cropping need the content clickable up to the edges, and
     // a locked (or executing) window must not resize — mirror the GTK shell.
+    // A fullscreen window is held to the display, so it never resizes at all.
     private bool ResizeAllowed =>
-        !AppState.IsResizeLocked && !AppState.IsTargeting && !AppState.IsCropping;
+        !AppState.IsFullscreen && !AppState.IsResizeLocked &&
+        !AppState.IsTargeting && !AppState.IsCropping;
 
     private void OnPreviewLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

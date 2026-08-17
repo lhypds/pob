@@ -85,6 +85,9 @@ cp "$ROOT_DIR/core/bin/pob-core-linux-$ARCH" "$DIST_DIR/pob-core"
 mkdir -p "$DIST_DIR/Helpers"
 cp "$ROOT_DIR/core/bin/pob-linux-$ARCH" "$DIST_DIR/Helpers/pob"
 cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
+# The app icon, shared with macOS and Windows. The shell loads it from beside
+# its own binary, and install.sh registers it with the desktop environment.
+cp "$ROOT_DIR/assets/icon/pob.png" "$DIST_DIR/pob.png"
 # What the person who unzips this reads first: how to install it, and what the
 # pob command is for.
 cp "$SCRIPT_DIR/README.txt" "$DIST_DIR/README.txt"

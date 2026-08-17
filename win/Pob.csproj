@@ -11,6 +11,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Shared with macOS and Linux — one drawing, three formats, all cut from
+         assets/icon/. Embedded in Pob.exe, so the taskbar, alt-tab, Explorer
+         and the Start menu shortcut all pick it up without being told. -->
+    <ApplicationIcon>../assets/icon/pob.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- Allows compiling (not running) this Windows-only app on macOS/Linux,
          e.g. win/build.sh and win/build_docker.sh. -->

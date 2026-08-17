@@ -15,6 +15,11 @@
 //	                         {"file": "/abs/path.macro.psl"} runs that file instead
 //	POST /run/stop         — stop the running session
 //	POST /screenshot       — capture and save a screenshot, returns its path
+//	POST /cursor/reset     — send the virtual cursor back to its home corner
+//	POST /window/lock      — {"locked": true|false}: hold the window's size, or let go
+//	POST /window/clickthrough — {"enabled": true|false}: pass clicks through, or don't
+//	POST /record           — {"recording": true|false}: record the user's actions into
+//	                         the macro, or stop recording
 package ctlserver
 
 import (
@@ -65,6 +70,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/run/macro", s.handleRunMacro)
 	mux.HandleFunc("/run/stop", s.handleRunStop)
 	mux.HandleFunc("/screenshot", s.handleScreenshot)
+	mux.HandleFunc("/cursor/reset", s.handleCursorReset)
+	mux.HandleFunc("/window/lock", s.handleWindowLock)
+	mux.HandleFunc("/window/clickthrough", s.handleClickThrough)
+	mux.HandleFunc("/record", s.handleRecord)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -110,6 +119,27 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// requireBool reads the one boolean a state endpoint takes out of the body,
+// and answers the caller itself when it is not there.
+//
+// Required rather than defaulted to false: every one of these switches
+// something off when it is false, so a body that says nothing — a field
+// misspelled, a caller that sent none — would unlock the window or stop a
+// recording in answer to a request that asked for neither.
+func requireBool(w http.ResponseWriter, r *http.Request, field string) (bool, bool) {
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("expected a JSON body carrying %q: %v", field, err))
+		return false, false
+	}
+	value, ok := body[field].(bool)
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("%q is required, and is true or false", field))
+		return false, false
+	}
+	return value, true
 }
 
 // mcpInfo describes the MCP server. A stopped one — "mcp": false, or a port
@@ -290,4 +320,92 @@ func (s *Server) handleScreenshot(w http.ResponseWriter, r *http.Request) {
 	}
 	path := s.store.SaveUserScreenshot(png)
 	writeJSON(w, http.StatusOK, map[string]any{"path": path})
+}
+
+// handleCursorReset sends the virtual cursor back to the corner every replay
+// starts from — the toolbar's reset button.
+//
+// Refused while a session runs, like the screenshot above and for the same
+// reason: the run is driving the cursor, and moving it from underneath aims
+// the next click at whatever happens to be there. `pob reset` stops the run
+// first, which is what makes the pair a single command worth having.
+func (s *Server) handleCursorReset(w http.ResponseWriter, r *http.Request) {
+	if !requirePost(w, r) {
+		return
+	}
+	if s.runner.Running() {
+		writeError(w, http.StatusConflict, "a session is running — it is driving the cursor")
+		return
+	}
+	pos, err := s.br.ResetCursor()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "the cursor could not be reset: "+err.Error())
+		return
+	}
+	applog.Logf("CtlServer: cursor reset to %d, %d", pos.X, pos.Y)
+	writeJSON(w, http.StatusOK, map[string]any{"x": pos.X, "y": pos.Y})
+}
+
+func (s *Server) handleWindowLock(w http.ResponseWriter, r *http.Request) {
+	if !requirePost(w, r) {
+		return
+	}
+	locked, ok := requireBool(w, r, "locked")
+	if !ok {
+		return
+	}
+	if err := s.br.SetWindowLock(locked); err != nil {
+		writeError(w, http.StatusInternalServerError, "the window lock could not be set: "+err.Error())
+		return
+	}
+	applog.Logf("CtlServer: window %s", pick(locked, "locked", "unlocked"))
+	writeJSON(w, http.StatusOK, map[string]any{"locked": locked})
+}
+
+func (s *Server) handleClickThrough(w http.ResponseWriter, r *http.Request) {
+	if !requirePost(w, r) {
+		return
+	}
+	enabled, ok := requireBool(w, r, "enabled")
+	if !ok {
+		return
+	}
+	if err := s.br.SetClickThrough(enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, "click-through could not be set: "+err.Error())
+		return
+	}
+	applog.Logf("CtlServer: click-through %s", pick(enabled, "on", "off"))
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled})
+}
+
+// handleRecord starts or stops the recording of the user's own actions into
+// the instance's macro.
+//
+// What comes back is what was asked for rather than what the runner now says:
+// it is the shell that records, and it is the shell that will tell the core it
+// has started, on the recording.changed line — a notification that is on its
+// way here while this response is being written. /status is where the answer
+// after the fact is read.
+func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request) {
+	if !requirePost(w, r) {
+		return
+	}
+	recording, ok := requireBool(w, r, "recording")
+	if !ok {
+		return
+	}
+	if err := s.br.SetRecording(recording); err != nil {
+		writeError(w, http.StatusInternalServerError, "recording could not be set: "+err.Error())
+		return
+	}
+	applog.Logf("CtlServer: recording %s", pick(recording, "started", "stopped"))
+	writeJSON(w, http.StatusOK, map[string]any{"recording": recording})
+}
+
+// pick is the two-word ternary the log lines above want.
+func pick(cond bool, yes, no string) string {
+	if cond {
+		return yes
+	}
+	return no
 }

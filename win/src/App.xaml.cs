@@ -44,12 +44,22 @@ public partial class App : Application
             return;
         }
 
+        // --fullscreen: the overlay covers the whole display and the toolbar
+        // window never appears, so nothing on screen is Pob's to click and the
+        // `pob` command is what drives it. Read before either window is built,
+        // since it decides what is built and where.
+        AppState.IsFullscreen = e.Args.Contains("--fullscreen");
+
         // The lock and the click-through the window was left with, read before
         // the toolbar is built so its buttons start on the right icons. An
         // instance set up for a macro comes back locked rather than movable,
         // and over the app it drives rather than catching its clicks.
+        //
+        // Fullscreen takes the click-through as read: the window is the whole
+        // display, so an instance last left catching clicks would come back
+        // having taken the desktop away with nothing on screen to give it back.
         AppState.IsLocked = SettingsService.GetWindowLocked();
-        AppState.IsClickThrough = SettingsService.GetClickThrough();
+        AppState.IsClickThrough = AppState.IsFullscreen || SettingsService.GetClickThrough();
         AppState.UpdateWindowLock();
 
         var toolbar = new ToolbarWindow();
@@ -79,7 +89,8 @@ public partial class App : Application
         toolbar.Show();
         overlay.Owner = toolbar;
         overlay.Show();
-        toolbar.Activate();
+        if (AppState.IsFullscreen) EnterFullscreen();
+        else toolbar.Activate();
 
         // WS_EX_TRANSPARENT needs the overlay HWND, so apply the restored
         // click-through state only once both windows exist.
@@ -189,6 +200,61 @@ public partial class App : Application
         CarryService.Seed();
     }
 
+    // ── fullscreen ──────────────────────────────────────────────────────────
+
+    // The overlay alone, over the whole display: the toolbar window is taken
+    // off screen rather than never shown, because an owned window has to be
+    // given an owner that has been shown at least once — and with it goes every
+    // button Pob has, which is the point of the mode. What drives it from here
+    // is the `pob` command.
+    //
+    // The display is the one the window would have come up on, whole:
+    // rcMonitor rather than rcWork, so the taskbar's strip is covered too. The
+    // overlay is already Topmost, which is what keeps it there.
+    private void EnterFullscreen()
+    {
+        if (_toolbar == null || _overlay == null) return;
+
+        Rect bounds = CurrentMonitorBounds();
+        // _syncing, so the glue below leaves the (about to be hidden) toolbar
+        // where it is instead of dragging it across the screen with this.
+        _syncing = true;
+        _overlay.Left = bounds.Left;
+        _overlay.Top = bounds.Top;
+        _overlay.Width = bounds.Width;
+        _overlay.Height = bounds.Height;
+        _syncing = false;
+        _overlay.EnterFullscreen();
+
+        _toolbar.Hide();
+        // Hiding a window does not hide the windows it owns, but the overlay is
+        // the whole of Pob now — cheap insurance against a WPF that disagrees.
+        if (!_overlay.IsVisible) _overlay.Show();
+    }
+
+    // Full bounds of the monitor the window sits on, in DIP coordinates —
+    // CurrentWorkArea's rect without the taskbar taken out of it.
+    private Rect CurrentMonitorBounds()
+    {
+        if (_toolbar == null) return new Rect(0, 0, SystemParameters.PrimaryScreenWidth,
+                                              SystemParameters.PrimaryScreenHeight);
+        var helper = new System.Windows.Interop.WindowInteropHelper(_toolbar);
+        IntPtr monitor = NativeMethods.MonitorFromWindow(helper.Handle,
+                                                         NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var info = new NativeMethods.MONITORINFO
+        {
+            cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>(),
+        };
+        if (monitor == IntPtr.Zero || !NativeMethods.GetMonitorInfo(monitor, ref info))
+            return new Rect(0, 0, SystemParameters.PrimaryScreenWidth,
+                            SystemParameters.PrimaryScreenHeight);
+
+        double scale = VisualTreeHelper.GetDpi(_toolbar).DpiScaleX;
+        return new Rect(info.rcMonitor.Left / scale, info.rcMonitor.Top / scale,
+                        (info.rcMonitor.Right - info.rcMonitor.Left) / scale,
+                        (info.rcMonitor.Bottom - info.rcMonitor.Top) / scale);
+    }
+
     public void ToggleMaximize()
     {
         if (_toolbar == null || _overlay == null) return;
@@ -248,6 +314,10 @@ public partial class App : Application
     {
         if (_toolbar == null || _overlay == null) return;
         if (_toolbar.WindowState == WindowState.Minimized) return;
+        // The frame is not saved in fullscreen: it is the display rather than
+        // anything the user placed, and writing it down would bring the next
+        // ordinary launch up as a window the size of the screen.
+        if (AppState.IsFullscreen) return;
 
         Rect frame = CombinedFrame();
         var current = ((int)frame.X, (int)frame.Y, (int)frame.Width, (int)frame.Height);

@@ -61,7 +61,10 @@ func cmdNew(root, name string) {
 // scheduled or scripted run is otherwise a wait between, since `pob start` on
 // its own has nothing to talk to until the launch has finished. file is what
 // --macropsl named, "" for the instance's own macro.
-func cmdLaunch(root, wanted string, start bool, file string) {
+//
+// With fullscreen, the app comes up over the whole screen with none of its own
+// chrome on it — see startApp, which hands the flag to the app itself.
+func cmdLaunch(root, wanted string, start bool, file string, fullscreen bool) {
 	if inst := theInstance(root); inst.Running {
 		fail("Pob is already running (%s)", inst.ID)
 	}
@@ -74,28 +77,30 @@ func cmdLaunch(root, wanted string, start bool, file string) {
 	if file != "" {
 		macro = resolveMacroPSL(theInstance(root), file)
 	}
-	inst := launchInstance(root)
+	inst := launchInstance(root, fullscreen)
 	if start {
 		cmdMacro(inst, macro)
 	}
 }
 
 // parseLaunchArgs splits what follows `launch` into the instance wanted, whether
-// --start came with it, and the file --macropsl named. Everything that is not a
-// flag is the name, joined back up: an instance called "Work laptop" arrives as
-// two arguments. A mistyped flag is said rather than taken for a name, which
-// would otherwise be reported as an instance nobody has.
+// --start and --fullscreen came with it, and the file --macropsl named.
+// Everything that is not a flag is the name, joined back up: an instance called
+// "Work laptop" arrives as two arguments. A mistyped flag is said rather than
+// taken for a name, which would otherwise be reported as an instance nobody has.
 //
 // --macropsl says which macro to run, so on a launch that is not running one it
 // is an instruction with nothing to carry it out: said rather than ignored,
 // since what was asked for was a run.
-func parseLaunchArgs(args []string) (wanted string, start bool, file string) {
+func parseLaunchArgs(args []string) (wanted string, start bool, file string, fullscreen bool) {
 	args, file = takeMacroPSL(args)
 	var name []string
 	for _, arg := range args {
 		switch {
 		case arg == "--start":
 			start = true
+		case arg == "--fullscreen":
+			fullscreen = true
 		case strings.HasPrefix(arg, "-"):
 			fail("unknown launch option %q — run `pob help`", arg)
 		default:
@@ -105,7 +110,7 @@ func parseLaunchArgs(args []string) (wanted string, start bool, file string) {
 	if file != "" && !start {
 		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, file)
 	}
-	return strings.TrimSpace(strings.Join(name, " ")), start, file
+	return strings.TrimSpace(strings.Join(name, " ")), start, file, fullscreen
 }
 
 // selectInstance decides which instance `pob launch` should start: the one

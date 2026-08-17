@@ -28,6 +28,16 @@ final class CoreBridge: ObservableObject {
     @Published var serverURL: String?
     /// Incremented whenever the Go core requests the screenshot flash effect.
     @Published var flashTick = 0
+    /// The last toolbar state the Go core asked for — `pob lock`, `pob
+    /// clickthrough`, `pob record`, which are the toolbar's own buttons pressed
+    /// from a terminal. The view watches this and does what the button does,
+    /// since the state belongs to the window rather than to the bridge.
+    @Published var uiCommand: UICommand?
+    /// Bumped for every command so that two requests for the same state are two
+    /// events. Without it, `pob record stop` after a recording the user had
+    /// already stopped by hand would compare equal to the last command and
+    /// never reach the view.
+    private var uiCommandCount = 0
 
     /// This instance's settings (project root + instance id for the spawn).
     private let settings: SettingsService
@@ -277,6 +287,23 @@ final class CoreBridge: ObservableObject {
             DispatchQueue.main.async { self.flashTick += 1 }
             if let id { respond(id: id, result: [:]) }
 
+        // The three the CLI sets. Answered as soon as the command is handed to
+        // the view rather than after it has been applied: what the caller is
+        // waiting to hear is that this shell knows the method — an older one
+        // falls through to the error below — and the window is a main-thread
+        // hop away either way.
+        case "ui.lock":
+            requestUI(.lock, on: params["locked"] as? Bool ?? false)
+            if let id { respond(id: id, result: [:]) }
+
+        case "ui.clickThrough":
+            requestUI(.clickThrough, on: params["enabled"] as? Bool ?? false)
+            if let id { respond(id: id, result: [:]) }
+
+        case "ui.record":
+            requestUI(.record, on: params["recording"] as? Bool ?? false)
+            if let id { respond(id: id, result: [:]) }
+
         case "ui.alert":
             let title = params["title"] as? String ?? "Pob"
             let message = params["message"] as? String ?? ""
@@ -293,6 +320,23 @@ final class CoreBridge: ObservableObject {
     }
 
     // MARK: - Handlers
+
+    /// One of the toolbar states the core can ask for, and what it should
+    /// become. It carries a count rather than only the state so that asking
+    /// twice for the same thing is two commands — see uiCommandCount.
+    struct UICommand: Equatable {
+        enum Kind { case lock, clickThrough, record }
+        let count: Int
+        let kind: Kind
+        let on: Bool
+    }
+
+    private func requestUI(_ kind: UICommand.Kind, on: Bool) {
+        DispatchQueue.main.async {
+            self.uiCommandCount += 1
+            self.uiCommand = UICommand(count: self.uiCommandCount, kind: kind, on: on)
+        }
+    }
 
     private func respondPosition(id: Any) {
         let pos = self.mouse.virtualCursorPosition
