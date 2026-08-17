@@ -109,7 +109,22 @@ foreach ($f in @("Pob.exe", "pob-core.exe", "Helpers\pob.exe")) {
 
 # A running Pob holds its own .exe open, and Windows will not let it be
 # replaced — better to say so than to fail halfway through the copy.
-if (Get-Process -Name "Pob" -ErrorAction SilentlyContinue) {
+#
+# Match on the executable's path, not its name. The app is Pob.exe and the CLI
+# beside it is pob.exe, and Windows process names are case-insensitive: a bare
+# `-Name "Pob"` also matched the `pob update` that runs this installer, so
+# every update refused itself with "Pob is running" — while `pob kill`, which
+# asks the instance rather than the process table, correctly said it was not.
+# Only a process running the copy about to be overwritten is in the way; the
+# same app running from some other install is not.
+$AppPath = Join-Path $InstallDir "Pob.exe"
+$RunningApp = @(
+    Get-Process -Name "Pob" -ErrorAction SilentlyContinue | Where-Object {
+        # .Path throws for a process this user cannot open — not ours, then.
+        try { $_.Path -eq $AppPath } catch { $false }
+    }
+)
+if ($RunningApp.Count -gt 0) {
     Write-Host "⚠️  Pob is running — quit it first (or ``pob kill``) so the files can be replaced."
     exit 1
 }
