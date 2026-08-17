@@ -32,4 +32,14 @@
     <Page Remove="src\App.xaml" />
   </ItemGroup>
 
+  <!-- The same icon again, this time as a WPF resource ToolbarWindow can point
+       its Icon at. ApplicationIcon above covers Explorer and the Start menu,
+       but not the running app: the toolbar is WindowStyle="None", so it has no
+       title bar to draw an icon on, and its taskbar button falls back to the
+       window class icon rather than the executable's. Setting Window.Icon is
+       what puts it in the taskbar and alt-tab. -->
+  <ItemGroup>
+    <Resource Include="../assets/icon/pob.ico" Link="pob.ico" />
+  </ItemGroup>
+
 </Project>
