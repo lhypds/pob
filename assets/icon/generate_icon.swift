@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Draws the Pob app icon — "Pob" in Fira Code, black on white — and writes the
+// Draws the Pob app icon — "Pob" in Courier, black on white — and writes the
 // three files the platforms cut their own icons from:
 //
 //   pob_icon_1024.png   master; macOS build.sh sips/iconutil it into AppIcon.icns
@@ -7,8 +7,8 @@
 //   pob.png             256×256; Linux ships it beside the binary
 //
 // Those files are committed, so no build runs this — one drawing reaches all
-// three platforms, and they cannot drift apart. Re-run it (on macOS, with Fira
-// Code installed) only to change the icon itself:
+// three platforms, and they cannot drift apart. Re-run it (on macOS) only to
+// change the icon itself:
 //
 //   swift assets/icon/generate_icon.swift [output-dir]
 import Cocoa
@@ -35,11 +35,15 @@ func fail(_ message: String) -> Never {
 
 // ── draw the master ─────────────────────────────────────────────────────────
 
-// Fira Code, and nothing else: falling back to the system font would quietly
-// produce a different icon than the one this script exists to draw.
-let fontName = "FiraCode-Regular"
-guard let font = NSFont(name: fontName, size: 360) else {
-    fail("\(fontName) not found — install Fira Code (brew install --cask font-fira-code).")
+// Courier, at the em size the sibling "stash" icon sets its word at: font-size
+// 112 on a 512 canvas, scaled to this canvas. Same face, same size, so the two
+// icons sit side by side with letters that match. Courier ships with macOS;
+// falling back to another font would quietly produce a different icon than the
+// one this script exists to draw.
+let fontName = "Courier"
+let fontSize = CGFloat(masterSize) * 112 / 512
+guard let font = NSFont(name: fontName, size: fontSize) else {
+    fail("\(fontName) not found — it ships with macOS, so something is off.")
 }
 
 let colorSpace = CGColorSpaceCreateDeviceRGB()
