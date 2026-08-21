@@ -117,8 +117,15 @@ func listSessions(instanceDir string) []sessionInfo {
 			Start: intField(sessionJSON, "start_time"),
 			End:   intField(sessionJSON, "end_time"),
 		}
+		// One directory per fill, and only the directories: browsing a session in
+		// Finder leaves a .DS_Store in slots/, and counting the entries rather
+		// than the directories reported one fill more than the session made.
 		if slots, err := os.ReadDir(filepath.Join(dir, "slots")); err == nil {
-			info.Slots = len(slots)
+			for _, slot := range slots {
+				if slot.IsDir() {
+					info.Slots++
+				}
+			}
 		}
 		sessions = append(sessions, info)
 	}
