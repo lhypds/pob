@@ -78,9 +78,23 @@ another window forward is a click on its title bar or on an empty part of it: a
 click on a button, a menu or a field is that control being used, and the app
 acts on it there and then. The buttons under a calculator's display are most of
 that window, so a click meant only to put the focus there presses an operator,
-and the sum that follows is not the one the instruction asked for. The one click
-on the title bar is the whole of it — nothing inside the window has to be
-clicked before typing into it.
+and the sum that follows is not the one the instruction asked for. The bar has
+controls of its own, though, and on a window as narrow as that calculator they
+are most of it: the buttons that close, minimize and zoom it at one end, and
+whatever icons the app has put along the rest. What the click is aimed at is an
+empty stretch of the bar, clear of all of them and found in the image like any
+other target — which end the buttons sit at is the machine's own and not
+something to assume, and a click placed on a crowded bar by eye is how the
+window the instruction was about gets closed, with every key typed after it
+going wherever the focus landed instead. The other way round the bar, where it
+has no clear stretch on it, is the control the instruction is going to use
+anyway: clicking that brings the window forward as it presses it, so a sum
+worked on the calculator's own keys needs nothing clicked to focus it first —
+and that click is the key it landed on, already pressed. What follows carries on
+from there and never presses that key again: clicking a key to take the focus
+and then typing the whole sum is the key under it entered twice.
+The one click on the title bar, where there is room for it, is the whole of it —
+nothing else inside the window has to be clicked before typing into it.
 
 Coordinates are pixels in the image, origin top-left, x to the right, y down,
 and the vocabulary says which of the two kinds each call takes. move, drag and
