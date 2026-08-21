@@ -125,6 +125,7 @@ takeScreenshot(1, 2)
 sleep()
 click(398)
 moveTo(398)
+run()
 `,
 		"resetCursor takes no arguments, and 2 were written",
 		"typeText takes 1 argument, and 2 were written",
@@ -133,6 +134,26 @@ moveTo(398)
 		"sleep takes 1 argument, and none was written",
 		"click takes both arguments or none at all, and 1 was written",
 		"moveTo takes 2 arguments, and 1 was written",
+		"run takes 1 argument, and none was written",
+	)
+}
+
+// run is a whole command line, so the check has nothing to say about what is
+// written inside the quotes: the shell's own pipes, redirections and `&` are the
+// command, not the statement. What it does say is the same thing it says about
+// every other call — the name, and how many arguments it was written with.
+func TestCheckReadsRunAsOneCommandLine(t *testing.T) {
+	wantProblems(t, `run("afplay /System/Library/Sounds/Morse.aiff")
+run("say hello && echo done > log.txt")
+run(:: the command that plays the sound ::)
+run("afplay :: the sound file to play ::")
+`)
+
+	wantProblems(t, `run("echo a", "echo b")
+Run("afplay /tmp/a.wav")
+`,
+		"run takes 1 argument, and 2 were written",
+		`there is no statement called "Run"`,
 	)
 }
 

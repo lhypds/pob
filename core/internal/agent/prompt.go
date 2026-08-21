@@ -56,6 +56,13 @@ The whole vocabulary:
   stop()               end the replay here; nothing under it runs
   call("other.psl")    replay another PSL file here, then carry on below it. The
                        path is relative to the file the call is written in
+  run("command")       hand one command line to this machine's shell and wait for
+                       it — run("afplay /System/Library/Sounds/Morse.aiff"). It
+                       is the machine under the window rather than the window:
+                       nothing on screen comes of it, and a job to be done on
+                       screen is done with the calls above. A path in it is
+                       written out in full, or relative to the file the run is
+                       written in
 
 The key a keyPress names is one of these. The modifiers, in front and joined
 with +: cmd (Command on macOS, Ctrl elsewhere — the ordinary-shortcut one),

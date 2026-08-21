@@ -41,6 +41,7 @@ not start.
 | A statement and a comment that closes mid-line, leaving two statements on it — `click() /* why */ move(1, 2)` | One line, which is not one statement — read as a call with arguments nobody wrote |
 | `stop` written without its parentheses | `stop is written stop(), with the parentheses every other statement has` |
 | `stop` mis-spelled or mis-cased — `STOP`, `halt` | `"STOP" is not a statement — stop is written stop(), lowercase and with parentheses` |
+| A `run` written with anything but one command line — `run()`, `run("echo a", "echo b")` | `run takes 1 argument, and none was written`. What is inside the quotes is the shell's and is not read here: a command line is not PSL, and a `run` that says what it means is a `run` the check has nothing to say about |
 | A `call` naming a file that is not there, or cannot be read | The path it worked out, and that there is no such file |
 | A `call` reaching a file that is already running, directly or round a ring | That it is a replay with no end in it |
 | A `call` nine files deep | How deep it is, and that eight is as far as `call` goes |
@@ -66,6 +67,9 @@ and the ones around it still run:
 | A `once` whose condition fills to something other than `true` or `false` | No verdict: the block does not run, and the `once` goes back to watching. Nothing ends it but Stop |
 | A `once` whose screenshot cannot be taken, or cannot be read | Logged, and the watch carries on: a picture that cannot be compared is taken as a change, since the cost of asking about a still screen is one model call and the cost the other way is a watch that never notices anything |
 | A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
+| A `run` whose command exits non-zero, or that the shell could not start at all | Logged with what it printed, and the step ends `failed` — it did not do its thing. The statements around it still run |
+| A `run` whose command is still going after a minute | Stopped there, with what it had printed so far in the log: a command meant to outlive the statement is written to come back, with the shell's own `&`. See [run](14_run.md) |
+| A `run` whose command is empty — `run("")`, or a slot that filled to nothing | Logged and skipped: there is nothing to hand over |
 | A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |
 | A statement slot that fills to nothing that reads as a statement | Logged with what it filled to, and nothing is replayed for that line |
 | A statement slot answered rather than carried out — `:: calculate 360 x 360 ::` filled to `129600` | Logged as a value where the statements go, and nothing is replayed for that line. The instruction on a line of its own is work to do on the screen; either reword it as that work, or write it as a value slot inside the statement that wanted the answer |

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -1214,6 +1215,13 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		r.runMacroCall(ctx, run, args[0])
 
+	case macroRunKeyword:
+		if len(args) == 0 {
+			applog.Logf("[%s] Macro run wants a command — run(\"afplay /System/Library/Sounds/Morse.aiff\")", sessionID)
+			return false
+		}
+		ran = r.runMacroShell(ctx, run, args[0])
+
 	case "takeScreenshot":
 		var crop *bridge.CropRect
 		if len(args) >= 4 {
@@ -1427,6 +1435,104 @@ func resolveCallPath(dir, arg string) (string, error) {
 	return filepath.Abs(path)
 }
 
+// macroRunLimit is how long the replay waits for a run() before it gives up on
+// it. A statement is something the macro gets past, and a command reading from a
+// terminal nobody is at — an editor, a password prompt, a `y/n` — would otherwise
+// hold the whole run there with nothing on screen saying why. A minute is far
+// longer than anything a line of a macro is waiting for on purpose; anything that
+// is means to outlive the statement, and the shell already has a way of saying so
+// — `run("afplay long.wav &")` comes straight back and leaves the command
+// playing.
+const macroRunLimit = time.Minute
+
+// runMacroShell hands one command line to this machine's shell and waits for it,
+// which is what a run() statement is.
+//
+// It is the vocabulary's one way out of the window. Every other statement is the
+// screen — a position on it, a click into it, a key its focus receives — and this
+// one is the machine underneath: a sound played, a file moved, a script the macro
+// has no other way of asking for. What it is written with is a whole command line
+// rather than a program and its arguments, so the shell's own quoting, pipes and
+// `&` are all there and mean what they always did.
+//
+// A path in it is the machine's path and not the macro's: the command is run from
+// the directory the PSL file is in, the way a call() resolves a relative path
+// against it, and a command that names a file anywhere else names it absolutely.
+//
+// Waited on, because a statement that has finished is what the statement under it
+// is written after — a sound that has played, a file that is now there. What comes
+// back is a step that ran or a step that failed: a command exiting non-zero did
+// not do its thing, and the log says what it printed either way, which is the
+// only place a shell command's own words end up.
+func (r *Runner) runMacroShell(ctx context.Context, run *macroRun, command string) bool {
+	sessionID := run.sessionID
+	command = strings.TrimSpace(command)
+	if command == "" {
+		applog.Logf("[%s] Macro run was written with an empty command — skipping", sessionID)
+		return false
+	}
+	applog.Logf("[%s] Macro run(%q)", sessionID, truncate(command, 200))
+
+	// The child gets the null device to read from — exec's own default for a nil
+	// Stdin — so a command that asks a question is a command that ends rather than
+	// one that waits out the minute for an answer nobody is there to type.
+	waited, cancel := context.WithTimeout(ctx, macroRunLimit)
+	defer cancel()
+	cmd := shellCommand(waited, command)
+	cmd.Dir = run.dir
+	out, err := cmd.CombinedOutput()
+
+	// A command that came back before whatever ended the run is a command that ran,
+	// which is why this is asked before either of the two ways it could have been
+	// cut short.
+	switch {
+	case err == nil:
+		if said := shellSaid(out); said != "" {
+			applog.Logf("[%s] Macro run(%q)%s", sessionID, truncate(command, 60), said)
+		}
+		return true
+	case errors.Is(waited.Err(), context.DeadlineExceeded):
+		applog.Logf("[%s] Macro run(%q) was still running after %s and was stopped — a command meant to outlive the statement is written to come back, with the shell's own &%s",
+			sessionID, truncate(command, 60), macroRunLimit, shellSaid(out))
+	case ctx.Err() != nil:
+		// The run itself was stopped, and the command went with it. Nothing about the
+		// statement says it would not have worked, and the row it ends on is the row
+		// every statement of a stopped run ends on — see macroActionStatus.
+		applog.Logf("[%s] Macro run(%q) was stopped with the run%s", sessionID, truncate(command, 60), shellSaid(out))
+	default:
+		applog.Logf("[%s] Macro run(%q) failed: %v%s", sessionID, truncate(command, 60), err, shellSaid(out))
+	}
+	return false
+}
+
+// shellCommand is a command line handed to whichever shell this machine has:
+// `/bin/sh` everywhere the core runs but Windows, and `cmd` there. It is the
+// shell a `stop_hook` goes to, and the reason a run() takes a line rather than a
+// program and a list of arguments — what is written in it is what the shell would
+// make of it typed at a prompt.
+func shellCommand(ctx context.Context, command string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd", "/C", command)
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-c", command)
+}
+
+// shellSaid is what a command printed, ready to go on the end of the log line
+// about it, and empty when it printed nothing.
+//
+// Both streams together: which of the two a command writes to is its own affair,
+// and what the log is for is having the words at all. Folded onto one line and cut
+// short, because the log stamps a time on the front of a message and a command
+// with a hundred lines of output would otherwise be a hundred entries about one
+// statement.
+func shellSaid(out []byte) string {
+	said := oneLine(string(out))
+	if said == "" {
+		return ""
+	}
+	return " — it said: " + truncate(said, 200)
+}
+
 // macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by a
 // line holding nothing but `}` — or by the `}` an else is written on, which
 // closes it and opens the block to run instead. Matched whatever its case, so
@@ -1465,6 +1571,13 @@ const macroStopKeyword = "stop"
 // macroCallKeyword replays another PSL file where it stands:
 // `call("../shared.psl")`. See runMacroCall.
 const macroCallKeyword = "call"
+
+// macroRunKeyword hands a command line to this machine's own shell where it
+// stands: `run("afplay /System/Library/Sounds/Morse.aiff")`. It is the one
+// statement that does something to the machine without going through the shell
+// app's hands and eyes — everything else in the vocabulary is a pixel, a click
+// or a key. See runMacroShell.
+const macroRunKeyword = "run"
 
 // macroTimeWants is what a time is, said once. The check puts it in front of the
 // user before the run and the replay logs it at the statement, and the two are

@@ -395,6 +395,7 @@ var macroVocabulary = map[string]macroCallShape{
 	"takeScreenshot": {arity: []int{0, 4}, numeric: true},
 	macroStopKeyword: {arity: []int{0}},
 	macroCallKeyword: {arity: []int{1}},
+	macroRunKeyword:  {arity: []int{1}},
 }
 
 // macroArguments reads a statement as written — before any slot in it is filled,

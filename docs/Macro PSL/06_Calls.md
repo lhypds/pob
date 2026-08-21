@@ -34,9 +34,10 @@ only call that takes a time.
 Whitespace around a statement and between arguments is ignored, which is what lets an `if` body be
 indented.
 
-A call does one of two things, and the two tables are that split: it acts on the machine, or it says
-something about the run itself. Both tables are what Pob describes to psl on every fill — a model
-asked for part of a statement is told what the statement is a call to.
+A call does one of three things, and the tables below are that split: it acts on the machine through
+the window, it hands a command line to the machine's own shell, or it says something about the run
+itself. All of them are what Pob describes to psl on every fill — a model asked for part of a
+statement is told what the statement is a call to.
 
 
 The machine
@@ -100,6 +101,23 @@ the numbers: a model looking at a screenshot can read a position off it directly
 that position minus wherever the cursor got to.
 
 
+The shell
+---------
+
+One statement, and it is the machine under the window rather than the window: a sound played, a file
+moved, a script the macro has no other way of asking for. What is written inside the quotes is a
+command line, so the shell's own quoting, pipes and `&` are all there and mean what they always did.
+It has a page of its own — [run](14_run.md).
+
+| Statement | Arguments | What it does |
+|-----------|-----------|--------------|
+| `run(command)` | one string | Hand one command line to this machine's shell and wait for it |
+
+```
+run("afplay /System/Library/Sounds/Morse.aiff")
+```
+
+
 The run
 -------
 
@@ -119,4 +137,5 @@ See also
 - [Key names](../Pob/04_Keys.md) — what `keyPress` accepts
 - [AI slot](05_AI%20slot.md) — writing a prompt where an argument goes
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools
+- [run](14_run.md) — the command line, the directory it runs from, and the minute it has to finish in
 - [When something is wrong](12_When%20something%20is%20wrong.md) — a call the check refuses

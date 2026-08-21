@@ -83,6 +83,7 @@ has to leave a statement that reads as PSL:
 | `typeText(:: … ::)` | a quoted string — `"Hello"` |
 | `typeText("Hi :: … ::")` | bare text, the quotes are already there — `Bob` |
 | `sleep(:: … ::)` | a time, unit and all — `3s` |
+| `run(:: … ::)` | a quoted command line — `"afplay /System/Library/Sounds/Morse.aiff"` |
 | `if (:: … ::)` | `true` or `false` |
 | `} else if (:: … ::)` | `true` or `false` — it is the `if` it says it is |
 | `loop (:: … ::, 5)` | `true` or `false` |

@@ -52,6 +52,7 @@ The pages
 | [once blocks](09_once%20blocks.md) | Watching the screen, and running a block each time it changes into something the condition holds of |
 | [stop](10_stop.md) | Ending the run from inside the macro |
 | [call](11_call.md) | Replaying another PSL file where the statement stands |
+| [run](14_run.md) | Handing a command line to this machine's shell — a sound played, a file moved |
 | [When something is wrong](12_When%20something%20is%20wrong.md) | The check before the run, the replay's own forgiveness, and `pob check` |
 | [How it runs](13_How%20it%20runs.md) | The origin, the delay between statements, and what Stop does |
 
