@@ -140,6 +140,12 @@ internal static class NativeMethods
         };
     }
 
+    // Which key produces a character on the layout in use: the virtual-key code
+    // in the low byte, the modifiers it takes in the high byte (1 = Shift,
+    // 2 = Ctrl, 4 = Alt). -1 when the layout has no key for it at all.
+    [DllImport("user32.dll", EntryPoint = "VkKeyScanW", CharSet = CharSet.Unicode)]
+    public static extern short VkKeyScan(char ch);
+
     // ── screen metrics ──────────────────────────────────────────────────────
 
     public const int SM_XVIRTUALSCREEN = 76;

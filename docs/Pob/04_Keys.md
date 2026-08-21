@@ -7,7 +7,12 @@ modifiers: `ctrl+alt+shift+f5`. A name is a *position* on the keyboard rather
 than a character, so the machine's own layout decides what it produces — which
 is what lets the [Web UI](12_Web%20UI.md) and [Pob Keyboard](13_Keyboard.md) forward
 real keypresses verbatim. Names are matched in lower case, so `Escape` and
-`CMD+V` reach the same keys as `escape` and `cmd+v`.
+`CMD+V` reach the same keys as `escape` and `cmd+v`. A key written as a single
+[character](#characters) is the other way round: it presses whatever key
+produces that character here.
+
+`+` is the separator and a key both, told apart by where it sits: `+` on its own
+is the plus key, and `cmd++` holds Command over it.
 
 
 Modifiers
@@ -76,18 +81,44 @@ Named by the keycap a US layout prints on them.
 | `backslash` | `\` | `period` | `.` |
 | `slash` | `/` | | |
 
-There is no name for a shifted character: `?` is `shift+slash` and `_` is
-`shift+minus`. To put text on screen, reach for `typeText` instead — it types any
-character on any layout, punctuation and CJK included.
+These are positions, so `slash` presses that key whatever the layout prints on
+it. For the character rather than the position, write the character.
 
 
-When a name isn't one
----------------------
+Characters
+----------
+
+A key written as a single character — `*`, `=`, `+`, `?`, `%` — presses whatever
+key produces that character on the machine's own layout, holding Shift or Option
+along the way if that is how the character is reached there. `*` is Shift and
+the `8` key on a US board and its own key on a French one; either way the app
+sees a `*`.
+
+This is the question a calculator or a form asks: the button says `×` but the
+key that works it is `*`, and `keyPress("*")` is how that is written. `×` and
+`÷` are signs a screen prints rather than keys a board has — no layout produces
+them, so they resolve to nothing and the call fails.
+
+Characters are matched as written, since case is what tells `%` from `5`. Names
+win where the two overlap: `a` is the letter key, not a character lookup, and
+`shift+a` is still how a capital is pressed.
+
+To put a run of text on screen, reach for `typeText` instead — it types any
+character on any layout, punctuation and CJK included, without a key having to
+exist for it.
+
+
+When a key isn't one
+--------------------
 
 That is the whole vocabulary — there is nothing for the keypad, and nothing for
-the media and volume keys. A name outside the list presses nothing at all and is
-written to the [log](05_Logs.md) as `Unknown key: <name>`, which is where to look
-when a macro step quietly does nothing.
+the media and volume keys. A key outside it presses nothing, and *says so*: the
+call fails, the reason is written to the [log](05_Logs.md) as
+`Unknown key: <name>`, and it reaches whatever asked for the press — an MCP
+client gets an error back, a macro writes `keyPress("×") failed` under the step.
+A key nobody could resolve used to be logged and shrugged off while the caller
+was told it had been pressed, which is how a macro doing half of what it says
+comes back looking like a clean run.
 
 
 See also

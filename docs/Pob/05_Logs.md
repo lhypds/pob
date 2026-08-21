@@ -72,7 +72,12 @@ A few events carry a marker so a run can be found by eye in a long file, one arr
 [`once`](03_Macro%20PSL.md) — and `> STEP START` each
 statement. What ends is left unmarked — an opening is what gets scanned for. `STEP START` and `STEP END` name the
 line, resolved statement, and completion state for each statement that reaches execution; condition
-checks and loop passes are included too. A `once` adds `ONCE CHANGE` for each change it saw in the
+checks and loop passes are included too. A step ends `completed` when it reached the screen,
+`failed` when it did not — a [key](04_Keys.md) the shell could not resolve, a click it could not
+aim, a statement skipped for how it was written — and `stopped` or `cancelled` when the run itself
+ended under it. A `failed` step does not end the run: the statement below it is replayed the way it
+always was, and this row is the only place that says the one above did nothing. A `once` adds
+`ONCE CHANGE` for each change it saw in the
 screen, with how much of the picture moved, and `ONCE RUN` where the condition then held and the
 block ran; the intervals where the screen sat still say nothing at all. The session and macro file appear on the surrounding `MACRO
 START` event instead of being repeated on every step and loop row; `MACRO STOP` repeats only the

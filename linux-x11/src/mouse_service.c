@@ -417,6 +417,15 @@ static gboolean resolve_key_name(const char *name, KeySym *ks) {
             return TRUE;
         }
     }
+    // Any other single character is the other question a caller can ask — not
+    // a position on the board but "press whatever key puts this on screen",
+    // which is what `keyPress("=")` or `keyPress("*")` means. The keysym is the
+    // character's; which keycode carries it, and whether Shift has to be held
+    // to reach it, is the layout's business and settled by the caller below.
+    if (g_utf8_validate(name, -1, NULL) && g_utf8_strlen(name, -1) == 1) {
+        *ks = keysym_for_unichar(g_utf8_get_char(name));
+        return TRUE;
+    }
     return FALSE;
 }
 
@@ -448,29 +457,50 @@ static gboolean resolve_modifier(const char *name, KeySym *ks) {
 // Presses one key, optionally with modifiers held: "escape", "cmd+v",
 // "ctrl+alt+shift+f5". Everything before the last "+" is a modifier; the last
 // part is the key.
-static void do_key_press(Display *dpy, const char *key) {
+//
+// Answers with the reason nothing was pressed — a string the caller owns — or
+// NULL when the key went down. A key nobody can resolve used to be logged and
+// shrugged off while the caller was told it was pressed, which is how a macro
+// full of keys this shell has never heard of comes back a clean run having
+// done half of what it says.
+static gchar *do_key_press(Display *dpy, const char *key) {
     gchar *lower = g_ascii_strdown(key, -1);
+
+    // "+" is both the separator and a key somebody may want pressed, and a
+    // chord ending in one is the only place the two are told apart: "cmd++"
+    // holds Ctrl over the plus key, "+" is that key on its own.
+    gsize len = strlen(lower);
+    gboolean plus_key = len > 0 && lower[len - 1] == '+';
+    if (plus_key) lower[len - 1] = '\0';
+
     gchar **parts = g_strsplit(lower, "+", -1);
     g_free(lower);
-
     guint count = g_strv_length(parts);
+    // Everything before the last part is a modifier; when the key is the plus
+    // itself, every part is.
+    guint mod_end = plus_key ? count : (count > 0 ? count - 1 : 0);
+
     KeySym ks;
-    if (count == 0 || !resolve_key_name(parts[count - 1], &ks)) {
+    const char *name = plus_key ? "+" : (count > 0 ? parts[count - 1] : "");
+    if (!resolve_key_name(name, &ks)) {
         app_logger_log("Unknown key: %s", key);
         g_strfreev(parts);
-        return;
+        return g_strdup_printf("Unknown key: %s", key);
     }
 
     // Held one per modifier named, in the order given and released in reverse,
     // so a modifier never outlives one held under it.
     KeyCode mod_kc[8];
     guint mod_count = 0;
-    for (guint i = 0; i + 1 < count && mod_count < G_N_ELEMENTS(mod_kc); i++) {
+    for (guint i = 0; i < mod_end && mod_count < G_N_ELEMENTS(mod_kc); i++) {
+        // An empty part is the one "cmd++" leaves behind after its trailing
+        // separator, and names nothing.
+        if (parts[i][0] == '\0') continue;
         KeySym mod_ks;
         if (!resolve_modifier(parts[i], &mod_ks)) {
             app_logger_log("Unknown modifier in key: %s", key);
             g_strfreev(parts);
-            return;
+            return g_strdup_printf("Unknown modifier in key: %s", key);
         }
         KeyCode kc = XKeysymToKeycode(dpy, mod_ks);
         if (kc != 0) mod_kc[mod_count++] = kc;
@@ -478,13 +508,29 @@ static void do_key_press(Display *dpy, const char *key) {
     g_strfreev(parts);
 
     KeyCode kc = XKeysymToKeycode(dpy, ks);
-    if (kc == 0) return;
+    if (kc == 0) {
+        app_logger_log("No key for %s on this layout", key);
+        return g_strdup_printf("No key for %s on this layout", key);
+    }
+
+    // A character that only appears on the shifted level of its key needs the
+    // Shift held to come out — "*" is the 8 key on a US board. Named keys are
+    // all unshifted keysyms, so this leaves them alone.
+    if (XkbKeycodeToKeysym(dpy, kc, 0, 0) != ks && XkbKeycodeToKeysym(dpy, kc, 0, 1) == ks) {
+        KeyCode shift_kc = XKeysymToKeycode(dpy, XK_Shift_L);
+        gboolean held = FALSE;
+        for (guint i = 0; i < mod_count; i++)
+            if (mod_kc[i] == shift_kc) held = TRUE;
+        if (shift_kc != 0 && !held && mod_count < G_N_ELEMENTS(mod_kc))
+            mod_kc[mod_count++] = shift_kc;
+    }
 
     for (guint i = 0; i < mod_count; i++) fake_key(dpy, mod_kc[i], True);
     fake_key(dpy, kc, True);
     g_usleep(30 * 1000); // match macOS: 30 ms hold
     fake_key(dpy, kc, False);
     for (guint i = mod_count; i > 0; i--) fake_key(dpy, mod_kc[i - 1], False);
+    return NULL;
 }
 
 // ── capability check ────────────────────────────────────────────────────────
@@ -518,6 +564,7 @@ static gpointer worker_main(gpointer data) {
             break;
         }
 
+        gchar *failure = NULL;
         if (dpy) {
             switch (job->type) {
             case MOUSE_JOB_CLICK: do_click(dpy, Button1); break;
@@ -526,13 +573,18 @@ static gpointer worker_main(gpointer data) {
             case MOUSE_JOB_DRAG: do_drag(dpy, job->dx, job->dy); break;
             case MOUSE_JOB_SCROLL: do_scroll(dpy, job->dx, job->dy); break;
             case MOUSE_JOB_TYPE: do_type(dpy, job->text); break;
-            case MOUSE_JOB_KEY_PRESS: do_key_press(dpy, job->text); break;
+            case MOUSE_JOB_KEY_PRESS: failure = do_key_press(dpy, job->text); break;
             }
         }
 
         // Mouse actions answer with the (possibly updated) cursor position;
-        // keyboard actions answer with an empty result — same as macOS.
-        if (job->type == MOUSE_JOB_TYPE || job->type == MOUSE_JOB_KEY_PRESS)
+        // keyboard actions answer with an empty result — same as macOS. A key
+        // that resolved to nothing answers with the reason instead: it is a
+        // failed call, not an empty success.
+        if (failure) {
+            core_bridge_respond_error(job->id, failure);
+            g_free(failure);
+        } else if (job->type == MOUSE_JOB_TYPE || job->type == MOUSE_JOB_KEY_PRESS)
             core_bridge_respond_empty(job->id);
         else
             core_bridge_respond_position(job->id);

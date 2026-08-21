@@ -136,6 +136,22 @@ func checkRan(t *testing.T, got, want []string) {
 	}
 }
 
+// A statement the replay could not carry out is a step that did nothing, and
+// its own row is the only place that ever says so — the run does not stop for
+// it, and the next statement is replayed as it always was. A row reading
+// completed over it is how a run that half worked comes back looking clean.
+func TestAStatementThatDidNothingEndsFailedRatherThanCompleted(t *testing.T) {
+	m := newMacroTest(t)
+	m.replay(t, "sleep(\"3s\")\nsleep(1ms)")
+
+	if !m.logged(t, `statement="sleep(\"3s\")" status="failed"`) {
+		t.Error("a skipped statement was not marked failed")
+	}
+	if !m.logged(t, `statement="sleep(1ms)" status="completed"`) {
+		t.Error("the statement after it did not run, or was not marked completed")
+	}
+}
+
 func TestEveryExecutedStatementIsWrittenToTheInstanceLog(t *testing.T) {
 	m := newMacroTest(t)
 	m.replay(t, "sleep(1ms)\nstop()\nsleep(2ms)")

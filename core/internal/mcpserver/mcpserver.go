@@ -618,9 +618,11 @@ func toolDefinitions() []any {
 				"escape (alias esc), insert, left, right, up, down, "+
 				"home, end, pageup, pagedown, capslock, printscreen, scrolllock, pause, menu, f1–f24, "+
 				"minus, equals, leftbracket, rightbracket, backslash, semicolon, quote, grave, comma, "+
-				"period, slash.",
+				"period, slash. A single character presses whatever key produces it here, shift and "+
+				"all — \"*\", \"=\", \"+\", \"?\" — so an operator a calculator or a form expects goes in "+
+				"as that character. Anything else is an error rather than a key quietly not pressed.",
 			map[string]any{
-				"key": str("Key name, e.g. \"return\", \"escape\", \"cmd+v\", \"ctrl+shift+t\"."),
+				"key": str("Key name or one character, e.g. \"return\", \"escape\", \"cmd+v\", \"ctrl+shift+t\", \"*\"."),
 			}, []string{"key"}),
 		tool("sleep",
 			"Pause before the next action, to let the UI settle after a click or a page load. "+

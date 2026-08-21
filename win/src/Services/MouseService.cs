@@ -137,6 +137,7 @@ public static class MouseService
         {
             if (job.Type == MouseJobType.Shutdown) break;
 
+            string? failure = null;
             switch (job.Type)
             {
                 case MouseJobType.Click: DoClick(right: false); break;
@@ -145,12 +146,16 @@ public static class MouseService
                 case MouseJobType.Drag: DoDrag(job.Dx, job.Dy); break;
                 case MouseJobType.Scroll: DoScroll(job.Dx, job.Dy); break;
                 case MouseJobType.Type: DoType(job.Text); break;
-                case MouseJobType.KeyPress: DoKeyPress(job.Text); break;
+                case MouseJobType.KeyPress: failure = DoKeyPress(job.Text); break;
             }
 
             // Mouse actions answer with the (possibly updated) cursor position;
             // keyboard actions answer with an empty result — same as macOS/Linux.
-            if (job.Type == MouseJobType.Type || job.Type == MouseJobType.KeyPress)
+            // A key that resolved to nothing answers with the reason instead:
+            // it is a failed call, not an empty success.
+            if (failure != null)
+                CoreBridge.RespondError(job.Id, failure);
+            else if (job.Type == MouseJobType.Type || job.Type == MouseJobType.KeyPress)
                 CoreBridge.RespondEmpty(job.Id);
             else
                 CoreBridge.RespondPosition(job.Id);
@@ -385,48 +390,99 @@ public static class MouseService
         extended = false;
         modifiers = new List<ushort>();
 
-        string[] parts = key.Split('+', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return false;
+        // "+" is both the separator and a key somebody may want pressed, and a
+        // chord ending in one is the only place the two are told apart:
+        // "cmd++" holds Ctrl over the plus key, "+" is that key on its own.
+        string name;
+        string[] parts;
+        if (key.EndsWith('+'))
+        {
+            name = "+";
+            parts = key[..^1].Split('+', StringSplitOptions.RemoveEmptyEntries);
+        }
+        else
+        {
+            string[] split = key.Split('+', StringSplitOptions.RemoveEmptyEntries);
+            if (split.Length == 0) return false;
+            name = split[^1];
+            parts = split[..^1];
+        }
 
-        string name = parts[^1];
-        if (PlainKeys.TryGetValue(name, out (ushort Vk, bool Extended) entry))
+        // A name is matched in lower case, the way it is documented; a
+        // character is matched as it was written, since case is what tells "%"
+        // from "5".
+        string lower = name.ToLowerInvariant();
+        if (PlainKeys.TryGetValue(lower, out (ushort Vk, bool Extended) entry))
         {
             vk = entry.Vk;
             extended = entry.Extended;
         }
-        else if (name.Length == 1 && name[0] >= 'a' && name[0] <= 'z')
+        else if (lower.Length == 1 && lower[0] >= 'a' && lower[0] <= 'z')
         {
-            vk = (ushort)('A' + (name[0] - 'a'));
+            vk = (ushort)('A' + (lower[0] - 'a'));
         }
-        else if (name.Length == 1 && name[0] >= '0' && name[0] <= '9')
+        else if (lower.Length == 1 && lower[0] >= '0' && lower[0] <= '9')
         {
-            vk = name[0];
+            vk = lower[0];
         }
-        else if (name.Length >= 2 && name[0] == 'f'
-                 && int.TryParse(name.AsSpan(1), out int n) && n >= 1 && n <= 24)
+        else if (lower.Length >= 2 && lower[0] == 'f'
+                 && int.TryParse(lower.AsSpan(1), out int n) && n >= 1 && n <= 24)
         {
             vk = (ushort)(0x70 + n - 1); // VK_F1 … VK_F24 run consecutively
+        }
+        else if (name.Length == 1 && CharacterKey(name[0], out vk, out List<ushort> charModifiers))
+        {
+            modifiers.AddRange(charModifiers);
         }
         else
         {
             return false;
         }
 
-        for (int i = 0; i < parts.Length - 1; i++)
+        foreach (string part in parts)
         {
-            if (!Modifiers.TryGetValue(parts[i], out ushort mod)) return false;
+            if (!Modifiers.TryGetValue(part.ToLowerInvariant(), out ushort mod)) return false;
             if (!modifiers.Contains(mod)) modifiers.Add(mod);
         }
         return true;
     }
 
-    private static void DoKeyPress(string key)
+    /// The key that produces `character` on the layout in use, and the
+    /// modifiers to hold while pressing it — "*" is Shift and the 8 key on a US
+    /// board, and a different key somewhere else.
+    ///
+    /// The named keys above are positions and stay positions. This is the other
+    /// question, the one a caller asking for keyPress("=") or keyPress("*") is
+    /// really asking: press whatever key puts this character on screen. There
+    /// is no answer for a character the layout cannot produce, which is a
+    /// failure the caller hears about rather than a key pressed at random.
+    private static bool CharacterKey(char character, out ushort vk, out List<ushort> modifiers)
     {
-        string lower = key.ToLowerInvariant();
-        if (!ResolveKey(lower, out ushort vk, out bool extended, out List<ushort> modifiers))
+        vk = 0;
+        modifiers = new List<ushort>();
+
+        short scan = NativeMethods.VkKeyScan(character);
+        if (scan == -1) return false;
+
+        vk = (ushort)(scan & 0xFF);
+        int state = (scan >> 8) & 0xFF;
+        if ((state & 1) != 0) modifiers.Add(VK_SHIFT);
+        if ((state & 2) != 0) modifiers.Add(VK_CONTROL);
+        if ((state & 4) != 0) modifiers.Add(VK_MENU);
+        return true;
+    }
+
+    /// Presses one key. Answers with the reason nothing was pressed, or null
+    /// when the key went down. A key nobody can resolve used to be logged and
+    /// shrugged off while the caller was told it was pressed, which is how a
+    /// macro full of keys this shell has never heard of comes back a clean run
+    /// having done half of what it says.
+    private static string? DoKeyPress(string key)
+    {
+        if (!ResolveKey(key, out ushort vk, out bool extended, out List<ushort> modifiers))
         {
             AppLogger.Log($"Unknown key: {key}");
-            return;
+            return $"Unknown key: {key}";
         }
 
         uint flags = extended ? NativeMethods.KEYEVENTF_EXTENDEDKEY : 0;
@@ -445,5 +501,6 @@ public static class MouseService
             if (IsExtendedModifier(modifiers[i])) modFlags |= NativeMethods.KEYEVENTF_EXTENDEDKEY;
             NativeMethods.Send(NativeMethods.KeyInput(modifiers[i], 0, modFlags));
         }
+        return null;
     }
 }

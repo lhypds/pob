@@ -36,6 +36,28 @@ type fakeShell struct {
 	// The crop of the last capture, as the shell received it: in window pixels,
 	// whatever grid the client asked in.
 	lastCrop *bridge.CropRect
+	// Methods this shell answers with an error instead of a result, by the
+	// message it answers with — a key it cannot resolve is the one that
+	// happens in practice.
+	refusals map[string]string
+}
+
+// refuse makes the shell answer one method with an error, the way a real one
+// does for a key no layout has.
+func (f *fakeShell) refuse(method, message string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.refusals == nil {
+		f.refusals = map[string]string{}
+	}
+	f.refusals[method] = message
+}
+
+func (f *fakeShell) refusal(method string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	message, refused := f.refusals[method]
+	return message, refused
 }
 
 // setWindow gives the fake a window big enough that a capture of it has to be
@@ -168,9 +190,14 @@ func newTestServer(t *testing.T) (*Server, *fakeShell) {
 				shell.note(method, params)
 				continue // notification: no response expected
 			}
-			reply, _ := json.Marshal(map[string]any{
-				"jsonrpc": "2.0", "id": id, "result": shell.handle(method, params),
-			})
+			envelope := map[string]any{"jsonrpc": "2.0", "id": id}
+			if message, refused := shell.refusal(method); refused {
+				shell.log(method)
+				envelope["error"] = map[string]any{"code": -32603, "message": message}
+			} else {
+				envelope["result"] = shell.handle(method, params)
+			}
+			reply, _ := json.Marshal(envelope)
 			_, _ = shellWrites.Write(append(reply, '\n'))
 		}
 	}()
@@ -902,6 +929,31 @@ func TestRecordedActionNamesAreReplayable(t *testing.T) {
 		if !ok || !replayable[name] {
 			t.Errorf("recorded line %q is not a replayable macro action", line)
 		}
+	}
+}
+
+// A key the shell could not resolve is a key that was not pressed, and both
+// halves of the answer have to say so: the call comes back an error rather than
+// "Pressed ×.", and a recording running underneath is handed no line for it —
+// a keyPress written into macro.psl is one that replays, and this one never
+// happened.
+func TestARefusedKeyPressIsAnErrorAndIsNotRecorded(t *testing.T) {
+	srv, shell := newTestServer(t)
+	rec := &fakeRecorder{on: true}
+	srv.SetRecorder(rec)
+	shell.refuse("keyboard.keyPress", "Unknown key: ×")
+
+	resp := srv.callTool(1, "key_press", map[string]any{"key": "×"})
+
+	errObj, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("a refused key press answered with a result: %v", resp)
+	}
+	if message, _ := errObj["message"].(string); !strings.Contains(message, "Unknown key") {
+		t.Errorf("error message %q does not say what was wrong with the key", message)
+	}
+	if lines := rec.recorded(); len(lines) != 0 {
+		t.Errorf("recorded %q for a key that was never pressed", lines)
 	}
 }
 

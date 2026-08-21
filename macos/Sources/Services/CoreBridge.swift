@@ -279,8 +279,15 @@ final class CoreBridge: ObservableObject {
             guard let id else { return }
             let key = params["key"] as? String ?? ""
             Task {
-                await self.mouse.performKeyPress(key: key)
-                self.respond(id: id, result: [:])
+                // A key that resolved to nothing is a failed call, not an empty
+                // success: the core turns this into the error a macro logs and
+                // an MCP client sees, instead of "Pressed ×." over a key that
+                // never moved.
+                if let failure = await self.mouse.performKeyPress(key: key) {
+                    self.respondError(id: id, message: failure)
+                } else {
+                    self.respond(id: id, result: [:])
+                }
             }
 
         case "ui.flash":

@@ -1,5 +1,8 @@
 import AppKit
 import ApplicationServices
+// Carbon is what still answers "which key produces this character on the
+// layout in use" — UCKeyTranslate and the Text Input Sources around it.
+import Carbon.HIToolbox
 import CoreGraphics
 
 /// One per instance/window: holds that window's virtual cursor and posts the
@@ -246,7 +249,7 @@ class MouseService: ObservableObject {
                 // Return is a key rather than a character: an app watching for
                 // the keypress (a form, a shell) sees nothing in a newline
                 // delivered as text.
-                await performKeyPress(key: "return")
+                _ = await performKeyPress(key: "return")
                 continue
             }
             // UTF-16 because that is what the event carries; a character
@@ -265,13 +268,28 @@ class MouseService: ObservableObject {
     /// Presses one key, optionally with modifiers held: "escape", "cmd+v",
     /// "ctrl+alt+shift+f5". The key named is a *position* on the board rather
     /// than a character, so the system's own layout decides what it produces —
-    /// which is what lets a keyboard elsewhere forward keys verbatim.
-    func performKeyPress(key: String) async {
+    /// which is what lets a keyboard elsewhere forward keys verbatim. A single
+    /// character is the other way round: it presses whatever key produces that
+    /// character here.
+    ///
+    /// Answers with the reason nothing was pressed, or nil when the key went
+    /// down. A name nobody can resolve used to be logged and shrugged off, and
+    /// the caller was told the key was pressed either way — which is how a
+    /// macro full of `keyPress("×")` comes back a clean run having done half of
+    /// what it says.
+    func performKeyPress(key: String) async -> String? {
         let source = CGEventSource(stateID: .hidSystemState)
-        let lower = key.lowercased()
-        guard let (keyCode, flags) = Self.resolveKey(lower) else {
+        // A named key needs nothing from the system to resolve. A character
+        // needs the active layout, which only the main thread may ask for — so
+        // that hop is taken once the first pass has come back empty, and never
+        // on the keys a macro is mostly made of.
+        var resolved = Self.resolveKey(key, layout: nil)
+        if resolved == nil, let layout = await MainActor.run(body: { Self.currentLayout() }) {
+            resolved = Self.resolveKey(key, layout: layout)
+        }
+        guard let (keyCode, flags) = resolved else {
             AppLogger.log("Unknown key: \(key)")
-            return
+            return "Unknown key: \(key)"
         }
         if let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true) {
             down.flags = flags
@@ -282,6 +300,7 @@ class MouseService: ObservableObject {
             up.flags = flags
             up.post(tap: .cghidEventTap)
         }
+        return nil
     }
 
     // MARK: - Helpers
@@ -416,14 +435,112 @@ class MouseService: ObservableObject {
     /// Resolves "escape", "cmd+v" or "ctrl+alt+shift+f5" into the key to post
     /// and the modifiers to post it with. Everything before the last "+" is a
     /// modifier; the last part is the key.
-    private static func resolveKey(_ key: String) -> (CGKeyCode, CGEventFlags)? {
-        let parts = key.split(separator: "+").map(String.init)
-        guard let name = parts.last, let code = keyCodes[name] else { return nil }
-        var flags: CGEventFlags = []
-        for modifier in parts.dropLast() {
-            guard let flag = modifierFlags[modifier] else { return nil }
-            flags.insert(flag)
+    ///
+    /// `layout` is only consulted for a key written as a character, and a nil
+    /// one simply leaves those unresolved — see `currentLayout`, which has to
+    /// be read from the main thread and so is not read at all until a first
+    /// pass has come back empty.
+    private static func resolveKey(_ key: String, layout: KeyboardLayout?) -> (CGKeyCode, CGEventFlags)? {
+        // "+" is both the separator and a key somebody may want pressed, and a
+        // chord ending in one is the only place the two are told apart:
+        // "cmd++" holds Command over the plus key, "+" is that key alone.
+        let name: String
+        let modifiers: [String]
+        if key.hasSuffix("+") {
+            name = "+"
+            modifiers = key.dropLast().split(separator: "+").map(String.init)
+        } else {
+            var parts = key.split(separator: "+").map(String.init)
+            guard let last = parts.popLast() else { return nil }
+            name = last
+            modifiers = parts
         }
-        return (code, flags)
+
+        // A name is looked up in lower case, the way it is documented; a
+        // character is looked up as it was written, since case is what tells
+        // "%" from "5".
+        guard var resolved = keyCodes[name.lowercased()].map({ ($0, CGEventFlags()) })
+            ?? layout.flatMap({ characterKey(name, on: $0) })
+        else { return nil }
+
+        for modifier in modifiers {
+            guard let flag = modifierFlags[modifier.lowercased()] else { return nil }
+            resolved.1.insert(flag)
+        }
+        return resolved
+    }
+
+    /// The active keyboard layout, copied out of the system so the lookup below
+    /// can run anywhere.
+    struct KeyboardLayout {
+        let data: Data
+        let type: UInt32
+    }
+
+    /// Reads the layout in use. Main thread only, and not by choice: the Text
+    /// Input Sources API asserts the queue it is called on and takes the
+    /// process down with it from anywhere else.
+    @MainActor
+    static func currentLayout() -> KeyboardLayout? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let dataRef = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        // Copied rather than referenced: what comes back belongs to the input
+        // source, and the lookup reads it on another thread.
+        let cfData = Unmanaged<CFData>.fromOpaque(dataRef).takeUnretainedValue()
+        let length = CFDataGetLength(cfData)
+        guard length > 0 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: length)
+        CFDataGetBytes(cfData, CFRange(location: 0, length: length), &bytes)
+        return KeyboardLayout(data: Data(bytes), type: UInt32(LMGetKbdType()))
+    }
+
+    /// The key that produces `character` on the layout in use, and the
+    /// modifiers to hold while pressing it — "*" is shift and the 8 key on a US
+    /// board, and a different key somewhere else.
+    ///
+    /// The named keys above are positions and stay positions. This is the other
+    /// question, the one a model asking for `keyPress("=")` or `keyPress("*")`
+    /// is really asking: press whatever key puts this character on screen. It
+    /// is answered against the active layout rather than a table of US keycaps,
+    /// so the answer is right on the board actually plugged in — and there is
+    /// no answer at all for a character the layout cannot produce, which is a
+    /// failure the caller hears about rather than a key pressed at random.
+    private static func characterKey(_ character: String, on layout: KeyboardLayout)
+        -> (CGKeyCode, CGEventFlags)?
+    {
+        guard character.count == 1 else { return nil }
+
+        // Plain first, so a character reachable without modifiers is never
+        // reached with them.
+        let levels: [(UInt32, CGEventFlags)] = [
+            (0, []),
+            (UInt32(shiftKey >> 8), .maskShift),
+            (UInt32(optionKey >> 8), .maskAlternate),
+            (UInt32((shiftKey | optionKey) >> 8), [.maskShift, .maskAlternate]),
+        ]
+        let keyboardType = layout.type
+
+        return layout.data.withUnsafeBytes { raw -> (CGKeyCode, CGEventFlags)? in
+            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self)
+            else { return nil }
+            for (modifierState, flags) in levels {
+                for code in CGKeyCode(0) ..< CGKeyCode(128) {
+                    var deadKeyState: UInt32 = 0
+                    var length = 0
+                    var characters = [UniChar](repeating: 0, count: 4)
+                    let status = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown),
+                                                modifierState, keyboardType,
+                                                OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                                                &deadKeyState, characters.count, &length,
+                                                &characters)
+                    guard status == noErr, length > 0 else { continue }
+                    if String(utf16CodeUnits: characters, count: length) == character {
+                        return (code, flags)
+                    }
+                }
+            }
+            return nil
+        }
     }
 }

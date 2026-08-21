@@ -511,8 +511,8 @@ func (r *Runner) runMacroNodes(ctx context.Context, run *macroRun, nodes []macro
 		} else if name, args, quoted, ok := r.resolveMacroAction(ctx, run, node); ok {
 			statement := strings.TrimSpace(stripLine(run.line(node.line)))
 			r.logMacroStep("> STEP START", run, node, name, statement, "")
-			r.runMacroAction(ctx, run, name, args, quoted)
-			r.logMacroStep("STEP END", run, node, name, statement, macroStepStatus(ctx, run))
+			ran := r.runMacroAction(ctx, run, name, args, quoted)
+			r.logMacroStep("STEP END", run, node, name, statement, macroActionStatus(ctx, run, ran))
 		}
 		// A no-op when the statement filled: what it spends is the slot of one
 		// that did not, which the replay is nonetheless done with.
@@ -553,6 +553,19 @@ func macroStepStatus(ctx context.Context, run *macroRun) string {
 	default:
 		return "completed"
 	}
+}
+
+// macroActionStatus is that status for a statement that ran: one the shell
+// refused, or one skipped for how it was written, ends "failed" rather than
+// "completed". A run does not stop for either — the next statement is replayed
+// the way it always was — so this row is where a step that did nothing says so,
+// and a cancelled or stopped run still says that first.
+func macroActionStatus(ctx context.Context, run *macroRun, ran bool) string {
+	status := macroStepStatus(ctx, run)
+	if status == "completed" && !ran {
+		return "failed"
+	}
+	return status
 }
 
 // runMacroLoop replays a loop's body, up to the count in its header and no
@@ -1000,7 +1013,14 @@ func extractLine(before, after string, line int) (string, bool) {
 	return strings.Join(afterLines[line:end], "\n"), true
 }
 
-func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string, args []string, quoted bool) {
+// runMacroAction replays one statement, and answers whether it reached the
+// screen: false is a statement skipped for how it was written, or a call the
+// shell refused — a key it could not resolve, a click it could not aim. The
+// replay carries on either way, so the step's own row in the log is the only
+// place that says which it was, and a row reading completed over a statement
+// that did nothing is how a run that half worked comes back looking clean.
+func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string, args []string, quoted bool) (ran bool) {
+	ran = true
 	sessionID := run.sessionID
 	num := func(i int) (float64, bool) {
 		if i >= len(args) {
@@ -1015,19 +1035,20 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		dx, okX := num(0)
 		dy, okY := num(1)
 		if !okX || !okY {
-			return
+			return false
 		}
 		if pos, err := r.br.MoveCursor(dx, dy); err == nil {
 			applog.Logf("[%s] Macro move(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro move(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
+			ran = false
 		}
 
 	case "moveTo":
 		x, okX := num(0)
 		y, okY := num(1)
 		if !okX || !okY {
-			return
+			return false
 		}
 		// The position, not the distance to it. What comes back is where the
 		// cursor ended up, which is the position asked for unless the window
@@ -1036,6 +1057,7 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			applog.Logf("[%s] Macro moveTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro moveTo(%d, %d) failed: %v", sessionID, int(x), int(y), err)
+			ran = false
 		}
 
 	case "resetCursor":
@@ -1047,6 +1069,7 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			applog.Logf("[%s] Macro resetCursor -> (%d, %d)", sessionID, pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro resetCursor failed: %v", sessionID, err)
+			ran = false
 		}
 
 	case "click", "rightClick", "doubleClick":
@@ -1065,7 +1088,7 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		if len(args) != 0 && len(args) != 2 {
 			applog.Logf("[%s] Macro %s takes %s, and %s — skipping", sessionID, name,
 				macroVocabulary[name].wants(), argsWritten(len(args)))
-			return
+			return false
 		}
 		// Written with a target, the click aims first: the cursor goes to that
 		// absolute position and the button goes down where it landed, so the
@@ -1076,42 +1099,45 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			x, okX := num(0)
 			y, okY := num(1)
 			if !okX || !okY {
-				return
+				return false
 			}
 			if _, err := r.br.MoveCursorTo(x, y); err != nil {
 				applog.Logf("[%s] Macro %s(%d, %d) could not move to its target: %v", sessionID, name, int(x), int(y), err)
-				return
+				return false
 			}
-			if pos, err := press(); err == nil {
-				applog.Logf("[%s] Macro %s(%d, %d) at (%d, %d)", sessionID, name, int(x), int(y), pos.X, pos.Y)
-			} else {
+			pos, err := press()
+			if err != nil {
 				applog.Logf("[%s] Macro %s(%d, %d) failed: %v", sessionID, name, int(x), int(y), err)
+				return false
 			}
-			return
+			applog.Logf("[%s] Macro %s(%d, %d) at (%d, %d)", sessionID, name, int(x), int(y), pos.X, pos.Y)
+			return true
 		}
 		if pos, err := press(); err == nil {
 			applog.Logf("[%s] Macro %s at (%d, %d)", sessionID, name, pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro %s failed: %v", sessionID, name, err)
+			ran = false
 		}
 
 	case "drag":
 		dx, okX := num(0)
 		dy, okY := num(1)
 		if !okX || !okY {
-			return
+			return false
 		}
 		if pos, err := r.br.Drag(dx, dy); err == nil {
 			applog.Logf("[%s] Macro drag(%d, %d) -> (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro drag(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
+			ran = false
 		}
 
 	case "dragTo":
 		x, okX := num(0)
 		y, okY := num(1)
 		if !okX || !okY {
-			return
+			return false
 		}
 		// Where the drop goes, not how far it is from the grab. The button goes
 		// down where the cursor already is, so a dragTo is still written under
@@ -1120,51 +1146,55 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			applog.Logf("[%s] Macro dragTo(%d, %d) -> (%d, %d)", sessionID, int(x), int(y), pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro dragTo(%d, %d) failed: %v", sessionID, int(x), int(y), err)
+			ran = false
 		}
 
 	case "scroll":
 		dx, okX := num(0)
 		dy, okY := num(1)
 		if !okX || !okY {
-			return
+			return false
 		}
 		if pos, err := r.br.Scroll(int(dx), int(dy)); err == nil {
 			applog.Logf("[%s] Macro scroll(%d, %d) at (%d, %d)", sessionID, int(dx), int(dy), pos.X, pos.Y)
 		} else {
 			applog.Logf("[%s] Macro scroll(%d, %d) failed: %v", sessionID, int(dx), int(dy), err)
+			ran = false
 		}
 
 	case "typeText":
 		if len(args) == 0 {
-			return
+			return false
 		}
 		text := args[0]
 		applog.Logf("[%s] Macro typeText(%q)", sessionID, truncate(text, 80))
 		if err := r.br.TypeText(text); err != nil {
 			applog.Logf("[%s] Macro typeText failed: %v", sessionID, err)
+			ran = false
 		}
 
 	case "keyPress":
 		if len(args) == 0 {
-			return
+			return false
 		}
 		applog.Logf("[%s] Macro keyPress(%q)", sessionID, args[0])
 		if err := r.br.KeyPress(args[0]); err != nil {
 			applog.Logf("[%s] Macro keyPress(%q) failed: %v", sessionID, args[0], err)
+			ran = false
 		}
 
 	case "sleep":
 		if len(args) == 0 {
-			return
+			return false
 		}
 		if quoted {
 			applog.Logf("[%s] Macro sleep was written with %q — a time is not a string, so it goes in without the quotes: %s — skipping", sessionID, truncate(args[0], 40), truncate(args[0], 40))
-			return
+			return false
 		}
 		d, ok := macroTime(args[0])
 		if !ok {
 			applog.Logf("[%s] Macro sleep was written with %q, which is not %s — skipping", sessionID, truncate(args[0], 40), macroTimeWants)
-			return
+			return false
 		}
 		applog.Logf("[%s] Macro sleep(%s)", sessionID, d)
 		sleepCtx(ctx, d)
@@ -1180,7 +1210,7 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 	case macroCallKeyword:
 		if len(args) == 0 {
 			applog.Logf("[%s] Macro call wants the path of a PSL file — call(\"other.psl\")", sessionID)
-			return
+			return false
 		}
 		r.runMacroCall(ctx, run, args[0])
 
@@ -1205,11 +1235,14 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 			r.store.SaveScreenshot(shot, sessionID)
 		} else {
 			applog.Logf("[%s] Macro takeScreenshot failed: %v", sessionID, err)
+			ran = false
 		}
 
 	default:
 		applog.Logf("[%s] Macro: unknown action: %s", sessionID, name)
+		return false
 	}
+	return ran
 }
 
 // maxCallDepth is how many files deep a replay may go — the ones a call() named

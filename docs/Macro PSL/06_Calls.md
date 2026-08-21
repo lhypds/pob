@@ -70,7 +70,7 @@ Keyboard and timing:
 | Statement | Arguments | What it does |
 |-----------|-----------|--------------|
 | `typeText(text)` | one string | Type text at the current keyboard focus |
-| `keyPress(key)` | one string | Press a key, with `+`-joined modifiers in front of it — `return`, `cmd+v`, `ctrl+shift+t`. See [Key names](../Pob/04_Keys.md) |
+| `keyPress(key)` | one string | Press a key, with `+`-joined modifiers in front of it — `return`, `cmd+v`, `ctrl+shift+t`. A single character presses the key that produces it here, shift and all: `"*"`, `"="`, `"+"`. See [Key names](../Pob/04_Keys.md) |
 | `sleep(time)` | one time | Pause — `sleep(250ms)`, `sleep(3s)`, `sleep(10m)`, `sleep(10h5m)` |
 
 

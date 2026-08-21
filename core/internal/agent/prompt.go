@@ -49,13 +49,38 @@ The whole vocabulary:
   doubleClick(x, y)    double-click at that position in the image
   typeText("text")     type one string at the keyboard focus
   keyPress("key")      press one key, modifiers joined in front of it with + —
-                       "return", "cmd+v", "ctrl+shift+t"
+                       "return", "cmd+v", "ctrl+shift+t", "*"
   sleep(time)          pause for a time: sleep(3s), sleep(250ms), sleep(10m)
   resetCursor()        send the cursor back to the origin a replay starts from
   takeScreenshot()     capture the screen; with x, y, w, h, crop to that region
   stop()               end the replay here; nothing under it runs
   call("other.psl")    replay another PSL file here, then carry on below it. The
                        path is relative to the file the call is written in
+
+The key a keyPress names is one of these. The modifiers, in front and joined
+with +: cmd (Command on macOS, Ctrl elsewhere — the ordinary-shortcut one),
+ctrl, alt, shift, gui. The keys themselves: a–z, 0–9, return (enter), tab,
+space, backspace (delete), forwarddelete, escape (esc), insert, left, right,
+up, down, home, end, pageup, pagedown, capslock, printscreen, scrolllock,
+pause, menu, f1–f24, and the punctuation named by the keycap a US board prints
+on it — minus, equals, leftbracket, rightbracket, backslash, semicolon, quote,
+grave, comma, period, slash. A single character is the other thing a key can
+be: it presses whatever key puts that character on screen here, shift and all,
+so "*", "=", "+" and "?" are keys as written and an operator on a calculator's
+button goes in as the character on the button. What is not a key is a character
+no keyboard has — "×" and "÷" are the multiply and divide signs a screen
+prints, not keys to press, and the keys are "*" and "/". A key outside all of
+this presses nothing, and the line is logged as a failure.
+
+typeText and keyPress go to whatever holds the keyboard focus, which is the
+window in front rather than the one the cursor happens to be over. Bringing
+another window forward is a click on its title bar or on an empty part of it: a
+click on a button, a menu or a field is that control being used, and the app
+acts on it there and then. The buttons under a calculator's display are most of
+that window, so a click meant only to put the focus there presses an operator,
+and the sum that follows is not the one the instruction asked for. The one click
+on the title bar is the whole of it — nothing inside the window has to be
+clicked before typing into it.
 
 Coordinates are pixels in the image, origin top-left, x to the right, y down,
 and the vocabulary says which of the two kinds each call takes. move, drag and
