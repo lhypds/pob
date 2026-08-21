@@ -20,12 +20,17 @@ enum AppLogger {
     private static let appLog: URL = SettingsService.projectRoot.appendingPathComponent("app.log")
     private static let instanceLog: URL = SettingsService.instanceLogFile
     private static let queue = DispatchQueue(label: "app.logger", qos: .utility)
+    /// The machine's own clock with the zone's offset on the end, matching
+    /// applog.TimeLayout in the core: a log is read next to a run whoever is at
+    /// the machine remembers the time of, so it is written in that time rather
+    /// than in UTC. `xxxxx` always writes an offset — `+00:00` rather than `Z`
+    /// — so every row is the same width and the two writers agree.
     private static let formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSxxxxx"
         return formatter
     }()
 

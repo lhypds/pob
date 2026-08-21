@@ -42,7 +42,12 @@ public static class AppLogger
 
     private static void Write(string level, bool toAppLog, string message)
     {
-        string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", CultureInfo.InvariantCulture);
+        // The machine's own clock with the zone's offset on the end, matching
+        // applog.TimeLayout in the core: a log is read next to a run whoever is
+        // at the machine remembers the time of, so it is written in that time
+        // rather than in UTC. The offset is always written, so every row is the
+        // same width and the two writers agree.
+        string timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffzzz", CultureInfo.InvariantCulture);
         string marked = level == "INFO" ? message : $"{level} {message}";
         lock (LogLock)
         {

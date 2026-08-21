@@ -1264,6 +1264,11 @@ func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macro
 	block := strings.TrimSpace(filled)
 	nodes := parseMacro(block)
 	if len(nodes) == 0 {
+		if macroValueOnly(block) {
+			applog.Logf("[%s] Macro %s: filled to %q, which is a value where the statements go — an instruction on a line of its own is carried out on the screen, and what belongs on the line is the statements that carry it out, not what carrying it out would come to; skipping",
+				run.sessionID, run.where(node.line), truncate(oneLine(block), 60))
+			return
+		}
 		applog.Logf("[%s] Macro %s: filled to %q, which holds no statement — skipping",
 			run.sessionID, run.where(node.line), truncate(oneLine(block), 60))
 		return
@@ -1278,6 +1283,36 @@ func (r *Runner) runStatementSlot(ctx context.Context, run *macroRun, node macro
 	if !generated.halted() {
 		applog.Logf("[%s] Macro %s — %s done", run.sessionID, run.where(node.line), generated.name)
 	}
+}
+
+// macroValueOnly reports whether a statement slot came back with a value where
+// its statements go — a number, a quoted string, true or false, a time.
+//
+// It is the one wrong answer worth naming on its own. An instruction phrased as
+// a question — calculate 360 x 360, how many are unread — is a job to do on the
+// screen, and a model that answers it instead leaves the line holding the
+// answer: `129600` rather than the clicks that work the calculator. Read as "is
+// not a statement" that is a mystery; read as "a value where the statements go"
+// it is a line to reword, or a value slot the instruction wanted in the first
+// place.
+func macroValueOnly(block string) bool {
+	value := strings.TrimSpace(block)
+	// Anything with a bracket or a second line was reaching for a statement and
+	// missing, which the other message already says better.
+	if value == "" || strings.ContainsAny(value, "\n()") {
+		return false
+	}
+	if _, isVerdict := conditionHolds(value); isVerdict {
+		return true
+	}
+	if len(value) >= 2 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) {
+		return true
+	}
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return true
+	}
+	_, isTime := macroTime(value)
+	return isTime
 }
 
 // runMacroCall replays another PSL file where the call() stands, statement by

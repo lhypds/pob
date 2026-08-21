@@ -18,8 +18,13 @@ static void append_line(const char *path, const char *line) {
 
 static void write_message(const char *level, gboolean to_app_log,
                           const char *message) {
-    GDateTime *now = g_date_time_new_now_utc();
-    gchar *timestamp = g_date_time_format(now, "%Y-%m-%dT%H:%M:%S.%fZ");
+    // The machine's own clock with the zone's offset on the end, matching
+    // applog.TimeLayout in the core: a log is read next to a run whoever is at
+    // the machine remembers the time of, so it is written in that time rather
+    // than in UTC. %:z always writes an offset, so every row is the same width
+    // and the two writers agree.
+    GDateTime *now = g_date_time_new_now_local();
+    gchar *timestamp = g_date_time_format(now, "%Y-%m-%dT%H:%M:%S.%f%:z");
 
     g_mutex_lock(&log_mutex);
     if (to_app_log) {

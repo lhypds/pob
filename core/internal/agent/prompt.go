@@ -88,6 +88,15 @@ what a value would have to be, because it is not a value that goes there. Write
 as many statements as the instruction asks for and no more, and write nothing
 that is not a statement — no prose, no fences, no heading.
 
+An instruction on a line of its own is work to carry out on the screen in the
+image, and the statements are how it gets carried out — never what carrying it
+out would come to. One phrased as a question or a sum — calculate 360 x 360,
+work out the total, find the newest message — is asking for the statements that
+put that question to the screen: a calculator in the image is worked with the
+calls above, key by key, and the number it would end up showing is not a
+statement and does not go on the line. Working it out here instead leaves the
+screen untouched and the line holding something Pob logs and skips.
+
 An if, else if, loop or once condition is answered with true or false and
 nothing else — an else has none of its own and is never written with one. A loop
 asks its condition again before every pass, over a fresh image, and a once asks

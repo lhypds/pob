@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"pob/core/internal/applog"
 )
 
 type Storage struct {
@@ -143,9 +145,11 @@ func (s *Storage) LogInstance(event, message string) {
 	}
 	message = strings.ReplaceAll(message, "\r\n", "\n")
 	rows := strings.Split(message, "\n")
-	// Six fractional digits are always written, including trailing zeroes. The
+	// Local time with the zone's offset, so a row reads in the time whoever is at
+	// the machine watched it happen. Six fractional digits are always written,
+	// including trailing zeroes, and the offset is a fixed width: the
 	// variable-width RFC3339Nano format made adjacent rows shift horizontally.
-	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
+	stamp := time.Now().Format(applog.TimeLayout)
 
 	s.instanceLog.Lock()
 	defer s.instanceLog.Unlock()

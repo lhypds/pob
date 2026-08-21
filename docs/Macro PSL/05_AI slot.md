@@ -149,6 +149,13 @@ Nothing else has to be written for it. There is no statement around the slot say
 would have to be, because it is not a value that goes there, and a statement slot is the one place
 in the language where what comes back is program rather than data.
 
+Which is what an instruction written on a line of its own asks for: work carried out on the screen,
+and the statements that carry it out. `:: calculate 360 x 360 ::` on a line of its own fills to the
+clicks that work the calculator in the picture, key by key — not to `129600`, which is the answer to
+the question rather than a statement, and a line the replay logs and skips. The value slot is where
+an instruction is answered: `typeText(:: 360 x 360 ::)` types the product, because a `typeText`
+argument is data and there is a statement around it saying so.
+
 What comes back is replayed where the line stands, as a file of its own — the same thing
 [`call`](11_call.md) does with the file it names, and for the same reason. Every statement in a macro
 is found by its line number: that is how an answer goes back where it came from, how a loop puts its

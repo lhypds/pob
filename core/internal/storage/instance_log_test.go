@@ -19,7 +19,7 @@ func TestInstanceLogTimestampsEveryContentRow(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("instance.log has %d rows, want 2:\n%s", len(lines), data)
 	}
-	stamp := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z\] MACRO SOURCE `)
+	stamp := regexp.MustCompile(`^\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}[+-][0-9]{2}:[0-9]{2}\] MACRO SOURCE `)
 	for i, line := range lines {
 		if !stamp.MatchString(line) {
 			t.Errorf("row %d is not timestamped and labelled: %q", i+1, line)

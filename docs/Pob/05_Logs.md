@@ -61,8 +61,11 @@ This is what the toolbar's `.log` button opens. Hold Option (Alt on Linux and Wi
 it for `app.log` instead — the same button, the wider record.
 
 `instance.log` is append-only across starts and sessions. Every row begins with a fixed-width RFC
-3339 UTC timestamp with six fractional digits and an event name. Multiline content is logged as
-separately timestamped rows, so nothing leaves unlabelled continuation lines.
+3339 timestamp with six fractional digits and an event name. It is the machine's own clock, with the
+zone's offset written on the end — `2026-08-21T09:33:32.848593+09:00` — since a log is read next to a
+run whoever is at the machine remembers the time of. Both writers stamp it that way, the shell and
+pob-core, so their rows read in order. Multiline content is logged as separately timestamped rows, so
+nothing leaves unlabelled continuation lines.
 
 A few events carry a marker so a run can be found by eye in a long file, one arrow per level of it:
 `>>> MACRO START REQUEST` opens a run, `>> LOOP START` a loop inside it — `>> ONCE START` a

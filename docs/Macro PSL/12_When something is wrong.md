@@ -68,6 +68,7 @@ and the ones around it still run:
 | A `call` whose path is itself a slot, filled to a file that is not there | Logged and skipped; the statements around it still run |
 | A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |
 | A statement slot that fills to nothing that reads as a statement | Logged with what it filled to, and nothing is replayed for that line |
+| A statement slot answered rather than carried out — `:: calculate 360 x 360 ::` filled to `129600` | Logged as a value where the statements go, and nothing is replayed for that line. The instruction on a line of its own is work to do on the screen; either reword it as that work, or write it as a value slot inside the statement that wanted the answer |
 | A statement slot nine files deep, counting the `call`s above it | How deep it is, and that it is not filled at all — a block this replay would not run is not worth a model call |
 
 Two things are not mistakes at all, and neither reading has anything to say about them:

@@ -316,6 +316,24 @@ func TestCloseUnterminatedStringsInABlock(t *testing.T) {
 	}
 }
 
+// A statement slot answered rather than carried out — `:: calculate 360 x 360 ::`
+// filled to `129600` — is the skip worth naming for what it is, so the log says
+// which half of the mistake to fix.
+func TestMacroValueOnlyNamesAnAnsweredStatementSlot(t *testing.T) {
+	for _, filled := range []string{"129600", "360", "-0.5", `"129600"`, "true", "False", "3s", "250ms"} {
+		if !macroValueOnly(filled) {
+			t.Errorf("macroValueOnly(%q) = false, want true — that is a value where the statements go", filled)
+		}
+	}
+	// A block that reached for statements and missed is the other message's: this
+	// one is only for an answer where a program was wanted.
+	for _, filled := range []string{"", "clik(10, 20)", "click(10, 20)", "halt", "129600 clicks", "click(10, 20)\n129600"} {
+		if macroValueOnly(filled) {
+			t.Errorf("macroValueOnly(%q) = true, want false", filled)
+		}
+	}
+}
+
 // A condition written out rather than asked needs no model call, and reads as
 // the value it names.
 func TestParseMacroLiteralCondition(t *testing.T) {

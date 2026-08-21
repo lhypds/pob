@@ -24,6 +24,18 @@ import (
 	"time"
 )
 
+// TimeLayout is how every row of both logs is stamped: the machine's own clock,
+// with the zone's offset on the end. A log is read by whoever is sitting at the
+// machine, next to a run they remember the time of, so it is written in the time
+// they were watching it happen rather than in UTC.
+//
+// Six fractional digits are always written, including trailing zeroes, and the
+// offset is a fixed six characters, so adjacent rows do not shift horizontally.
+// The shells stamp the lines they append to the same two files this way too —
+// see AppLogger in macos, win and linux-x11 — and storage.LogInstance uses this
+// for instance.log.
+const TimeLayout = "2006-01-02T15:04:05.000000-07:00"
+
 var (
 	mu           sync.Mutex
 	path         string
@@ -69,7 +81,7 @@ func write(level string, toAppLog bool, message string) {
 	mu.Lock()
 	if toAppLog && path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-			timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
+			timestamp := time.Now().Format(TimeLayout)
 			line := message
 			if level != "INFO" {
 				line = level + " " + message
