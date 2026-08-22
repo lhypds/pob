@@ -3,6 +3,7 @@
 #include "app_logger.h"
 #include "content_view.h"
 #include "frame_channel.h"
+#include "launch_service.h"
 #include "mouse_service.h"
 #include "screenshot_service.h"
 #include "settings_service.h"
@@ -104,6 +105,22 @@ void core_bridge_respond_position(const char *id) {
 
 void core_bridge_respond_empty(const char *id) {
     JsonBuilder *b = begin_response(id);
+    end_response(b);
+}
+
+// What came of a launch(): the application the shell opened, and whether its
+// window ended up in the frame. See launch_service.c.
+void core_bridge_respond_launch(const char *id, const char *app, int pid,
+                                gboolean fitted, const char *note) {
+    JsonBuilder *b = begin_response(id);
+    json_builder_set_member_name(b, "app");
+    json_builder_add_string_value(b, app ? app : "");
+    json_builder_set_member_name(b, "pid");
+    json_builder_add_int_value(b, pid);
+    json_builder_set_member_name(b, "fitted");
+    json_builder_add_boolean_value(b, fitted);
+    json_builder_set_member_name(b, "note");
+    json_builder_add_string_value(b, note ? note : "");
     end_response(b);
 }
 
@@ -308,6 +325,12 @@ static void dispatch(JsonObject *msg) {
             ? json_object_get_string_member_with_default(params, "key", "")
             : "";
         if (id) mouse_enqueue_job(MOUSE_JOB_KEY_PRESS, id, 0, 0, key);
+
+    } else if (g_str_equal(method, "app.launch")) {
+        if (!id) return;
+        launch_service_handle(id,
+            params ? json_object_get_string_member_with_default(params, "target", "") : "",
+            (int)member_double(params, "gap", 0));
 
     } else if (g_str_equal(method, "ui.flash")) {
         content_view_flash();

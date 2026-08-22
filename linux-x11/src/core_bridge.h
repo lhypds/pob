@@ -26,6 +26,10 @@ void core_bridge_respond_empty(const char *id);    // {}
 // (the picture's size, and its source's) folded in beside it.
 void core_bridge_respond_image(const char *id, const char *image_base64,
                                const char *meta_json);
+// What came of a launch(): the application opened, and whether its window
+// ended up in the frame.
+void core_bridge_respond_launch(const char *id, const char *app, int pid,
+                                gboolean fitted, const char *note);
 void core_bridge_respond_error(const char *id, const char *message);
 
 #endif

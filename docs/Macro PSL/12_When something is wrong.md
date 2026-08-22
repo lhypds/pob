@@ -42,6 +42,7 @@ not start.
 | `stop` written without its parentheses | `stop is written stop(), with the parentheses every other statement has` |
 | `stop` mis-spelled or mis-cased — `STOP`, `halt` | `"STOP" is not a statement — stop is written stop(), lowercase and with parentheses` |
 | A `run` written with anything but one command line — `run()`, `run("echo a", "echo b")` | `run takes 1 argument, and none was written`. What is inside the quotes is the shell's and is not read here: a command line is not PSL, and a `run` that says what it means is a `run` the check has nothing to say about |
+| A `launch` written with anything but one application — `launch()`, `launch("Firefox", "Safari")` | `launch takes 1 argument, and none was written`. Whether the machine has that application is not read here either: it is a question for the machine the macro is played on rather than for the file |
 | A `call` naming a file that is not there, or cannot be read | The path it worked out, and that there is no such file |
 | A `call` reaching a file that is already running, directly or round a ring | That it is a replay with no end in it |
 | A `call` nine files deep | How deep it is, and that eight is as far as `call` goes |
@@ -70,6 +71,9 @@ and the ones around it still run:
 | A `run` whose command exits non-zero, or that the shell could not start at all | Logged with what it printed, and the step ends `failed` — it did not do its thing. The statements around it still run |
 | A `run` whose command is still going after a minute | Stopped there, with what it had printed so far in the log: a command meant to outlive the statement is written to come back, with the shell's own `&`. See [run](14_run.md) |
 | A `run` whose command is empty — `run("")`, or a slot that filled to nothing | Logged and skipped: there is nothing to hand over |
+| A `launch` naming an application this machine has not got, or one it could not start | Logged with what the desktop said, and the step ends `failed`. The statements around it still run — at coordinates aimed into a frame with nothing new in it |
+| A `launch` whose application opened but put no window up within twenty seconds | Logged, and the step ends `failed`: the application is running and the frame is still over whatever it was over. See [launch](15_launch.md) |
+| A `launch` whose window would not take the size it was asked for | Logged beside the statement, and the step ends `completed`: the window has the frame's top-left corner, which is what every coordinate under it is measured from |
 | A statement in a generated block that does not read as PSL | Logged and skipped, named by the block it is in — `macro-line2.psl line 3` — and the statements around it still run |
 | A statement slot that fills to nothing that reads as a statement | Logged with what it filled to, and nothing is replayed for that line |
 | A statement slot answered rather than carried out — `:: calculate 360 x 360 ::` filled to `129600` | Logged as a value where the statements go, and nothing is replayed for that line. The instruction on a line of its own is work to do on the screen; either reword it as that work, or write it as a value slot inside the statement that wanted the answer |

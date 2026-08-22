@@ -39,6 +39,7 @@ var defaults = map[string]any{
 	"macro_default_delay": 1000,
 	"once_interval":       DefaultOnceInterval,
 	"once_change_percent": DefaultOnceChangePercent,
+	"launch_gap":          DefaultLaunchGap,
 	"editor":              "system",
 	"terminal":            "system",
 	"stop_hook":           "",
@@ -489,6 +490,35 @@ func (c *Config) MCPHost() string {
 }
 
 func (c *Config) MacroDefaultDelay() int { return c.intVal("macro_default_delay", 1000, 0) }
+
+// DefaultLaunchGap is how much of the content area a launch() leaves around the
+// window it puts in it, on every side.
+//
+// Nothing about the frame needs it — a window fitted exactly is a window that
+// fills the frame, which is what a launch is for. What needs it is the desktop
+// underneath. A window whose edges sit exactly on Pob's own edges is a window
+// every modern window manager wants to help you line up with: macOS's tiling,
+// Windows' snap and half the Linux ones pull a dragged window onto an edge that
+// is already there, and Pob dragged over a window it had fitted perfectly is
+// dragged through its own magnetism the whole way. A few points of daylight is
+// what makes the edges stop being the same edge.
+//
+// It is measured in screenshot pixels, the space every coordinate in a macro is
+// in, so the border reads off a screenshot as the number it was written as. What
+// that is worth on the screen is the display's business: forty of them is forty
+// points on an ordinary display and twenty on a Retina one, which is why the
+// default is not the smallest number that shows.
+//
+// Forty, because a gap has to clear the distance a window manager reaches across
+// to be worth anything: under that it does not stop a drag snapping, it gives it
+// something nearer to snap to. It is a setting because that reach is the
+// desktop's rather than Pob's — a machine that does not do this at all is
+// welcome to `0` and the exact fit.
+const DefaultLaunchGap = 40
+
+// LaunchGap is the margin a launch() leaves between the content area and the
+// window it fits inside it, in screenshot pixels. See DefaultLaunchGap.
+func (c *Config) LaunchGap() int { return c.intVal("launch_gap", DefaultLaunchGap, 0) }
 
 // DefaultOnceInterval is how long a `once` block waits between the screenshots
 // it compares, and MinOnceInterval is as short as it can be asked to wait.

@@ -170,6 +170,41 @@ public static class ScreenshotService
         FinishPending();
     }
 
+    // The content area in physical screen pixels, and the scale the display is
+    // drawn at — the box a capture is taken from, which is also the box a
+    // launched window is fitted to (see LaunchService).
+    //
+    // WPF measures in device-independent pixels and Win32 places windows in
+    // physical ones, so on a scaled display the content view's own width is
+    // worth more than its face value by the time it reaches either of them.
+    //
+    // UI thread only: PointToScreen throws off it, and on a window that is not
+    // on screen yet.
+    public static bool ContentRect(out int x, out int y, out int w, out int h, out double scale)
+    {
+        x = y = w = h = 0;
+        scale = 1;
+        OverlayWindow? overlay = AppState.Overlay;
+        if (overlay == null) return false;
+        ContentView content = overlay.ContentView;
+
+        Point origin;
+        try
+        {
+            origin = content.PointToScreen(new Point(0, 0)); // device pixels
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        scale = VisualTreeHelper.GetDpi(content).DpiScaleX;
+        x = (int)Math.Round(origin.X);
+        y = (int)Math.Round(origin.Y);
+        w = (int)Math.Round(content.ActualWidth * scale);
+        h = (int)Math.Round(content.ActualHeight * scale);
+        return true;
+    }
+
     private static void DoCapture()
     {
         PendingShot? pending = _pending;
@@ -181,26 +216,13 @@ public static class ScreenshotService
             return;
         }
 
-        ContentView content = overlay.ContentView;
-
         // Content-area geometry in physical screen pixels.
-        Point originDip;
-        try
-        {
-            originDip = content.PointToScreen(new Point(0, 0)); // device pixels
-        }
-        catch (InvalidOperationException)
+        if (!ContentRect(out int devX, out int devY, out int devW, out int devH, out double scale))
         {
             Reveal(overlay);
             Fail("Screenshot capture failed");
             return;
         }
-        double scale = VisualTreeHelper.GetDpi(content).DpiScaleX;
-
-        int devX = (int)Math.Round(originDip.X);
-        int devY = (int)Math.Round(originDip.Y);
-        int devW = (int)Math.Round(content.ActualWidth * scale);
-        int devH = (int)Math.Round(content.ActualHeight * scale);
 
         // Clamp to the virtual screen (all monitors).
         int vsX = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);

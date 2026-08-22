@@ -63,6 +63,14 @@ The whole vocabulary:
                        screen is done with the calls above. A path in it is
                        written out in full, or relative to the file the run is
                        written in
+  launch("Firefox")    open an application on this machine and put its window in
+                       the frame — the box every position above is measured
+                       inside. It is how a macro arranges the screen it was
+                       written against instead of finding it already arranged.
+                       The name is this desktop's: an application's name, a
+                       bundle id or a path to a .app on macOS, an executable on
+                       Windows, the command that starts it on Linux. One already
+                       running is brought forward rather than opened twice
 
 The key a keyPress names is one of these. The modifiers, in front and joined
 with +: cmd (Command on macOS, Ctrl elsewhere — the ordinary-shortcut one),

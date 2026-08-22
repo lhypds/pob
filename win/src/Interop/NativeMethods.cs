@@ -240,6 +240,25 @@ internal static class NativeMethods
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute,
                                                    out int pvAttribute, int cbAttribute);
 
+    // ── placing a launched window ───────────────────────────────────────────
+    //
+    // The rest of what a launch() needs on top of the enumeration above: whose
+    // window a window is, and the two ways one has to be brought back to an
+    // ordinary state before it will go where it is put.
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    public const int SW_RESTORE = 9;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
     // ── screen capture (GDI) ────────────────────────────────────────────────
 
     // SRCCOPY only: CAPTUREBLT would pull in layered windows that the

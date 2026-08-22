@@ -290,6 +290,12 @@ final class CoreBridge: ObservableObject {
                 }
             }
 
+        case "app.launch":
+            guard let id else { return }
+            handleLaunch(id: id,
+                         target: params["target"] as? String ?? "",
+                         gap: params["gap"] as? Int ?? 0)
+
         case "ui.flash":
             DispatchQueue.main.async { self.flashTick += 1 }
             if let id { respond(id: id, result: [:]) }
@@ -424,6 +430,28 @@ final class CoreBridge: ObservableObject {
             }
             await self.mouse.performScroll(at: ctx.toCGEventPoint(pixelX: pos.x, pixelY: pos.y), dx: dx, dy: dy)
             self.respond(id: id, result: ["x": Double(pos.x), "y": Double(pos.y)])
+        }
+    }
+
+    /// Opens an application and puts its window in the frame — a macro's
+    /// launch(). Started on the main thread because that is where the window
+    /// this instance frames may be read; everything long about it happens off
+    /// it. See LaunchService.
+    private func handleLaunch(id: Any, target: String, gap: Int) {
+        DispatchQueue.main.async {
+            LaunchService.shared.launch(target: target, gap: gap, fittingTo: self.window) { result in
+                switch result {
+                case .success(let opened):
+                    self.respond(id: id, result: [
+                        "app": opened.app,
+                        "pid": Int(opened.pid),
+                        "fitted": opened.fitted,
+                        "note": opened.note,
+                    ])
+                case .failure(let refusal):
+                    self.respondError(id: id, message: refusal.message)
+                }
+            }
         }
     }
 

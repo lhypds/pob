@@ -4,6 +4,7 @@
   "macro_default_delay": 1000,
   "once_interval": 1000,
   "once_change_percent": 0.1,
+  "launch_gap": 40,
   "editor": "system",
   "terminal": "iterm2",
   "stop_hook": "",

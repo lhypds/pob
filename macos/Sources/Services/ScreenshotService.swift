@@ -43,6 +43,25 @@ class ScreenshotService {
         return ScreenshotContext(contentRectInScreen: screenRect, scale: screen.backingScaleFactor)
     }
 
+    /// The content area in CG screen coordinates — origin top-left of the
+    /// primary display, in points.
+    ///
+    /// The same rect a capture is taken from, said in the space Accessibility
+    /// puts windows in. That is what makes the window found under the frame the
+    /// window the screenshots are of (CarryService), and the rect a launched
+    /// window is fitted to the frame the screenshots will be of
+    /// (LaunchService).
+    ///
+    /// Main thread only, like every other reading of a window's geometry.
+    func contentRectInCGCoordinates(of window: NSWindow) -> CGRect? {
+        guard let primaryScreen = NSScreen.screens.first else { return nil }
+        let rect = window.convertToScreen(window.contentLayoutRect)
+        return CGRect(x: rect.origin.x,
+                      y: primaryScreen.frame.height - rect.maxY,
+                      width: rect.width,
+                      height: rect.height)
+    }
+
     /// The captured frame as it goes on the wire, and the sizes needed to make
     /// sense of it.
     struct EncodedShot {

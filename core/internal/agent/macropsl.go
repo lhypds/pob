@@ -1222,6 +1222,13 @@ func (r *Runner) runMacroAction(ctx context.Context, run *macroRun, name string,
 		}
 		ran = r.runMacroShell(ctx, run, args[0])
 
+	case macroLaunchKeyword:
+		if len(args) == 0 {
+			applog.Logf("[%s] Macro launch wants an application — launch(\"Firefox\")", sessionID)
+			return false
+		}
+		ran = r.runMacroLaunch(ctx, run, args[0])
+
 	case "takeScreenshot":
 		var crop *bridge.CropRect
 		if len(args) >= 4 {
@@ -1533,6 +1540,99 @@ func shellSaid(out []byte) string {
 	return " — it said: " + truncate(said, 200)
 }
 
+// runMacroLaunch opens an application and fits its window to the frame, which
+// is what a launch() statement is.
+//
+// It is the statement that sets the scene the rest of the file is written
+// against. Every other statement is a position in the content area, and every
+// one of those positions was written down while some window sat in a particular
+// place inside it — a window somebody had put there by hand. That is fine for a
+// macro played once on the desktop it was recorded on, and it is the one thing
+// a macro started on a fresh machine, or by a schedule at four in the morning,
+// has no way of arranging for itself. This arranges it: the application is
+// opened, and its window is put exactly where the coordinates below expect to
+// find it.
+//
+// What a name means is left to the shell. An application is an app bundle on
+// macOS, an executable on Windows and a command on Linux, and the one thing
+// they have in common is that the side that opened it is the side that knows
+// which window came of it. So the name goes over as written, and each shell's
+// LaunchService answers with what it made of it.
+//
+// An application that opened but could not be fitted is a step that failed
+// rather than one that ran. Nothing is wrong with the application; what is
+// wrong is the macro, since every coordinate under the statement is now aimed
+// at a frame the window is not in, and a run where that happened is one worth
+// being able to see it in the log of.
+func (r *Runner) runMacroLaunch(ctx context.Context, run *macroRun, target string) bool {
+	sessionID := run.sessionID
+	target = strings.TrimSpace(target)
+	if target == "" {
+		applog.Logf("[%s] Macro launch was written with no application — skipping", sessionID)
+		return false
+	}
+	applog.Logf("[%s] Macro launch(%q)", sessionID, truncate(target, 200))
+	if r.br == nil {
+		applog.Logf("[%s] Macro launch(%q) has no shell to open it with — skipping", sessionID, truncate(target, 60))
+		return false
+	}
+
+	// No deadline of the core's own. The shell is the one that knows how long
+	// it has been waiting for a window and what it is waiting on, so the wait
+	// and the giving up on it are both over there; this asks once and is
+	// answered either way.
+	//
+	// Waited on in a goroutine so that Stop gets past it. That wait is up to
+	// twenty seconds of an application starting up, and a Stop that had to sit
+	// through it is a Stop that does not work. What is let go of here is only
+	// the waiting: the request is already down a line that has no way of taking
+	// one back, so the shell finishes the launch and answers into a channel
+	// nobody is reading.
+	type answer struct {
+		opened bridge.Launched
+		err    error
+	}
+	answered := make(chan answer, 1)
+	gap := r.cfg.LaunchGap()
+	go func() {
+		opened, err := r.br.LaunchApp(target, gap)
+		answered <- answer{opened: opened, err: err}
+	}()
+
+	var got answer
+	select {
+	case got = <-answered:
+	case <-ctx.Done():
+		applog.Logf("[%s] Macro launch(%q) was stopped with the run", sessionID, truncate(target, 60))
+		return false
+	}
+	opened, err := got.opened, got.err
+	if err != nil {
+		applog.Logf("[%s] Macro launch(%q) failed: %v", sessionID, truncate(target, 60), err)
+		return false
+	}
+
+	name := opened.App
+	if name == "" {
+		name = target
+	}
+	note := truncate(oneLine(opened.Note), 200)
+	if !opened.Fitted {
+		if note == "" {
+			note = "no window of it could be placed"
+		}
+		applog.Logf("[%s] Macro launch(%q) opened %s (pid %d), but its window is not in the frame: %s",
+			sessionID, truncate(target, 60), name, opened.PID, note)
+		return false
+	}
+	if note != "" {
+		note = " — " + note
+	}
+	applog.Logf("[%s] Macro launch(%q) opened %s (pid %d) and fitted its window to the frame%s",
+		sessionID, truncate(target, 60), name, opened.PID, note)
+	return true
+}
+
 // macroIfKeyword opens a conditional block: `if (<expression>) {`, closed by a
 // line holding nothing but `}` — or by the `}` an else is written on, which
 // closes it and opens the block to run instead. Matched whatever its case, so
@@ -1578,6 +1678,12 @@ const macroCallKeyword = "call"
 // app's hands and eyes — everything else in the vocabulary is a pixel, a click
 // or a key. See runMacroShell.
 const macroRunKeyword = "run"
+
+// macroLaunchKeyword opens an application and puts its window in the frame:
+// `launch("Firefox")`. The one statement that arranges the screen the rest of
+// the macro is written against, rather than acting on a screen somebody else
+// arranged. See runMacroLaunch.
+const macroLaunchKeyword = "launch"
 
 // macroTimeWants is what a time is, said once. The check puts it in front of the
 // user before the run and the replay logs it at the statement, and the two are

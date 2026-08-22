@@ -50,6 +50,10 @@ typedef struct AppState {
 extern AppState g_state;
 
 // main.c
+// The content area in root device pixels — the box the screenshots are of and
+// the clicks are aimed through. What carry_service.c measures a carried window
+// against, and what launch_service.c fits a launched one to.
+gboolean app_content_rect(GdkRectangle *out);
 void app_update_click_through(void);
 void app_update_window_lock(void);
 void app_set_executing(gboolean executing);  // called from core_bridge (main thread)

@@ -126,6 +126,7 @@ sleep()
 click(398)
 moveTo(398)
 run()
+launch()
 `,
 		"resetCursor takes no arguments, and 2 were written",
 		"typeText takes 1 argument, and 2 were written",
@@ -135,6 +136,7 @@ run()
 		"click takes both arguments or none at all, and 1 was written",
 		"moveTo takes 2 arguments, and 1 was written",
 		"run takes 1 argument, and none was written",
+		"launch takes 1 argument, and none was written",
 	)
 }
 
@@ -154,6 +156,26 @@ Run("afplay /tmp/a.wav")
 `,
 		"run takes 1 argument, and 2 were written",
 		`there is no statement called "Run"`,
+	)
+}
+
+// launch is one application, and which applications this machine has is not a
+// question about the file: a macro written on one desktop and checked on
+// another would otherwise be refused for naming something the machine it is
+// meant for does have. What the check says is the name and the argument count,
+// the same as for every other call.
+func TestCheckReadsLaunchAsOneApplication(t *testing.T) {
+	wantProblems(t, `launch("Firefox")
+launch("/Applications/Firefox.app")
+launch("nothing-is-installed-under-this-name")
+launch(:: the browser to open ::)
+`)
+
+	wantProblems(t, `launch("Firefox", "Safari")
+Launch("Firefox")
+`,
+		"launch takes 1 argument, and 2 were written",
+		`there is no statement called "Launch"`,
 	)
 }
 

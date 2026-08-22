@@ -25,7 +25,7 @@ the screenshots it compares rather than a delay between statements — the state
 spaced by `macro_default_delay` like everything else.
 
 Stop halts the run between statements, and during a `sleep()` — or a [`run()`](14_run.md) waiting on
-its command — rather than after it. A run that
+its command, or a [`launch()`](15_launch.md) waiting on its window — rather than after it. A run that
 reaches the end fires `stop_hook`, if one is set; a stopped run does not. A run that reached a
 `stop()` statement did reach its end, and fires it. A run watching inside a `once` has no end of its
 own to reach: Stop is what ends it, so `stop_hook` fires only where the block itself reached a

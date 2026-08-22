@@ -34,10 +34,10 @@ only call that takes a time.
 Whitespace around a statement and between arguments is ignored, which is what lets an `if` body be
 indented.
 
-A call does one of three things, and the tables below are that split: it acts on the machine through
-the window, it hands a command line to the machine's own shell, or it says something about the run
-itself. All of them are what Pob describes to psl on every fill — a model asked for part of a
-statement is told what the statement is a call to.
+A call does one of four things, and the tables below are that split: it acts on the machine through
+the window, it arranges the window in the first place, it hands a command line to the machine's own
+shell, or it says something about the run itself. All of them are what Pob describes to psl on every
+fill — a model asked for part of a statement is told what the statement is a call to.
 
 
 The machine
@@ -101,6 +101,30 @@ the numbers: a model looking at a screenshot can read a position off it directly
 that position minus wherever the cursor got to.
 
 
+The window
+----------
+
+One statement, and it is the only one that puts something *in* the frame rather than acting on what
+is already there. Every position above is measured inside the content area, and every one of them
+was written down while some window sat in a particular place under it; this is how a macro puts that
+window there itself instead of finding it put there. It has a page of its own —
+[launch](15_launch.md).
+
+| Statement | Arguments | What it does |
+|-----------|-----------|--------------|
+| `launch(application)` | one string | Open an application on this machine and fit its window to the content area, waiting for the window |
+
+```
+launch("Firefox")
+```
+
+What names an application is what this desktop calls one: a name, a bundle id or a path to a `.app`
+on macOS, an executable on Windows, the command that starts it on Linux. One already running is
+brought forward rather than opened twice. A margin is left around the window —
+[`launch_gap`](../Pob/06_Settings.md) — so its edges do not sit on Pob's own and get caught by the
+desktop's window snapping.
+
+
 The shell
 ---------
 
@@ -138,4 +162,5 @@ See also
 - [AI slot](05_AI%20slot.md) — writing a prompt where an argument goes
 - [MCP Server](../Pob/08_MCP.md) — the same actions as MCP tools
 - [run](14_run.md) — the command line, the directory it runs from, and the minute it has to finish in
+- [launch](15_launch.md) — what names an application on each desktop, and how long the window has to appear
 - [When something is wrong](12_When%20something%20is%20wrong.md) — a call the check refuses

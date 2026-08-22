@@ -319,6 +319,38 @@ void app_update_click_through(void) {
     }
 }
 
+// The content area in root device pixels — the box the screenshots are of and
+// the clicks are aimed through.
+//
+// The same rect the capture is taken from (see screenshot_service.c), which is
+// what makes the window found under it the window the screenshots are of
+// (carry_service.c), and the rect a launched window is fitted to the frame the
+// screenshots will be of (launch_service.c).
+//
+// GTK reports a widget's geometry in logical pixels and X places windows in
+// device ones, so on a scaled display the frame is worth more than its face
+// value by the time it reaches anything below it.
+gboolean app_content_rect(GdkRectangle *out) {
+    GtkWidget *win = GTK_WIDGET(g_state.window);
+    GdkWindow *gdk_win = win ? gtk_widget_get_window(win) : NULL;
+    if (!gdk_win || !g_state.content) return FALSE;
+
+    int rel_x = 0, rel_y = 0;
+    gtk_widget_translate_coordinates(g_state.content, win, 0, 0, &rel_x, &rel_y);
+    int origin_x = 0, origin_y = 0;
+    gdk_window_get_origin(gdk_win, &origin_x, &origin_y);
+    int scale = gtk_widget_get_scale_factor(win);
+
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(g_state.content, &alloc);
+
+    out->x = (origin_x + rel_x) * scale;
+    out->y = (origin_y + rel_y) * scale;
+    out->width = alloc.width * scale;
+    out->height = alloc.height * scale;
+    return TRUE;
+}
+
 // The lock holds the frame's size, and holds it onto what it frames.
 //
 // Moving stays allowed, because with the lock on a move no longer costs

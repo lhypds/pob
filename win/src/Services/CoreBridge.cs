@@ -85,6 +85,24 @@ public static class CoreBridge
         });
     }
 
+    // What came of a launch(): the application the shell opened, and whether
+    // its window ended up in the frame. See LaunchService.
+    public static void RespondLaunch(string id, string app, int pid, bool fitted, string note)
+    {
+        Send(new Dictionary<string, object?>
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = id,
+            ["result"] = new Dictionary<string, object?>
+            {
+                ["app"] = app,
+                ["pid"] = pid,
+                ["fitted"] = fitted,
+                ["note"] = note,
+            },
+        });
+    }
+
     public static void RespondError(string id, string message)
     {
         Send(new Dictionary<string, object?>
@@ -261,6 +279,12 @@ public static class CoreBridge
                 if (id != null)
                     MouseService.Enqueue(MouseJobType.KeyPress, id, 0, 0,
                         MemberString(parameters, "key", ""));
+                break;
+
+            case "app.launch":
+                if (id == null) return;
+                LaunchService.Handle(id, MemberString(parameters, "target", ""),
+                                     (int)MemberDouble(parameters, "gap", 0));
                 break;
 
             case "ui.flash":

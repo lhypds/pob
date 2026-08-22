@@ -234,6 +234,55 @@ func (b *Bridge) KeyPress(key string) error {
 	return err
 }
 
+// Launched is what came of a launch: the application the shell opened, and
+// whether its window ended up in the frame.
+type Launched struct {
+	// App is what the shell made of the name it was given — the application as
+	// this machine knows it, which is a path on one desktop and a command on
+	// another, and is not always what was asked for.
+	App string
+	PID int
+	// Fitted is whether the window is now the content area. False means the
+	// application opened and the frame is still over whatever it was over: a
+	// window that never appeared, or one the desktop will not let anybody
+	// place.
+	Fitted bool
+	// Note is what the shell has to say about the fit beyond whether it
+	// happened — the reason there was no window to place, or the way a window
+	// that was placed did not take the whole of what it was asked for. Empty
+	// when the fit was exact.
+	Note string
+}
+
+// LaunchApp opens an application on this machine and fits its window to the
+// content area — the box the screenshots are of and the clicks are aimed
+// through.
+//
+// Both halves are the shell's, because the second one needs the first: what is
+// placed is the window of the process that was just started, and only the side
+// that started it knows which process that is. It is also the side that owns
+// the frame's geometry and already knows how to move somebody else's window —
+// that is what the lock does on every drag, in each shell's CarryService.
+//
+// What a name means is the shell's question too. An application is an app
+// bundle on macOS, an executable on Windows and a command on Linux, so the name
+// goes over the wire as it was written and is resolved on the other side.
+//
+// gap is how much of the content area to leave around the window, on every
+// side. It is settings.json's and so it is read here rather than there — the
+// shell is told the margin along with the name, the way it is told everything
+// else about a request. See config.DefaultLaunchGap for what it is for.
+func (b *Bridge) LaunchApp(target string, gap int) (Launched, error) {
+	result, err := b.ipc.Call("app.launch", map[string]any{"target": target, "gap": gap})
+	if err != nil {
+		return Launched{}, err
+	}
+	app, _ := result["app"].(string)
+	note, _ := result["note"].(string)
+	fitted, _ := result["fitted"].(bool)
+	return Launched{App: app, PID: intFrom(result, "pid"), Fitted: fitted, Note: note}, nil
+}
+
 // FlashScreenshot triggers the white flash animation in the UI.
 func (b *Bridge) FlashScreenshot() {
 	_, _ = b.ipc.Call("ui.flash", nil)

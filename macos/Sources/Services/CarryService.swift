@@ -198,23 +198,11 @@ final class CarryService {
         // this first step has already put it: a fast grab can cover half a
         // screen before the first move arrives, by which time the frame may be
         // over something else entirely.
-        guard var searchRect = contentRectInCGCoordinates(of: window) else { return empty }
+        guard var searchRect = ScreenshotService.shared.contentRectInCGCoordinates(of: window) else { return empty }
         searchRect = searchRect.offsetBy(dx: anchor.x - origin.x, dy: origin.y - anchor.y)
 
         let carried = windows(under: searchRect, below: CGWindowID(window.windowNumber))
         return Latch(carried: carried, frameOrigin: anchor)
-    }
-
-    /// The content area in CG screen coordinates — the same rect the capture is
-    /// taken from (see ScreenshotService), which is what makes the window found
-    /// under it the window the screenshots are of.
-    private func contentRectInCGCoordinates(of window: NSWindow) -> CGRect? {
-        guard let primaryScreen = NSScreen.screens.first else { return nil }
-        let rect = window.convertToScreen(window.contentLayoutRect)
-        return CGRect(x: rect.origin.x,
-                      y: primaryScreen.frame.height - rect.maxY,
-                      width: rect.width,
-                      height: rect.height)
     }
 
     // MARK: - Finding the window below

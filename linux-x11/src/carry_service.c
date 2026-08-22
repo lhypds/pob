@@ -230,30 +230,6 @@ static Window own_window(void) {
     return gdk_win ? GDK_WINDOW_XID(gdk_win) : None;
 }
 
-// The content area in root device pixels — the same rect the capture is taken
-// from (see screenshot_service.c), which is what makes the window found under
-// it the window the screenshots are of.
-static gboolean content_rect(GdkRectangle *out) {
-    GtkWidget *win = GTK_WIDGET(g_state.window);
-    GdkWindow *gdk_win = gtk_widget_get_window(win);
-    if (!gdk_win || !g_state.content) return FALSE;
-
-    int rel_x = 0, rel_y = 0;
-    gtk_widget_translate_coordinates(g_state.content, win, 0, 0, &rel_x, &rel_y);
-    int origin_x = 0, origin_y = 0;
-    gdk_window_get_origin(gdk_win, &origin_x, &origin_y);
-    int scale = gtk_widget_get_scale_factor(win);
-
-    GtkAllocation alloc;
-    gtk_widget_get_allocation(g_state.content, &alloc);
-
-    out->x = (origin_x + rel_x) * scale;
-    out->y = (origin_y + rel_y) * scale;
-    out->width = alloc.width * scale;
-    out->height = alloc.height * scale;
-    return TRUE;
-}
-
 // Every ordinary window overlapping `rect` that may be moved, and where each of
 // them stands, written into `out`. _NET_CLIENT_LIST_STACKING runs bottom to
 // top, so the search walks it backwards and `out` comes back front to back.
@@ -409,7 +385,7 @@ static void acquire_latch(int anchor_x, int anchor_y, int x, int y, int scale) {
     latch_frame_y = anchor_y;
 
     GdkRectangle rect;
-    if (!content_rect(&rect)) return;
+    if (!app_content_rect(&rect)) return;
     // The search wants the content area where the drag started, not where this
     // first step has already put it: a fast grab can cover half a screen before
     // the first configure arrives, by which time the frame may be over
