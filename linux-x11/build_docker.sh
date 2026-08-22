@@ -85,6 +85,14 @@ cp "$ROOT_DIR/core/bin/pob-core-linux-$ARCH" "$DIST_DIR/pob-core"
 mkdir -p "$DIST_DIR/Helpers"
 cp "$ROOT_DIR/core/bin/pob-linux-$ARCH" "$DIST_DIR/Helpers/pob"
 cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/install.sh"
+# What `pob launch --msb` runs: the microVM's image, its workload, and the
+# script that starts it. Named one by one rather than copied as a directory, so
+# a local .build/ stamp never travels into a release.
+mkdir -p "$DIST_DIR/vm/msb"
+for MSB_FILE in launch.sh run.sh Dockerfile README.md; do
+    cp "$ROOT_DIR/vm/msb/$MSB_FILE" "$DIST_DIR/vm/msb/$MSB_FILE"
+done
+chmod 755 "$DIST_DIR/vm/msb/launch.sh" "$DIST_DIR/vm/msb/run.sh"
 # The app icon, shared with macOS and Windows. The shell loads it from beside
 # its own binary, and install.sh registers it with the desktop environment.
 cp "$ROOT_DIR/assets/icon/pob.png" "$DIST_DIR/pob.png"

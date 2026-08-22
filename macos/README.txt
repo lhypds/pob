@@ -104,7 +104,7 @@ that opens it, or:
     pob                     What is running: the instance and its sessions
     pob launch              Start the app
     pob launch --start      Start the app and run its macro as soon as it is up
-    pob --fullscreen        Start it over the whole screen, with no toolbar —
+    pob launch --fullscreen Start it over the whole screen, with no toolbar —
                             nothing on screen to click, so these commands drive it
     pob status              Live status — executing, model, MCP, server address
     pob check               Read the macro and this machine, and print what is wrong

@@ -37,7 +37,6 @@ Usage: pob [flags] [command] [args]
 Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
-  --fullscreen       With no command, the same as launch --fullscreen
 
 Macro options (on start, check, and launch --start):
   --macropsl <file>  Work on that PSL file instead of the instance's own
@@ -46,21 +45,25 @@ Macro options (on start, check, and launch --start):
                      the instance's src/
 ```
 
-`launch` takes two options of its own, `--start` and `--fullscreen`; everything
-else after it is the instance, so `pob launch --start "Work laptop"` is that
-instance, started and running.
+`launch` takes three options of its own, `--start`, `--fullscreen` and `--msb`;
+everything else after it is the instance, so `pob launch --start "Work laptop"`
+is that instance, started and running.
 
 `--macropsl` says which file to work on. See **Another macro** below.
 
 `--fullscreen` starts Pob over the whole screen with none of its own chrome on
 it. See **Fullscreen** below.
 
+`--msb` starts it on a Linux machine of its own instead of on this desktop. See
+[Microsandbox](16_Microsandbox.md).
+
 | Command | Description |
 |---------|-------------|
 | *(none)* | Show the instance and its sessions; with `--session` show that session |
 | `launch [instance]` | Start the app; fails if it is already running. With more than one instance and none named, it lists them and asks which to start — ↑/↓ (or `k`/`j`) to move, enter to start, a digit to pick a row outright, `q` to cancel; `<instance>` is a name or an id, which skips the list. The app is found next to the CLI — the surrounding bundle for `Pob.app/Contents/Helpers/pob`, the app beside `Helpers/` in a Linux or Windows install, the shell build outputs for `core/bin/pob` |
 | `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"`, and with `--macropsl <file>` to run that file rather than the instance's own |
-| `launch --fullscreen` | The same launch, over the whole screen: no toolbar, no window buttons, nothing on screen that is Pob's to click — see **Fullscreen** below. `pob --fullscreen`, with no command at all, is the short way to write it. Combines with everything else a launch takes: `pob launch --start --fullscreen "Work laptop"` |
+| `launch --fullscreen` | The same launch, over the whole screen: no toolbar, no window buttons, nothing on screen that is Pob's to click — see **Fullscreen** below. Both it and `--msb` are options of the launch and are read only after that word: `pob --fullscreen` on its own says where the flag goes rather than starting anything. Combines with everything else a launch takes: `pob launch --start --fullscreen "Work laptop"` |
+| `launch --msb` | Start it in a microVM instead of on this desktop: a Linux machine with a screen nobody is looking at, Firefox in it, and a copy of this machine's `~/.pob` inside it, put there at boot. Nothing opens here and the pointer stays yours, which is what makes it the way to run a macro while the machine is being used — and the sandbox is thrown away and made again at every launch, so a run that leaves a mess leaves it somewhere that will not exist in an hour. The launch prints the addresses to reach it at: a VNC view of the guest's screen, the [web UI](12_Web%20UI.md) and the [MCP server](08_MCP.md), all on `127.0.0.1`. Combines with `--start` and `--fullscreen`. Needs [microsandbox](https://microsandbox.dev) and Docker; the scripts it runs ship beside the app, and the Linux app it puts in the guest is built from a checkout or fetched from the release — see [Microsandbox](16_Microsandbox.md) |
 | `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, the window's lock and click-through, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
@@ -90,7 +93,9 @@ pob new "Work laptop"                    # create an instance and switch to it
 pob launch                               # start the app (asks which, if there are several)
 pob launch "Work laptop"                 # start that one
 pob launch --start "Work laptop"         # start that one and run its macro
-pob --fullscreen                         # start it over the whole screen, no toolbar
+pob launch --fullscreen                  # start it over the whole screen, no toolbar
+pob launch --msb                         # start it in a Linux microVM of its own
+pob launch --msb --start                 # …and run the macro in there
 pob check                                # is the macro sound, and can this machine run it?
 pob start                                # replay src/main.macro.psl; pob stop stops it
 pob start --macropsl login.macro.psl     # replay that file instead
@@ -115,7 +120,7 @@ Fullscreen
 off it:
 
 ```
-pob --fullscreen              # the same as pob launch --fullscreen
+pob launch --fullscreen
 ```
 
 No titlebar, no toolbar, no window buttons, no instance badge — nothing on
@@ -364,3 +369,5 @@ See also
 - [Logs](05_Logs.md) — the tree `pob` reads for session detail
 - [MCP Server](08_MCP.md) — the server `pob mcp start` registers
 - [Pob Server](09_Server.md) — the address `pob status` prints
+- [Microsandbox](16_Microsandbox.md) — what `launch --msb` starts, and how to
+  drive it from here

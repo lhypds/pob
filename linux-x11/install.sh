@@ -146,6 +146,18 @@ else
     if [ -f "$SRC/pob.png" ]; then
         install -m 644 "$SRC/pob.png" "$PREFIX/pob.png"
     fi
+    # What `pob launch --msb` runs — the microVM's image, its workload and the
+    # script that starts it. The CLI looks for them here, beside the app, so a
+    # launch into a VM works from an install and not only from a checkout.
+    if [ -f "$SRC/vm/msb/launch.sh" ]; then
+        mkdir -p "$PREFIX/vm/msb"
+        install -m 755 "$SRC/vm/msb/launch.sh" "$PREFIX/vm/msb/launch.sh"
+        install -m 755 "$SRC/vm/msb/run.sh" "$PREFIX/vm/msb/run.sh"
+        install -m 644 "$SRC/vm/msb/Dockerfile" "$PREFIX/vm/msb/Dockerfile"
+        if [ -f "$SRC/vm/msb/README.md" ]; then
+            install -m 644 "$SRC/vm/msb/README.md" "$PREFIX/vm/msb/README.md"
+        fi
+    fi
     # The installer, the guide and the license go along too, so uninstalling
     # later — or reading what any of this was, or what it may be used for —
     # does not mean finding the zip again.

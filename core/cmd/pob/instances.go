@@ -52,6 +52,17 @@ func cmdNew(root, name string) {
 	fmt.Println("It is now the current instance — start it with `pob launch`.")
 }
 
+// launchOptions is everything a launch was told: which instance, whether the
+// macro runs after it, which macro that is, and the two modes — the whole
+// screen, and a machine of its own.
+type launchOptions struct {
+	instance   string
+	start      bool
+	macroPSL   string
+	fullscreen bool
+	msb        bool
+}
+
 // cmdLaunch picks the instance to start and starts it. The running check
 // comes first: a Pob that is already up would refuse the launch anyway, and
 // refusing it after INSTANCE had been repointed would leave the machine
@@ -59,58 +70,69 @@ func cmdNew(root, name string) {
 //
 // With start, the macro runs as soon as the app is up — the two commands a
 // scheduled or scripted run is otherwise a wait between, since `pob start` on
-// its own has nothing to talk to until the launch has finished. file is what
-// --macropsl named, "" for the instance's own macro.
+// its own has nothing to talk to until the launch has finished. macroPSL is
+// what --macropsl named, "" for the instance's own macro.
 //
 // With fullscreen, the app comes up over the whole screen with none of its own
 // chrome on it — see startApp, which hands the flag to the app itself.
-func cmdLaunch(root, wanted string, start bool, file string, fullscreen bool) {
+//
+// With msb none of this machine is involved past the instance: the launch is a
+// microVM's, and cmdLaunchMSB is where it goes.
+func cmdLaunch(root string, opts launchOptions) {
+	if opts.msb {
+		cmdLaunchMSB(root, opts)
+		return
+	}
 	if inst := theInstance(root); inst.Running {
 		fail("Pob is already running (%s)", inst.ID)
 	}
-	selectInstance(root, wanted)
+	selectInstance(root, opts.instance)
 	// Resolved before the app is started, and against the instance selectInstance
 	// has just settled on, since a bare name is looked for in that instance's
 	// src/. A path that is not there is then answered on the spot, rather than
 	// after a launch that has nothing left to run.
 	macro := ""
-	if file != "" {
-		macro = resolveMacroPSL(theInstance(root), file)
+	if opts.macroPSL != "" {
+		macro = resolveMacroPSL(theInstance(root), opts.macroPSL)
 	}
-	inst := launchInstance(root, fullscreen)
-	if start {
+	inst := launchInstance(root, opts.fullscreen)
+	if opts.start {
 		cmdMacro(inst, macro)
 	}
 }
 
-// parseLaunchArgs splits what follows `launch` into the instance wanted, whether
-// --start and --fullscreen came with it, and the file --macropsl named.
-// Everything that is not a flag is the name, joined back up: an instance called
-// "Work laptop" arrives as two arguments. A mistyped flag is said rather than
-// taken for a name, which would otherwise be reported as an instance nobody has.
+// parseLaunchArgs splits what follows `launch` into the instance wanted, the
+// flags that came with it, and the file --macropsl named. Everything that is not
+// a flag is the name, joined back up: an instance called "Work laptop" arrives
+// as two arguments. A mistyped flag is said rather than taken for a name, which
+// would otherwise be reported as an instance nobody has.
 //
 // --macropsl says which macro to run, so on a launch that is not running one it
 // is an instruction with nothing to carry it out: said rather than ignored,
 // since what was asked for was a run.
-func parseLaunchArgs(args []string) (wanted string, start bool, file string, fullscreen bool) {
-	args, file = takeMacroPSL(args)
+func parseLaunchArgs(args []string) launchOptions {
+	args, file := takeMacroPSL(args)
+	opts := launchOptions{macroPSL: file}
 	var name []string
 	for _, arg := range args {
 		switch {
 		case arg == "--start":
-			start = true
+			opts.start = true
 		case arg == "--fullscreen":
-			fullscreen = true
+			opts.fullscreen = true
+		case arg == "--msb":
+			opts.msb = true
 		case strings.HasPrefix(arg, "-"):
 			fail("unknown launch option %q — run `pob help`", arg)
 		default:
 			name = append(name, arg)
 		}
 	}
-	if file != "" && !start {
-		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, file)
+	if opts.macroPSL != "" && !opts.start {
+		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, opts.macroPSL)
 	}
-	return strings.TrimSpace(strings.Join(name, " ")), start, file, fullscreen
+	opts.instance = strings.TrimSpace(strings.Join(name, " "))
+	return opts
 }
 
 // selectInstance decides which instance `pob launch` should start: the one

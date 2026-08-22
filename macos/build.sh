@@ -63,6 +63,16 @@ cp "$CORE_BINARY" "$CONTENTS/MacOS/pob-core"
 mkdir -p "$CONTENTS/Helpers"
 cp "$CLI_BINARY" "$CONTENTS/Helpers/pob"
 
+# ── vm/msb ───────────────────────────────────────────────────────────────────
+# What `pob launch --msb` runs: the microVM's image, its workload, and the
+# script that starts it. Named one by one rather than copied as a directory, so
+# a local .build/ stamp never travels into a signed bundle.
+mkdir -p "$CONTENTS/Resources/vm/msb"
+for MSB_FILE in launch.sh run.sh Dockerfile README.md; do
+  cp "$ROOT_DIR/vm/msb/$MSB_FILE" "$CONTENTS/Resources/vm/msb/$MSB_FILE"
+done
+chmod 755 "$CONTENTS/Resources/vm/msb/launch.sh" "$CONTENTS/Resources/vm/msb/run.sh"
+
 # ── app icon ─────────────────────────────────────────────────────────────────
 echo "Generating app icon…"
 mkdir -p "$CONTENTS/Resources"

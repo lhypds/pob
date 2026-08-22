@@ -14,9 +14,19 @@ Tools (Swift) on macOS, GTK 3 development libraries on Linux (see
 ./restart.sh    # rebuild and relaunch in the background (logs to ~/.pob/app.log)
 ./stop.sh       # stop the app and the core process
 ./build.sh      # release build (the dist/Pob folder a release zip is made of)
+./install.sh    # install that build on this machine (--build to rebuild first)
+./uninstall.sh  # remove it again — ~/.pob is left alone
 ./keyboard.sh   # build and run Pob Keyboard (its own Go module, not built
                 # by the scripts above)
 ```
+
+`install.sh` puts the build where `get.sh` puts a release — on macOS `Pob.app`
+in `/Applications` (`~/Applications` when that is not writable) with the CLI
+linked into `/usr/local/bin` or `~/.local/bin`; on Linux it hands the tree to
+`linux-x11/install.sh`, the installer that ships inside the zip, so a repo
+install and a downloaded one are the same install. `--prefix` and `--bin`
+override either destination. `uninstall.sh` is `install.sh --uninstall`, and
+removes only a `pob` link that points into the install it is taking off.
 
 The root scripts are dispatchers: `setup.sh` writes your choice (`macos` or
 `linux-x11`) to the `SYSTEM` file, and the others read it and forward to the

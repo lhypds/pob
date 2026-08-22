@@ -4,7 +4,9 @@ Pob in a Windows VM (macOS host)
 
 The Linux shell runs happily in a container: X11 is a socket, so `Xvfb :99`
 and `DISPLAY=:99` hand it a real root window to capture with `XGetImage` and
-a real XTest to inject into. Windows has no equivalent. A Windows container
+a real XTest to inject into — which is what `pob launch --msb`
+([Microsandbox](16_Microsandbox.md)) is, and it is one command rather than the
+afternoon below. Windows has no equivalent. A Windows container
 needs a Windows host, so it cannot run on this Mac at all — and even on a
 Windows host it ships no display driver and no interactive desktop, so
 `GetDC(NULL)` + `BitBlt` in `win/src/Services/ScreenshotService.cs` comes back

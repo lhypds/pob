@@ -15,6 +15,8 @@
 //	pob launch --start               start the app and run its macro
 //	pob launch --fullscreen          start it covering the whole screen, with
 //	                                 no toolbar — driven from here on
+//	pob launch --msb                 start it in a microVM of its own, on a
+//	                                 copy of this ~/.pob, with Firefox in it
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
 //	pob start                        run src/main.macro.psl (pob stop stops it)
@@ -51,7 +53,6 @@ Usage: pob [flags] [command] [args]
 Flags:
   -v, --version      Print the Pob version, the same as the version command
   --session <id>     Target session; with no command, shows its details
-  --fullscreen       With no command, the same as launch --fullscreen
 
 Macro options (on start, check, and launch --start):
   --macropsl <file>  Work on that PSL file instead of the instance's own
@@ -72,6 +73,12 @@ Commands:
                      no window buttons — nothing on screen is Pob's to click,
                      so the commands here are what drives it: start, stop,
                      screenshot, status, and kill to quit it again
+  launch --msb       Start it in a microVM of its own instead of on this
+                     desktop: a Linux machine with a screen nobody is looking
+                     at, Firefox installed, and a copy of this machine's ~/.pob
+                     inside it. Prints the address to watch it at (VNC) and the
+                     web UI's. Needs microsandbox and Docker —
+                     see docs/Pob/16_Microsandbox.md
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
@@ -128,7 +135,9 @@ Examples:
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
   pob launch --start           # start it and run the macro straight away
-  pob --fullscreen             # start it over the whole screen, no toolbar
+  pob launch --fullscreen      # start it over the whole screen, no toolbar
+  pob launch --msb             # start it in a Linux microVM of its own
+  pob launch --msb --start     # …and run the macro in there
   pob check                    # is the macro sound, and can this machine run it?
   pob start                    # replay this instance's main macro
   pob start --macropsl login.macro.psl   # replay that file instead
@@ -163,13 +172,25 @@ func main() {
 		}
 	}
 
+	// --fullscreen and --msb are options of the launch, not of the CLI: they
+	// choose how the app is started, so they are read only after the word that
+	// starts it. Before the command word they are said rather than left to the
+	// flag package, whose "flag provided but not defined" and whole usage
+	// answer a near-miss with everything except where the flag goes. The scan
+	// stops where the flag package's own does, at the first word that is not a
+	// flag, so the same flags after `launch` are the launch's to read.
+	for _, arg := range os.Args[1:] {
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
+		switch arg {
+		case "--fullscreen", "-fullscreen", "--msb", "-msb":
+			name := "--" + strings.TrimLeft(arg, "-")
+			fail("%s says how to start the app, so it goes after launch — `pob launch %s`", name, name)
+		}
+	}
+
 	sessionFlag := flag.String("session", "", "target session ID")
-	// The short form of `pob launch --fullscreen`: a fullscreen Pob is one
-	// there is nothing to click, so it is started from the terminal and driven
-	// from the terminal, and this is the shortest way to say so. `launch` reads
-	// its own copy — flag parsing stops at the command word — so both forms
-	// exist and mean the same thing.
-	fullscreenFlag := flag.Bool("fullscreen", false, "launch covering the whole screen, with no toolbar")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
@@ -196,15 +217,10 @@ func main() {
 			showSession(root, theInstance(root).ID, *sessionFlag)
 			return
 		}
-		if *fullscreenFlag {
-			cmdLaunch(root, "", false, "", true)
-			return
-		}
 		showInstance(root)
 
 	case "launch":
-		wanted, start, macro, fullscreen := parseLaunchArgs(args[1:])
-		cmdLaunch(root, wanted, start, macro, fullscreen)
+		cmdLaunch(root, parseLaunchArgs(args[1:]))
 
 	case "new":
 		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))

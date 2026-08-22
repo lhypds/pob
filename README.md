@@ -60,6 +60,14 @@ Clone it and `cd` into the repo.
 ./start.sh      # run it
 ```
 
+To install what you just built — the app somewhere permanent and the `pob`
+command on your `PATH`, the same places `get.sh` puts a release:
+
+```
+./install.sh        # build if needed, then install (sudo for a system-wide one)
+./uninstall.sh      # take it back off again; ~/.pob is left alone
+```
+
 3. From a [release](https://github.com/lhypds/pob/releases) zip
 
 Unzip it and install — the app goes somewhere permanent
@@ -126,6 +134,7 @@ Documentation
 | [Pob Keyboard](docs/Pob/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/Pob/14_Development.md) | Building, the dev scripts, and cutting a release |
 | [VMWare](docs/Pob/15_VMWare.md) | Running and driving the Windows shell in a VM, from a Mac |
+| [Microsandbox](docs/Pob/16_Microsandbox.md) | `pob launch --msb` — Pob on a Linux microVM of its own, with Firefox in it and a copy of this machine's `~/.pob` |
 
 
 License
