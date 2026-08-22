@@ -125,7 +125,7 @@ Documentation
 | [Web UI](docs/Pob/12_Web%20UI.md) | The remote control page, for a phone |
 | [Pob Keyboard](docs/Pob/13_Keyboard.md) | The desktop keyboard and trackpad client |
 | [Development](docs/Pob/14_Development.md) | Building, the dev scripts, and cutting a release |
-| [Windows VM](docs/Pob/15_VM.md) | Running and driving the Windows shell in a VM, from a Mac |
+| [VMWare](docs/Pob/15_VMWare.md) | Running and driving the Windows shell in a VM, from a Mac |
 
 
 License

@@ -2,7 +2,7 @@
 # Deploys a Pob release into a Windows VM running under VMware Fusion on this
 # Mac — the nearest thing to running the Linux shell in a container, since a
 # Windows container has no desktop for the shell to capture or inject into
-# (see docs/Pob/15_VM.md). Builds the zip with build_docker.sh, starts the VM
+# (see docs/Pob/15_VMWare.md). Builds the zip with build_docker.sh, starts the VM
 # headless if it is down, copies the zip in over SSH, installs it, and restarts
 # the app through the Task Scheduler.
 #
@@ -12,7 +12,7 @@
 # registered against the logged-on user runs in that user's console session
 # instead, which is where the desktop is.
 #
-# Assumes the one-time guest setup in docs/Pob/15_VM.md: autologon, no lock/sleep,
+# Assumes the one-time guest setup in docs/Pob/15_VMWare.md: autologon, no lock/sleep,
 # OpenSSH server, and port 8033 through the firewall.
 #
 # Env:
@@ -48,7 +48,7 @@ if [ ! -x "$VMRUN" ]; then
     fi
 fi
 if [ ! -e "$VM" ]; then
-    echo "❌ No VM at $VM — create it first (docs/Pob/15_VM.md), or set POB_VM."
+    echo "❌ No VM at $VM — create it first (docs/Pob/15_VMWare.md), or set POB_VM."
     exit 1
 fi
 
@@ -93,7 +93,7 @@ for _ in $(seq 1 60); do
 done
 if [ "$SSH_READY" != "1" ]; then
     echo "❌ No SSH on $SSH_HOST after 3 minutes."
-    echo "   Check the sshd service and administrators_authorized_keys (docs/Pob/15_VM.md)."
+    echo "   Check the sshd service and administrators_authorized_keys (docs/Pob/15_VMWare.md)."
     exit 1
 fi
 

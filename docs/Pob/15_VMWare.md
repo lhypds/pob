@@ -33,11 +33,13 @@ What you need
   line beside them. Take the current one whose matrix covers the host macOS:
   Fusion rides on Apple's hypervisor, which changes with every macOS major, so
   a build older than the host fails to start VMs rather than degrading.
+
 - **A Windows 11 ARM64 disk image**, from
   `microsoft.com/software-download/windows11arm64` — Microsoft hands these out
   directly, no build tricks needed. An M-series Mac runs ARM guests only,
   which is why the deploy below builds `arm64` — the target
   `win/build_docker.sh` already supports.
+
 - ~40 GB of disk, 4+ GB of RAM for the guest.
 
 Windows 11 wants a TPM, and Fusion supplies a virtual one — which means it
@@ -256,10 +258,13 @@ Almost always the desktop, not Pob:
 - **The app was started from SSH.** Check with
   `ssh pobwin query session` — the Pob process must be in the console
   session (session 1), not session 0. Use `schtasks /run /tn Pob`.
+
 - **The desktop is locked.** Autologon covers boot; a screensaver or a
   Fusion-window disconnect can still lock it later. Steps 2 and 3 above.
+
 - **You RDP'd in and disconnected.** That locks the console session. Use the
   Fusion window instead, or hand the session back before dropping the
   connection: `tscon 1 /dest:console`.
+  
 - **VMware Tools is not installed**, so the guest has a fallback display
   adapter and reports a resolution nothing renders at.
