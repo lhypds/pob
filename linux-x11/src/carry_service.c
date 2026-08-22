@@ -32,13 +32,22 @@
 #include <gdk/gdkx.h>
 #include <string.h>
 
-// How often a held latch is checked for the end of the drag that took it.
-#define CARRY_LATCH_POLL_MS 100
-
-// How many of those polls a held button with a frame standing still gives up
-// its latch after anyway. Only a stuck button reading gets this far — it is the
-// backstop that keeps one bad reading from carrying into the next drag.
-#define CARRY_LATCH_IDLE_POLLS 10
+// How often the frame is looked at when nothing is being dragged, and how often
+// while something is.
+//
+// The frame has to be *looked at* rather than waited for, and this is the whole
+// reason: a reparenting window manager — openbox, and most of them — drags its
+// own frame around with the client sitting still inside it, so the client is
+// sent no ConfigureNotify for any of it. What it gets is one synthetic configure
+// when the button comes up, which is a move reported after the drag it belonged
+// to is over. Waiting for events means carrying nothing, on every WM that works
+// this way.
+//
+// So: ten looks a second at rest, which is one XQueryPointer, and forty while a
+// drag is being followed, which is what keeps the windows under the frame inside
+// a frame's worth of where the frame is.
+#define CARRY_IDLE_POLL_MS 100
+#define CARRY_DRAG_POLL_MS 25
 
 // Windows smaller than this on either side are not carried — the 1x1 markers
 // some apps park on screen, and the rest of the client list's degenerate
@@ -81,15 +90,17 @@ static gboolean latch_held;
 static CarriedWindow latch_windows[CARRY_MAX_WINDOWS];
 static int latch_count;
 static int latch_frame_x, latch_frame_y; // logical pixels, as GTK reports
-static guint latch_drag_watch;
-static gboolean moved_since_poll;
-static int idle_polls;
 
-// Where the frame stood before the configure now being reported, and how big
-// it was. A latch is anchored at that position rather than the current one: by
-// the time the first move of a drag arrives the frame has already left, and
-// anchoring to where it landed would bake that first step in as a permanent
-// offset between the frame and what it carries.
+// The poll, and whether it is following a drag right now.
+static guint poll_source;
+static guint poll_interval;
+static gboolean dragging;
+
+// Where the frame stood at the last look, and how big it was. A latch is
+// anchored there rather than at where the frame is now: by the time a move is
+// noticed the frame has already left, and anchoring to where it landed would
+// bake that first step in as a permanent offset between the frame and what it
+// carries.
 static gboolean previous_seeded;
 static int previous_x, previous_y, previous_w, previous_h;
 
@@ -323,61 +334,34 @@ static void move_client(Window win, int x, int y) {
 // away, undoing a maximize — moves with nobody holding it, and dragging some
 // app along with that is nobody's intent.
 static gboolean pointer_button_down(void) {
-    GdkDisplay *gdisplay = gdk_display_get_default();
-    GdkWindow *gdk_win = gtk_widget_get_window(GTK_WIDGET(g_state.window));
-    if (!gdisplay || !gdk_win) return FALSE;
+    Display *dpy = display();
+    if (!dpy) return FALSE;
 
-    GdkSeat *seat = gdk_display_get_default_seat(gdisplay);
-    GdkDevice *pointer = seat ? gdk_seat_get_pointer(seat) : NULL;
-    if (!pointer) return FALSE;
-
-    GdkModifierType mask = 0;
-    gdk_window_get_device_position(gdk_win, pointer, NULL, NULL, &mask);
-    return (mask & GDK_BUTTON1_MASK) != 0;
+    Window root = DefaultRootWindow(dpy), child = None;
+    int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+    unsigned int mask = 0;
+    if (!XQueryPointer(dpy, root, &root, &child, &root_x, &root_y, &win_x,
+                       &win_y, &mask))
+        return FALSE;
+    return (mask & Button1Mask) != 0;
 }
 
 // ── the latch ───────────────────────────────────────────────────────────────
 
 static void release_latch(void) {
-    if (latch_drag_watch) {
-        g_source_remove(latch_drag_watch);
-        latch_drag_watch = 0;
-    }
     latch_held = FALSE;
     latch_count = 0;
-    moved_since_poll = FALSE;
-    idle_polls = 0;
-}
-
-static gboolean on_drag_watch(gpointer data) {
-    (void)data;
-    if (!pointer_button_down()) goto done;
-    idle_polls = moved_since_poll ? 0 : idle_polls + 1;
-    moved_since_poll = FALSE;
-    if (idle_polls < CARRY_LATCH_IDLE_POLLS) return G_SOURCE_CONTINUE;
-
-done:
-    latch_drag_watch = 0; // release_latch must not remove the source firing it
-    release_latch();
-    return G_SOURCE_REMOVE;
-}
-
-// Holds the latch for exactly as long as the drag that took it.
-//
-// Letting it lapse on a lull instead would quietly change what is being carried
-// halfway through a drag: a frame that pauses and then moves on re-runs the
-// search and picks up whatever has since come under it, so a slow drag across a
-// busy desktop would gather windows as it went. The set is decided once, when
-// the frame is picked up.
-static void start_drag_watch(void) {
-    moved_since_poll = TRUE;
-    if (latch_drag_watch) return;
-    latch_drag_watch = g_timeout_add(CARRY_LATCH_POLL_MS, on_drag_watch, NULL);
+    dragging = FALSE;
 }
 
 // Finds the windows under the frame as the frame stood at the anchor. A latch
 // is always taken — an empty one when there is nothing under the frame to carry
 // — so the search runs once per drag either way.
+//
+// The set is decided once, when the frame is picked up, and held for the whole
+// drag. Re-running the search as the frame travelled would quietly change what
+// is being carried halfway through: a slow drag across a busy desktop would
+// gather windows as it went.
 static void acquire_latch(int anchor_x, int anchor_y, int x, int y, int scale) {
     latch_held = TRUE;
     latch_count = 0;
@@ -387,63 +371,84 @@ static void acquire_latch(int anchor_x, int anchor_y, int x, int y, int scale) {
     GdkRectangle rect;
     if (!app_content_rect(&rect)) return;
     // The search wants the content area where the drag started, not where this
-    // first step has already put it: a fast grab can cover half a screen before
-    // the first configure arrives, by which time the frame may be over
-    // something else entirely.
+    // first step has already put it: a fast grab can cover half a screen
+    // between two looks, by which time the frame may be over something else
+    // entirely.
     rect.x += (anchor_x - x) * scale;
     rect.y += (anchor_y - y) * scale;
 
     latch_count = windows_under(&rect, latch_windows, CARRY_MAX_WINDOWS);
 }
 
-// ── entry points ────────────────────────────────────────────────────────────
+// ── following the frame ─────────────────────────────────────────────────────
 
-gboolean carry_service_is_enabled(void) { return enabled; }
-
-void carry_service_set_enabled(gboolean on) {
-    if (enabled == on) return;
-    enabled = on;
-    // Turning it off mid-drag has to let go of what it was holding, or the rest
-    // of that drag would still be carrying it.
-    if (!on) release_latch();
+// Where the frame is *now*, in the logical pixels GTK counts in, asked of the X
+// server rather than of GTK.
+//
+// gtk_window_get_position answers from what the window has been told, and
+// through a WM-driven drag it is told nothing until the end (see the poll
+// constants above). gdk_window_get_origin is an XTranslateCoordinates — one
+// round trip, and the truth while the drag is happening.
+static gboolean frame_origin(int *x, int *y) {
+    GtkWidget *win = GTK_WIDGET(g_state.window);
+    GdkWindow *gdk_win = win ? gtk_widget_get_window(win) : NULL;
+    if (!gdk_win) return FALSE;
+    gdk_window_get_origin(gdk_win, x, y);
+    return TRUE;
 }
 
-void carry_service_seed(void) {
-    if (!g_state.window) return;
-    gtk_window_get_position(g_state.window, &previous_x, &previous_y);
-    gtk_window_get_size(g_state.window, &previous_w, &previous_h);
-    previous_seeded = TRUE;
-    release_latch();
-}
+// One look at the frame: has it moved, is a button holding it, and if both then
+// everything under it goes along by the same amount.
+//
+// Called from the poll and from a configure event alike — a WM that does report
+// a drag as it happens gets its report acted on at once rather than at the next
+// tick, and one that does not is no worse off.
+static void follow_frame(void) {
+    if (!enabled || !g_state.window) return;
 
-void carry_service_window_configured(void) {
-    if (!g_state.window) return;
-
-    int x = 0, y = 0, w = 0, h = 0;
-    gtk_window_get_position(g_state.window, &x, &y);
+    int x = 0, y = 0;
+    if (!frame_origin(&x, &y)) return;
+    int w = 0, h = 0;
     gtk_window_get_size(g_state.window, &w, &h);
 
+    gboolean seeded = previous_seeded;
     int anchor_x = previous_x, anchor_y = previous_y;
-    gboolean resized = previous_seeded && (w != previous_w || h != previous_h);
-    gboolean moved = previous_seeded && (x != previous_x || y != previous_y);
+    gboolean resized = seeded && (w != previous_w || h != previous_h);
+    gboolean moved = seeded && (x != previous_x || y != previous_y);
 
-    // Kept current whether or not anything is carried: switching Carry on
-    // mid-session must not measure its first drag from wherever the frame
-    // happened to be when the window was built.
     previous_x = x;
     previous_y = y;
     previous_w = w;
     previous_h = h;
     previous_seeded = TRUE;
 
-    // Dragging the top or left edge moves the position as it resizes, and a
-    // resize is not a move: it changes what the frame covers rather than where
-    // it sits, and the window below is meant to stay put under it.
-    if (!enabled || !moved || resized || !pointer_button_down()) return;
+    gboolean down = pointer_button_down();
 
-    // GTK reports the frame in logical pixels and X places windows in device
-    // ones, so on a scaled display the frame's delta is worth more than its
-    // face value by the time it reaches the windows below.
+    // A resize is not a move: it changes what the frame covers rather than
+    // where it sits, and the windows below are meant to stay put under it.
+    // Dragging a top or left edge moves the origin as it resizes, which is the
+    // one case where both look true at once.
+    if (resized) {
+        release_latch();
+        return;
+    }
+
+    if (!dragging) {
+        // Nothing is being carried yet, so this is only a drag once the frame
+        // has actually moved with a button held. A window the WM places on its
+        // own — mapping one at startup, putting one back when a monitor goes
+        // away, undoing a maximize — moves with nobody holding it, and dragging
+        // some app along with that is nobody's intent.
+        if (!moved || !down) return;
+        dragging = TRUE;
+    } else if (!moved) {
+        // A drag can stand still, and while it does the windows under the frame
+        // are already where this frame puts them. Asking the window manager to
+        // put them there again forty times a second is traffic for nothing.
+        if (!down) release_latch();
+        return;
+    }
+
     int scale = gtk_widget_get_scale_factor(GTK_WIDGET(g_state.window));
 
     GdkDisplay *gdisplay = gdk_display_get_default();
@@ -453,8 +458,10 @@ void carry_service_window_configured(void) {
     gdk_x11_display_error_trap_push(gdisplay);
 
     if (!latch_held) acquire_latch(anchor_x, anchor_y, x, y, scale);
-    start_drag_watch();
 
+    // GTK reports the frame in logical pixels and X places windows in device
+    // ones, so on a scaled display the frame's delta is worth more than its
+    // face value by the time it reaches the windows below.
     int dx = (x - latch_frame_x) * scale;
     int dy = (y - latch_frame_y) * scale;
     for (int i = 0; i < latch_count; i++)
@@ -462,4 +469,82 @@ void carry_service_window_configured(void) {
                     latch_windows[i].y + dy);
 
     gdk_x11_display_error_trap_pop_ignored(gdisplay);
+
+    // The button came up: that last move was the end of the drag, and it is
+    // carried before the latch goes — the frame's final step is as much part of
+    // the drag as the ones with the button still down.
+    if (!down) release_latch();
 }
+
+static gboolean on_poll(gpointer data) {
+    (void)data;
+    if (!enabled) {
+        poll_source = 0;
+        poll_interval = 0;
+        return G_SOURCE_REMOVE;
+    }
+    follow_frame();
+
+    // A drag is followed closely and a resting frame is looked at cheaply, so
+    // the interval changes with what is happening. Changing it means a new
+    // source: a GLib timeout keeps the period it was made with.
+    guint wanted = dragging ? CARRY_DRAG_POLL_MS : CARRY_IDLE_POLL_MS;
+    if (wanted != poll_interval) {
+        poll_interval = wanted;
+        poll_source = g_timeout_add(wanted, on_poll, NULL);
+        return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+static void start_polling(void) {
+    if (poll_source) return;
+    poll_interval = CARRY_IDLE_POLL_MS;
+    poll_source = g_timeout_add(poll_interval, on_poll, NULL);
+}
+
+static void stop_polling(void) {
+    if (!poll_source) return;
+    g_source_remove(poll_source);
+    poll_source = 0;
+    poll_interval = 0;
+}
+
+// ── entry points ────────────────────────────────────────────────────────────
+
+gboolean carry_service_is_enabled(void) { return enabled; }
+
+void carry_service_set_enabled(gboolean on) {
+    if (enabled == on) return;
+    enabled = on;
+    if (on) {
+        // Where the frame stands now is where its next drag starts from, and
+        // the poll is what will notice that drag: nothing else is told about
+        // one. Both are only worth having while the lock is on, which is the
+        // only time anything is carried.
+        //
+        // The lock is applied before the window is on screen, and a frame with
+        // no X window yet has no position to remember; the first poll takes it.
+        if (frame_origin(&previous_x, &previous_y)) {
+            gtk_window_get_size(g_state.window, &previous_w, &previous_h);
+            previous_seeded = TRUE;
+        }
+        start_polling();
+        return;
+    }
+    // Turning it off mid-drag has to let go of what it was holding, or the rest
+    // of that drag would still be carrying it.
+    stop_polling();
+    release_latch();
+}
+
+void carry_service_seed(void) {
+    if (!g_state.window) return;
+    if (!frame_origin(&previous_x, &previous_y))
+        gtk_window_get_position(g_state.window, &previous_x, &previous_y);
+    gtk_window_get_size(g_state.window, &previous_w, &previous_h);
+    previous_seeded = TRUE;
+    release_latch();
+}
+
+void carry_service_window_configured(void) { follow_frame(); }

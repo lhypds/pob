@@ -48,11 +48,16 @@ What you need
 - **Nothing else.** Every install ships `vm/msb/` beside the app —
   `Pob.app/Contents/Resources/vm/msb` on macOS, `<install>/vm/msb` on Linux —
   and the CLI runs it from there. What differs is where the *Linux* app in the
-  guest comes from: a checkout builds it (`linux-x11/build_docker.sh`), and an
-  install fetches `Pob-<version>-linux-<arch>.zip` from the release it is one
-  of, unpacking it under `~/.pob/msb/app/` once and keeping it. `POB_MSB_APP`
-  points at a `dist/Pob` of your own instead — which is also the answer for a
-  version that was never released.
+  guest comes from, and the launch prints which of these it was:
+
+  | | |
+  |-|-|
+  | A checkout | `linux-x11/dist/Pob`, built (`linux-x11/build_docker.sh`) if it isn't there or is the other architecture |
+  | An installed `pob`, run from inside a checkout | that checkout's `linux-x11/dist/Pob`, when it is already built for this architecture — the app you are working on beats the released one, and nothing is built for a launch that did not ask |
+  | An installed `pob`, anywhere else | `Pob-<version>-linux-<arch>.zip` from the release it is one of, unpacked under `~/.pob/msb/app/` once and kept |
+
+  `POB_MSB_APP` names a `dist/Pob` outright and skips all of it — which is also
+  the answer for a version that was never released.
 
 - Disk for two copies of the image — about 1 GB in Docker and 270 MB in
   microsandbox's own store — a 12 GB writable disk for the guest, which is
@@ -247,6 +252,13 @@ When something is wrong
   isn't one, and the frame under an opaque overlay is black. `msb logs pob-msb`
   should show `starting xcompmgr`; a guest where it died is one to look at with
   `msb exec -t pob-msb -- bash`.
+- **The guest is not running the app you just built.** The `📦 App:` line the
+  launch prints says which app went in and where it came from: `this checkout`,
+  `the checkout you are in`, or `release <version>, not a build of yours` — that
+  last one is an installed `pob` fetching the release, which is the right answer
+  everywhere except when you are testing a change to the shell. Run `--msb` from
+  inside the checkout (any directory under it will do), or name the build:
+  `POB_MSB_APP=~/code/pob/linux-x11/dist/Pob pob launch --msb`.
 - **Screen Sharing asks for a password.** Type `pob`, or open
   `vnc://:pob@127.0.0.1:5901` — see the section above for why there is one at
   all.

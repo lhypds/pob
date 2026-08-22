@@ -81,6 +81,28 @@ STAMP_FILE="$STATE_DIR/loaded-image"
 
 die() { echo "❌ $*" >&2; exit 1; }
 
+# Runs a command with a ceiling on how long it may take, and kills it if it
+# overruns. `msb exec` is the reason: it has been seen to sit there after the
+# command it ran has already finished inside the guest — its exit event never
+# arrives — and a launch that simply waited on one of those would hang with a
+# VM that is perfectly up. Every exec below goes through this.
+with_deadline() {
+    local seconds="$1"
+    shift
+    "$@" &
+    local pid=$! waited=0 limit=$((seconds * 4))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$waited" -ge "$limit" ]; then
+            kill -9 "$pid" 2>/dev/null
+            wait "$pid" 2>/dev/null
+            return 124
+        fi
+        sleep 0.25
+        waited=$((waited + 1))
+    done
+    wait "$pid"
+}
+
 # ── what this needs of the host ──────────────────────────────────────────────
 command -v msb >/dev/null 2>&1 || die "microsandbox is not installed — get it with:
    curl -sSL https://get.microsandbox.dev | sh
@@ -145,13 +167,37 @@ release_app() {
     echo "$dir/Pob"
 }
 
-# Three ways to have the app, in the order they answer: named outright, built in
-# the checkout this script is part of, or fetched from the release. What tells a
-# checkout from an install is the build script — an install ships neither it nor
-# anything to run it on.
+# A Linux app already built in the checkout the command was typed inside, if
+# there is one. An installed pob fetches the release otherwise, and someone
+# standing in the source of a change they just made would watch the VM run the
+# release instead of their build — the confusing half of an hour.
+#
+# Only an app that is already there and already the right architecture: a launch
+# that did not ask for a build does not get one, so this can never turn into a
+# ten-minute wait for the Linux toolchain.
+local_dist() {
+    local dir="$PWD" candidate
+    while :; do
+        candidate="$dir/linux-x11/dist/Pob"
+        if [ -x "$candidate/pob" ] && [ "$(elf_arch "$candidate/pob")" = "$ARCH" ]; then
+            echo "$candidate"
+            return 0
+        fi
+        [ "$dir" = "/" ] && return 1
+        dir="$(dirname "$dir")"
+    done
+}
+
+# Four ways to have the app, in the order they answer: named outright, built in
+# the checkout this script is part of, built in the checkout the command was
+# typed inside, or fetched from the release. What tells a checkout from an
+# install is the build script — an install ships neither it nor anything to run
+# it on.
+APP_SOURCE=""
 if [ -n "${POB_MSB_APP:-}" ]; then
     DIST_DIR="${POB_MSB_APP%/}"
     [ -x "$DIST_DIR/pob" ] || die "POB_MSB_APP is $DIST_DIR, and there is no pob in it."
+    APP_SOURCE="POB_MSB_APP"
 elif [ -x "$ROOT_DIR/linux-x11/build_docker.sh" ]; then
     DIST_DIR="$ROOT_DIR/linux-x11/dist/Pob"
     if [ ! -x "$DIST_DIR/pob" ]; then
@@ -163,8 +209,12 @@ elif [ -x "$ROOT_DIR/linux-x11/build_docker.sh" ]; then
         LINUX_ARCH="$ARCH" "$ROOT_DIR/linux-x11/build_docker.sh"
     fi
     [ -x "$DIST_DIR/pob" ] || die "no Linux app at $DIST_DIR after building."
+    APP_SOURCE="this checkout"
+elif DIST_DIR="$(local_dist)"; then
+    APP_SOURCE="the checkout you are in"
 else
     DIST_DIR="$(release_app)"
+    APP_SOURCE="release $VERSION, not a build of yours"
 fi
 
 # Said here rather than found out in the guest: an app of the other architecture
@@ -174,7 +224,7 @@ APP_ARCH="$(elf_arch "$DIST_DIR/pob")"
 [ "$APP_ARCH" = "$ARCH" ] || die "the Linux app in $DIST_DIR is $APP_ARCH and the guest is ${ARCH} —
    it cannot run there. A checkout rebuilds it (unset POB_MSB_SKIP_BUILD);
    POB_MSB_APP points at another."
-echo "📦 App:      $DIST_DIR ($APP_ARCH)"
+echo "📦 App:      $DIST_DIR ($APP_ARCH — $APP_SOURCE)"
 
 # ── the guest image ──────────────────────────────────────────────────────────
 # Built by Docker, then handed to microsandbox, which keeps its own store of
@@ -338,7 +388,10 @@ echo "⏳ Waiting for Pob to answer inside the VM…"
 STATUS_OUT=""
 DEADLINE=$((SECONDS + WAIT_SECONDS))
 while [ "$SECONDS" -lt "$DEADLINE" ]; do
-    if STATUS_OUT="$(msb exec "$NAME" -- pob status 2>/dev/null)"; then
+    # Fifteen seconds is far longer than the answer takes and far shorter than
+    # the wait as a whole, so an exec that hangs costs one attempt rather than
+    # the launch.
+    if STATUS_OUT="$(with_deadline 15 msb exec "$NAME" -- pob status 2>/dev/null)"; then
         break
     fi
     STATUS_OUT=""
@@ -374,8 +427,8 @@ if [ "$START" = "1" ]; then
     echo ""
     echo "▶️  Starting the macro…"
     if [ -n "$MACROPSL" ]; then
-        msb exec "$NAME" -- pob start --macropsl "$MACROPSL"
+        with_deadline 60 msb exec "$NAME" -- pob start --macropsl "$MACROPSL"
     else
-        msb exec "$NAME" -- pob start
+        with_deadline 60 msb exec "$NAME" -- pob start
     fi
 fi
