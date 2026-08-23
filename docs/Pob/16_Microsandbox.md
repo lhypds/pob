@@ -166,6 +166,33 @@ open http://127.0.0.1:8033/        # the web UI (Web UI)
 msb exec pob-msb -- pob status     # the CLI, inside the guest
 ```
 
+`--viewer` does the first of those as part of the launch, for a run that is
+meant to be watched:
+
+```
+pob launch --msb --viewer          # a machine, a Pob on it, and a window on it
+pob launch --msb --start --viewer  # …with the window up before the macro begins
+```
+
+It opens **TigerVNC** where there is one — `vncviewer` on the `PATH`, or the
+binary inside `TigerVNC.app`, which is where Homebrew's cask puts it and it puts
+nothing on the `PATH` — and falls back to macOS's Screen Sharing. It signs
+itself in: the guest's VNC password is written where the viewer can read it,
+`~/.pob/msb/vnc-passwd`, in the format every VNC viewer has read since AT&T's.
+The window is detached from the launch, so the command finishes and the window
+stays; what a viewer that did not connect had to say is in
+`~/.pob/msb/viewer.log`. `POB_MSB_VIEWER=<command>` names a different viewer —
+`remmina`, a `vncviewer` of your own — and set on its own it is the opt-in
+without the flag, for a machine where every `--msb` launch should open one.
+
+```
+brew install --cask tigervnc     # macOS
+apt install tigervnc-viewer      # Debian, Ubuntu
+```
+
+The viewer is looked for before the image is built, so a machine without one
+hears about it in the first second of the launch rather than after the boot.
+
 The VNC password is `pob`, and it is not there to keep anyone out — the port is
 published to `127.0.0.1` and the guest's network is not on the LAN, so whoever
 can reach it is already at this machine. It is there because macOS's **Screen
@@ -262,6 +289,14 @@ When something is wrong
 - **Screen Sharing asks for a password.** Type `pob`, or open
   `vnc://:pob@127.0.0.1:5901` — see the section above for why there is one at
   all.
+- **`--viewer` says there is no VNC viewer to open.** It found neither TigerVNC
+  nor, off macOS, anything to fall back on — install one (`brew install --cask
+  tigervnc`, `apt install tigervnc-viewer`) or name the one you have with
+  `POB_MSB_VIEWER`. The launch itself is unaffected: without the flag it prints
+  the address and opens nothing.
+- **`--viewer` opened a window that asks for the password anyway.** The password
+  file could not be written and the launch said so; type `pob`, and see
+  `POB_MSB_VNC_PASSWORD` for taking the password off altogether.
 - **Clicks landing high, screenshots coming back short.** The frame is taller
   than the guest's screen and is being clipped by it. Raise it with
   `POB_MSB_GEOMETRY`.
@@ -291,6 +326,7 @@ answers to "not on this machine" rather than settings of Pob's:
 | `POB_MSB_GEOMETRY` | The screen, `WIDTHxHEIGHTxDEPTH`. Default: made from the instance's window |
 | `POB_MSB_VNC_PORT`, `POB_MSB_WEB_PORT`, `POB_MSB_MCP_PORT` | The host side of each mapping. Default: the guest's own number, or the next free one |
 | `POB_MSB_VNC_PASSWORD` | What a viewer signs in with, `pob`. Empty for no password, which macOS's Screen Sharing will not open |
+| `POB_MSB_VIEWER` | `1` to open a viewer on the guest's screen when Pob answers — what `--viewer` sets — or the command to open it with. `0`, the default, opens nothing and prints the address |
 | `POB_MSB_IMAGE` | The image tag, `pob-msb:latest` |
 | `POB_MSB_APP` | A Linux `dist/Pob` directory to run in the guest, instead of building or fetching one |
 | `POB_MSB_REBUILD` | `1` to build the image with Docker's layer cache thrown away, which is how it picks up newer packages. An edited `Dockerfile` needs nothing: the build runs at every launch and is the cache doing nothing when there is nothing to do |

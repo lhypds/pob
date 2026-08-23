@@ -45,16 +45,17 @@ Macro options (on start, check, and launch --start):
                      the instance's src/
 ```
 
-`launch` takes three options of its own, `--start`, `--fullscreen` and `--msb`;
-everything else after it is the instance, so `pob launch --start "Work laptop"`
-is that instance, started and running.
+`launch` takes four options of its own, `--start`, `--fullscreen`, `--msb` and
+`--viewer`; everything else after it is the instance, so
+`pob launch --start "Work laptop"` is that instance, started and running.
 
 `--macropsl` says which file to work on. See **Another macro** below.
 
 `--fullscreen` starts Pob over the whole screen with none of its own chrome on
 it. See **Fullscreen** below.
 
-`--msb` starts it on a Linux machine of its own instead of on this desktop. See
+`--msb` starts it on a Linux machine of its own instead of on this desktop, and
+`--viewer` opens a window on that machine's screen. See
 [Microsandbox](16_Microsandbox.md).
 
 | Command | Description |
@@ -64,6 +65,7 @@ it. See **Fullscreen** below.
 | `launch --start` | The same launch, and then the macro: as soon as the new instance's control API answers, the run `start` would have started is started on it. It is the one way to get from nothing running to a running macro in one command — `pob start` on its own has nothing to talk to until a launch has finished — which is what a cron entry or a login item needs. Combines with an instance: `pob launch --start "Work laptop"`, and with `--macropsl <file>` to run that file rather than the instance's own |
 | `launch --fullscreen` | The same launch, over the whole screen: no toolbar, no window buttons, nothing on screen that is Pob's to click — see **Fullscreen** below. Both it and `--msb` are options of the launch and are read only after that word: `pob --fullscreen` on its own says where the flag goes rather than starting anything. Combines with everything else a launch takes: `pob launch --start --fullscreen "Work laptop"` |
 | `launch --msb` | Start it in a microVM instead of on this desktop: a Linux machine with a screen nobody is looking at, Firefox in it, and a copy of this machine's `~/.pob` inside it, put there at boot. Nothing opens here and the pointer stays yours, which is what makes it the way to run a macro while the machine is being used — and the sandbox is thrown away and made again at every launch, so a run that leaves a mess leaves it somewhere that will not exist in an hour. The launch prints the addresses to reach it at: a VNC view of the guest's screen, the [web UI](12_Web%20UI.md) and the [MCP server](08_MCP.md), all on `127.0.0.1`. Combines with `--start` and `--fullscreen`. Needs [microsandbox](https://microsandbox.dev) and Docker; the scripts it runs ship beside the app, and the Linux app it puts in the guest is built from a checkout or fetched from the release — see [Microsandbox](16_Microsandbox.md) |
+| `launch --msb --viewer` | The same launch, with a VNC viewer opened on the guest's screen as soon as Pob answers in it — so a `--msb` run can be watched rather than only reached at the address it prints. It looks for TigerVNC (`vncviewer` on the `PATH`, or the binary inside `TigerVNC.app`, where Homebrew's cask puts it and nothing on the `PATH`) and falls back to macOS's own Screen Sharing; `POB_MSB_VIEWER=<command>` names another, and is an opt-in on its own for a machine where every `--msb` launch should open one. The viewer signs itself in — the guest's VNC password goes into `~/.pob/msb/vnc-passwd` for it — and it is detached, so the launch finishes with the window still up. Only with `--msb`: the screen it opens on is that machine's. Combines with `--start`, and the window is up before the macro begins |
 | `new [name]` | Create an instance — its own `src/` and `logs/`, on the machine's existing settings — under the name given, asking for one when it isn't. The new instance becomes the one `pob launch` starts next |
 | `status` | Live status (executing, recording, the window's lock and click-through, psl, MCP, server address) |
 | `sessions` | List sessions with duration and token usage |
@@ -96,6 +98,7 @@ pob launch --start "Work laptop"         # start that one and run its macro
 pob launch --fullscreen                  # start it over the whole screen, no toolbar
 pob launch --msb                         # start it in a Linux microVM of its own
 pob launch --msb --start                 # …and run the macro in there
+pob launch --msb --viewer                # …and open a VNC window on its screen
 pob check                                # is the macro sound, and can this machine run it?
 pob start                                # replay src/main.macro.psl; pob stop stops it
 pob start --macropsl login.macro.psl     # replay that file instead

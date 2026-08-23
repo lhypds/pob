@@ -35,13 +35,22 @@ FROM debian:stable-slim
 # pcmanfm is the file manager beside them, and vim and nano are for once you
 # are in that terminal. Without them the buttons find nothing and a VNC
 # session is a screen with no way to open anything on it.
+#
+# desktop-file-utils is what makes the desktop able to answer "what opens a
+# text file": it builds /usr/share/applications/mimeinfo.cache, without which
+# every application here is installed but registered for nothing. That is not
+# a small thing to leave out — asked for main.macro.psl with no cache to read,
+# xdg-open falls through to its list of last resorts, which begins with
+# firefox, and the macro opens in a browser tab. It comes to a few hundred
+# kilobytes; shared-mime-info, the types themselves, is already here as a
+# dependency of GTK.
 RUN apt-get update -qq && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
         xvfb x11vnc openbox xcompmgr x11-utils x11-xserver-utils \
         libgtk-3-0t64 libjson-glib-1.0-0 libx11-6 libxtst6 \
         dbus-x11 ca-certificates procps \
         fonts-dejavu-core fonts-liberation fonts-noto-cjk fonts-noto-color-emoji \
-        xterm mousepad pcmanfm xdg-utils vim nano \
+        xterm mousepad pcmanfm xdg-utils desktop-file-utils vim nano \
         firefox-esr && \
     rm -rf /var/lib/apt/lists/*
 

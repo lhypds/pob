@@ -381,6 +381,10 @@ void settings_save_click_through(gboolean on) {
 // One way of opening a file: a program, and the arguments that go in front of
 // the path.
 //
+// A NULL program is the desktop's default application for the attempt's MIME
+// type — text/plain for a file, inode/directory for a folder — launched
+// through GAppInfo rather than spawned. See DEFAULT_HANDLER.
+//
 // `dispatcher` marks the programs that do not open the file themselves but
 // hand it to whatever the desktop has registered for it — xdg-open and gio.
 // They exit straight away, non-zero when nothing was registered, and that exit
@@ -393,36 +397,56 @@ typedef struct {
     gboolean dispatcher;
 } open_command;
 
+// The desktop's default application for the type of thing being opened.
+#define DEFAULT_HANDLER {NULL, {NULL}, FALSE}
+
 // The system's own way of opening a text file, in the order it is tried: the
-// desktop's file association first, then the editors the common desktops ship.
-// A machine can have no xdg-open at all, or an xdg-open with nothing
-// registered for .txt and .json — a bare X session, a container, a trimmed
-// down install — and the toolbar button still has to put the file on screen.
-// macOS never needs this list: `open -t` always has TextEdit behind it.
+// default application for text/plain first, then the editors the common
+// desktops ship, and the generic dispatchers only once none of those exist.
+//
+// The dispatchers used to come first, and that is what opened main.macro.psl
+// in firefox. xdg-open does resolve the file to text/plain, but it only looks
+// for an application the desktop has been told is the *default* for that type
+// — nothing sets one on a bare X session, a container, a trimmed down install
+// — and when it finds none it walks its own list of last resorts, which opens
+// with x-www-browser and firefox. It then exits 0, so the browser window
+// looked to the chain below like the file had been opened.
+//
+// GAppInfo answers the same question better: it falls back from the recorded
+// default to any application that declares it handles text/plain, which is how
+// the text editor that is installed but was never made the default still gets
+// the file. It is `open -t` on macOS, and it is what someone reaching for one
+// of these buttons means: this file is text, put it in the text editor.
+//
+// The editors below the default handler are for the machine where nothing
+// claims text/plain at all.
 static const open_command SYSTEM_EDITORS[] = {
-    {"xdg-open", {NULL}, TRUE},
-    {"gio", {"open", NULL}, TRUE},
+    DEFAULT_HANDLER,
     {"gnome-text-editor", {NULL}, FALSE},
     {"gedit", {NULL}, FALSE},
     {"kate", {NULL}, FALSE},
     {"kwrite", {NULL}, FALSE},
     {"mousepad", {NULL}, FALSE},
+    {"geany", {NULL}, FALSE}, // what a Raspberry Pi OS desktop has
     {"xed", {NULL}, FALSE},
     {"pluma", {NULL}, FALSE},
     {"leafpad", {NULL}, FALSE},
+    {"xdg-open", {NULL}, TRUE},
+    {"gio", {"open", NULL}, TRUE},
 };
 
 // The same idea for a directory: the file managers the common desktops ship,
-// behind the association.
+// behind the default application for inode/directory.
 static const open_command FILE_MANAGERS[] = {
-    {"xdg-open", {NULL}, TRUE},
-    {"gio", {"open", NULL}, TRUE},
+    DEFAULT_HANDLER,
     {"nautilus", {NULL}, FALSE},
     {"dolphin", {NULL}, FALSE},
     {"thunar", {NULL}, FALSE},
     {"nemo", {NULL}, FALSE},
     {"caja", {NULL}, FALSE},
     {"pcmanfm", {NULL}, FALSE},
+    {"xdg-open", {NULL}, TRUE},
+    {"gio", {"open", NULL}, TRUE},
 };
 
 // settings.json's editor names and the command each one opens a file with.
@@ -455,6 +479,7 @@ typedef struct {
     guint count;
     guint index;
     gchar *path;
+    const char *mime; // what the default handler is asked for
     const char *what; // "text editor" / "file manager", for the failure message
 } open_attempt;
 
@@ -483,11 +508,77 @@ static void on_open_exit(GPid pid, gint status, gpointer data) {
     run_open_attempt(attempt);
 }
 
+// Whether an application is a web browser. What marks one is that it
+// registered itself for http links; no text editor does that.
+static gboolean opens_http_links(GAppInfo *app) {
+    const char *const *types = g_app_info_get_supported_types(app);
+    for (int i = 0; types && types[i]; i++)
+        if (g_str_has_prefix(types[i], "x-scheme-handler/http")) return TRUE;
+    return FALSE;
+}
+
+// Hands the path to the desktop's default application for `mime`, the way a
+// file manager's double-click would. TRUE when it was launched.
+//
+// The same association database xdg-open reads, asked in the way that also
+// accepts an application which merely declares the type — see SYSTEM_EDITORS
+// for why that difference is the fix.
+static gboolean launch_default_handler(const char *mime, const char *path) {
+    GAppInfo *app = g_app_info_get_default_for_type(mime, FALSE);
+    if (!app) return FALSE;
+
+    // A browser holding the text/plain default is not a text editor, whatever
+    // the desktop was told: one "Always open with Firefox" on a file like this
+    // one, or a line left in mimeapps.list by something else, is enough to put
+    // it there, and then the macro goes to a new tab — the very thing being
+    // fixed. Fall through to the editors instead.
+    //
+    // Only for text. A folder's default is another matter: konqueror opens
+    // both http and directories, and on KDE it is a fair answer for one.
+    if (g_str_equal(mime, "text/plain") && opens_http_links(app)) {
+        app_logger_log("Settings: %s is the default for %s but it is a browser — "
+                       "looking for a text editor instead",
+                       g_app_info_get_name(app), mime);
+        g_object_unref(app);
+        return FALSE;
+    }
+
+    GFile *file = g_file_new_for_path(path);
+    GList *files = g_list_append(NULL, file);
+    GError *error = NULL;
+    gboolean launched = g_app_info_launch(app, files, NULL, &error);
+    // Named in the log because this is the step that decides which window the
+    // file appears in, and the answer comes from the machine's own settings —
+    // when the wrong application opens it, this line is where that shows.
+    if (launched) {
+        app_logger_log("Settings: opening %s with %s (the default for %s)",
+                       path, g_app_info_get_name(app), mime);
+    } else {
+        app_logger_error("Settings: cannot open %s with %s (the default for %s): %s",
+                         path, g_app_info_get_name(app), mime,
+                         error ? error->message : "unknown error");
+        if (error) g_error_free(error);
+    }
+    g_list_free(files);
+    g_object_unref(file);
+    g_object_unref(app);
+    return launched;
+}
+
 // Runs the chain from its current position, skipping programs that are not
 // installed, until one of them starts. Consumes the attempt.
 static void run_open_attempt(open_attempt *attempt) {
     for (; attempt->index < attempt->count; attempt->index++) {
         const open_command *cmd = &attempt->chain[attempt->index];
+
+        // The default handler is launched rather than spawned: it may well be
+        // a flatpak or a snap, whose GAppInfo carries the command line that
+        // gets into the sandbox and whose program name would not.
+        if (!cmd->program) {
+            if (!launch_default_handler(attempt->mime, attempt->path)) continue;
+            open_attempt_free(attempt);
+            return;
+        }
 
         // Asking the PATH first is what makes the fall-through work for the
         // editors: g_spawn_async reports a missing program too, but only
@@ -520,6 +611,8 @@ static void run_open_attempt(open_attempt *attempt) {
             continue;
         }
 
+        app_logger_log("Settings: opening %s with %s", attempt->path, cmd->program);
+
         if (!cmd->dispatcher) {
             open_attempt_free(attempt);
             return;
@@ -542,12 +635,13 @@ static void run_open_attempt(open_attempt *attempt) {
 // Takes a copy of the chain, so callers can build the head of one on the
 // stack, and walks it.
 static void start_open(const open_command *chain, guint count, const char *path,
-                       const char *what) {
+                       const char *mime, const char *what) {
     open_attempt *attempt = g_new0(open_attempt, 1);
     attempt->chain = g_new0(open_command, count);
     for (guint i = 0; i < count; i++) attempt->chain[i] = chain[i];
     attempt->count = count;
     attempt->path = g_strdup(path);
+    attempt->mime = mime;
     attempt->what = what;
     run_open_attempt(attempt);
 }
@@ -588,7 +682,7 @@ static void open_with_editor(const char *path) {
 
     for (guint i = 0; i < G_N_ELEMENTS(SYSTEM_EDITORS); i++) chain[n++] = SYSTEM_EDITORS[i];
 
-    start_open(chain, n, path, "text editor");
+    start_open(chain, n, path, "text/plain", "text editor");
 }
 
 static void ensure_file(const char *path) {
@@ -641,7 +735,8 @@ void settings_open_app_log(void) {
 void settings_open_logs_folder(void) {
     gchar *path = instance_path("logs");
     g_mkdir_with_parents(path, 0755);
-    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "file manager");
+    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "inode/directory",
+               "file manager");
     g_free(path);
 }
 

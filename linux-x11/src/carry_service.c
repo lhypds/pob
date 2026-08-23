@@ -26,6 +26,7 @@
 #include "carry_service.h"
 
 #include "app.h"
+#include "app_logger.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -95,6 +96,10 @@ static int latch_frame_x, latch_frame_y; // logical pixels, as GTK reports
 static guint poll_source;
 static guint poll_interval;
 static gboolean dragging;
+
+// How far the drag being followed has moved what it is carrying, for the line
+// written when it ends.
+static int carried_dx, carried_dy;
 
 // Where the frame stood at the last look, and how big it was. A latch is
 // anchored there rather than at where the frame is now: by the time a move is
@@ -349,9 +354,18 @@ static gboolean pointer_button_down(void) {
 // ── the latch ───────────────────────────────────────────────────────────────
 
 static void release_latch(void) {
+    // The other half of the pair logged when the latch was taken, and the one
+    // that says what actually happened: a drag ends here however it ended — the
+    // button coming up, a resize, the lock being turned off mid-drag.
+    if (dragging && latch_count > 0)
+        app_logger_log("Carry: carried %d window%s %+d,%+d with the frame",
+                       latch_count, latch_count == 1 ? "" : "s", carried_dx,
+                       carried_dy);
     latch_held = FALSE;
     latch_count = 0;
     dragging = FALSE;
+    carried_dx = 0;
+    carried_dy = 0;
 }
 
 // Finds the windows under the frame as the frame stood at the anchor. A latch
@@ -457,13 +471,27 @@ static void follow_frame(void) {
     // down with it.
     gdk_x11_display_error_trap_push(gdisplay);
 
-    if (!latch_held) acquire_latch(anchor_x, anchor_y, x, y, scale);
+    if (!latch_held) {
+        acquire_latch(anchor_x, anchor_y, x, y, scale);
+        // Two lines a drag, and they are the two questions a report of this not
+        // working turns into: was anything found under the frame, and did it
+        // travel. A frame dragged over bare desktop says "nothing", a frame that
+        // says it carried a window and did not means the window manager put it
+        // back, and no line at all means the drag was never seen as one.
+        if (latch_count > 0)
+            app_logger_log("Carry: the frame picked up %d window%s under it",
+                           latch_count, latch_count == 1 ? "" : "s");
+        else
+            app_logger_log("Carry: nothing under the frame to carry");
+    }
 
     // GTK reports the frame in logical pixels and X places windows in device
     // ones, so on a scaled display the frame's delta is worth more than its
     // face value by the time it reaches the windows below.
     int dx = (x - latch_frame_x) * scale;
     int dy = (y - latch_frame_y) * scale;
+    carried_dx = dx;
+    carried_dy = dy;
     for (int i = 0; i < latch_count; i++)
         move_client(latch_windows[i].client, latch_windows[i].x + dx,
                     latch_windows[i].y + dy);

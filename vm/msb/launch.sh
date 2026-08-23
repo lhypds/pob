@@ -35,6 +35,8 @@
 #   POB_MSB_VNC_PORT    host port for the VNC view       (default 5900)
 #   POB_MSB_VNC_PASSWORD  what a viewer signs in with    (default pob; empty
 #                       for none, which macOS's Screen Sharing will not open)
+#   POB_MSB_VIEWER      1 to open a viewer on the guest's screen once Pob is
+#                       up, or the viewer command to open it with (default 0)
 #   POB_MSB_WEB_PORT    host port for the Pob server     (default: its own)
 #   POB_MSB_MCP_PORT    host port for the MCP server     (default: its own)
 #   POB_MSB_FULLSCREEN  1 to start Pob over the whole guest screen
@@ -62,6 +64,7 @@ GEOMETRY="${POB_MSB_GEOMETRY:-1440x900x24}"
 FULLSCREEN="${POB_MSB_FULLSCREEN:-0}"
 # Unset means the default, and empty means no password — so the - form, not :-.
 VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-pob}"
+VIEWER="${POB_MSB_VIEWER:-0}"
 START="${POB_MSB_START:-0}"
 MACROPSL="${POB_MSB_MACROPSL:-}"
 REBUILD="${POB_MSB_REBUILD:-0}"
@@ -111,6 +114,46 @@ command -v docker >/dev/null 2>&1 || die "Docker is required to build the guest 
 docker info >/dev/null 2>&1 || die "The Docker daemon is not running — start Docker first."
 [ -d "$POB_HOME" ] || die "there is no $POB_HOME to copy — run \`pob\` once first."
 
+# ── the viewer, if the launch is one to watch ────────────────────────────────
+# Found now and opened at the end, so a viewer that is not installed is said
+# before the build rather than after the boot: the launch it belongs to takes
+# minutes, and "no vncviewer here" is worth hearing in the first second of them.
+#
+# In the order they answer: a viewer named outright, TigerVNC on the PATH — the
+# Linux install and anyone who has symlinked it — TigerVNC inside the bundle a
+# macOS install leaves it in, since Homebrew's cask puts the binary there and
+# nothing on the PATH, and macOS's own Screen Sharing, which every Mac has and
+# `open` starts on a vnc:// URL.
+VIEWER_CMD=""
+if [ "$VIEWER" != "0" ]; then
+    case "$VIEWER" in
+        1|on|yes|true)
+            for candidate in \
+                vncviewer \
+                /Applications/TigerVNC.app/Contents/MacOS/vncviewer \
+                "$HOME/Applications/TigerVNC.app/Contents/MacOS/vncviewer"
+            do
+                if command -v "$candidate" >/dev/null 2>&1; then
+                    VIEWER_CMD="$candidate"
+                    break
+                fi
+            done
+            if [ -z "$VIEWER_CMD" ] && [ "$(uname -s)" = "Darwin" ]; then
+                VIEWER_CMD="open"   # Screen Sharing, on the vnc:// URL below
+            fi
+            [ -n "$VIEWER_CMD" ] || die "no VNC viewer to open — install TigerVNC:
+   brew install --cask tigervnc          (macOS)
+   apt install tigervnc-viewer           (Debian, Ubuntu)
+   Or name the one you have: POB_MSB_VIEWER=vncviewer-of-yours"
+            ;;
+        *)
+            command -v "$VIEWER" >/dev/null 2>&1 ||
+                die "POB_MSB_VIEWER is \"$VIEWER\", and there is no such command here."
+            VIEWER_CMD="$VIEWER"
+            ;;
+    esac
+fi
+
 # A microVM runs the host's architecture and nothing else, so this decides both
 # what the Linux app is built for and what the image is built for.
 case "$(uname -m)" in
@@ -132,6 +175,21 @@ elf_arch() {
         3e) echo amd64 ;;
         *)  echo unknown ;;
     esac
+}
+
+# Whether the checkout has moved on since the app in dist was built. The dist
+# is what gets mounted, and it is assembled by hand — so an edit to the shell or
+# the core reaches the guest only if something rebuilds it first. Nothing did:
+# the old check asked whether the binary existed and what architecture it was,
+# both of which a months-old build answers well, and a fix made in the checkout
+# since would run in the VM as if it had never been written.
+#
+# Sources only. core/bin holds what build_docker.sh puts there, which is newer
+# than the dist it then assembles — counting it would rebuild on every launch.
+newer_source() {
+    [ -n "$(find "$ROOT_DIR/linux-x11/src" "$ROOT_DIR/linux-x11/Makefile" "$ROOT_DIR/core" \
+        -type f \( -name '*.c' -o -name '*.h' -o -name '*.go' -o -name 'Makefile' \) \
+        -newer "$1" -print -quit 2>/dev/null)" ]
 }
 
 # The app for the guest, from the release this Pob is one of: unzipped into
@@ -207,6 +265,16 @@ elif [ -x "$ROOT_DIR/linux-x11/build_docker.sh" ]; then
     elif [ "$(elf_arch "$DIST_DIR/pob")" != "$ARCH" ] && [ "$SKIP_BUILD" != "1" ]; then
         echo "🔨 The Linux app in dist is $(elf_arch "$DIST_DIR/pob") — rebuilding it for linux/${ARCH}…"
         LINUX_ARCH="$ARCH" "$ROOT_DIR/linux-x11/build_docker.sh"
+    elif newer_source "$DIST_DIR/pob"; then
+        # POB_MSB_SKIP_BUILD is "use dist as it is, whatever it is", so it says
+        # what it is running rather than refusing to run it.
+        if [ "$SKIP_BUILD" = "1" ]; then
+            echo "⚠️  The app in dist was built before the code now in this checkout —"
+            echo "    POB_MSB_SKIP_BUILD is set, so the guest gets the older one."
+        else
+            echo "🔨 The checkout has changed since the app in dist was built — rebuilding it for linux/${ARCH}…"
+            LINUX_ARCH="$ARCH" "$ROOT_DIR/linux-x11/build_docker.sh"
+        fi
     fi
     [ -x "$DIST_DIR/pob" ] || die "no Linux app at $DIST_DIR after building."
     APP_SOURCE="this checkout"
@@ -421,6 +489,78 @@ echo "  msb exec $NAME -- pob screenshot   # capture the guest's screen"
 echo "  msb exec -t $NAME -- bash          # a shell in the VM"
 echo "  msb logs $NAME                     # what the desktop printed"
 echo "  msb stop $NAME                     # shut the VM down"
+
+# ── and, if it was asked for, the viewer ─────────────────────────────────────
+# The address is printed either way; this is only the step of opening something
+# on it. It happens before the macro starts, so a --viewer --start launch is a
+# window that is already up when the run begins.
+if [ -n "$VIEWER_CMD" ]; then
+    # The password file a VNC viewer signs in with: eight bytes of password,
+    # NUL-padded, DES-encrypted under the one key every VNC has used since
+    # AT&T's — which is the whole of the "encryption" in a VNC password file.
+    #
+    # The key below is the published one with the bits of each byte reversed,
+    # because that is the order VNC feeds it to DES in. openssl writes those
+    # eight bytes on any host (DES moved to the legacy provider in OpenSSL 3,
+    # hence the second attempt); the guest has already written the same file for
+    # x11vnc, so it is asked for it where the host cannot do the sum itself.
+    VNC_PASSWD_FILE=""
+    if [ -n "$VNC_PASSWORD" ]; then
+        VNC_PASSWD_FILE="$STATE_DIR/vnc-passwd"
+        mkdir -p "$STATE_DIR"
+        rm -f "$VNC_PASSWD_FILE"
+        VNC_KEY=E84AD660C4721AE0
+        vnc_obfuscate() {
+            { printf '%s' "$VNC_PASSWORD"; printf '\0\0\0\0\0\0\0\0'; } | head -c 8 |
+                openssl enc -des-ecb -K "$VNC_KEY" -nopad "$@" 2>/dev/null
+        }
+        vnc_obfuscate > "$VNC_PASSWD_FILE" ||
+            vnc_obfuscate -provider legacy -provider default > "$VNC_PASSWD_FILE" ||
+            true
+        if [ ! -s "$VNC_PASSWD_FILE" ]; then
+            with_deadline 15 msb exec "$NAME" -- base64 /root/.vnc/passwd 2>/dev/null |
+                base64 -d > "$VNC_PASSWD_FILE" 2>/dev/null || true
+        fi
+        if [ -s "$VNC_PASSWD_FILE" ]; then
+            chmod 600 "$VNC_PASSWD_FILE"
+        else
+            rm -f "$VNC_PASSWD_FILE"
+            VNC_PASSWD_FILE=""
+            echo "⚠️  Could not write a password file for the viewer — it will ask for one ($VNC_PASSWORD)."
+        fi
+    fi
+
+    # TigerVNC's own arguments are for TigerVNC only: a viewer named in
+    # POB_MSB_VIEWER gets the address and nothing else to choke on.
+    #
+    # -RemoteResize=0 because the guest's screen is the size the macro's
+    # coordinates were recorded against — a viewer that resized it to fit its
+    # own window would move every one of them.
+    VIEWER_ARGS=()
+    case "$(basename "$VIEWER_CMD")" in
+        open)
+            if [ -n "$VNC_PASSWORD" ]; then
+                VIEWER_ARGS=("vnc://:$VNC_PASSWORD@127.0.0.1:$VNC_HOST")
+            else
+                VIEWER_ARGS=("vnc://127.0.0.1:$VNC_HOST")
+            fi
+            ;;
+        vncviewer*)
+            [ -n "$VNC_PASSWD_FILE" ] && VIEWER_ARGS+=(-passwd "$VNC_PASSWD_FILE")
+            VIEWER_ARGS+=(-RemoteResize=0 "127.0.0.1::$VNC_HOST")
+            ;;
+        *) VIEWER_ARGS=("127.0.0.1::$VNC_HOST") ;;
+    esac
+
+    # Detached, and its output kept: the launch is finished, and a viewer that
+    # held the terminal open would be the launch never returning. What it had to
+    # say about a connection that did not happen is in the log.
+    echo ""
+    echo "🖥  Opening $VIEWER_CMD on 127.0.0.1:${VNC_HOST}…"
+    mkdir -p "$STATE_DIR"
+    nohup "$VIEWER_CMD" "${VIEWER_ARGS[@]}" >"$STATE_DIR/viewer.log" 2>&1 &
+    disown
+fi
 
 # ── and, if it was asked for, the run ────────────────────────────────────────
 if [ "$START" = "1" ]; then

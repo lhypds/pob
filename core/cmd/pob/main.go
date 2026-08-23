@@ -17,6 +17,7 @@
 //	                                 no toolbar — driven from here on
 //	pob launch --msb                 start it in a microVM of its own, on a
 //	                                 copy of this ~/.pob, with Firefox in it
+//	pob launch --msb --viewer        …and open a VNC window on its screen
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
 //	pob start                        run src/main.macro.psl (pob stop stops it)
@@ -79,6 +80,11 @@ Commands:
                      inside it. Prints the address to watch it at (VNC) and the
                      web UI's. Needs microsandbox and Docker —
                      see docs/Pob/16_Microsandbox.md
+  launch --msb --viewer
+                     The same launch, with a VNC viewer opened on the guest's
+                     screen once Pob is up — TigerVNC where it is installed,
+                     macOS's Screen Sharing otherwise. POB_MSB_VIEWER names
+                     another. Only with --msb: it is that machine's screen
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
   status             Live status of the instance
@@ -138,6 +144,7 @@ Examples:
   pob launch --fullscreen      # start it over the whole screen, no toolbar
   pob launch --msb             # start it in a Linux microVM of its own
   pob launch --msb --start     # …and run the macro in there
+  pob launch --msb --viewer    # …and open a VNC window on its screen
   pob check                    # is the macro sound, and can this machine run it?
   pob start                    # replay this instance's main macro
   pob start --macropsl login.macro.psl   # replay that file instead
@@ -172,7 +179,7 @@ func main() {
 		}
 	}
 
-	// --fullscreen and --msb are options of the launch, not of the CLI: they
+	// --fullscreen, --msb and --viewer are options of the launch, not of the CLI: they
 	// choose how the app is started, so they are read only after the word that
 	// starts it. Before the command word they are said rather than left to the
 	// flag package, whose "flag provided but not defined" and whole usage
@@ -184,7 +191,7 @@ func main() {
 			break
 		}
 		switch arg {
-		case "--fullscreen", "-fullscreen", "--msb", "-msb":
+		case "--fullscreen", "-fullscreen", "--msb", "-msb", "--viewer", "-viewer":
 			name := "--" + strings.TrimLeft(arg, "-")
 			fail("%s says how to start the app, so it goes after launch — `pob launch %s`", name, name)
 		}

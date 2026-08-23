@@ -51,6 +51,11 @@ func cmdLaunchMSB(root string, opts launchOptions) {
 		"POB_MSB_FULLSCREEN="+boolEnv(opts.fullscreen),
 		"POB_MSB_START="+boolEnv(opts.start),
 		"POB_MSB_MACROPSL="+opts.macroPSL,
+		// Whether a viewer opens on the guest's screen when it is up. Which
+		// viewer is the script's business — POB_MSB_VIEWER also names one, and
+		// a name already in the environment is left alone rather than turned
+		// back into a 1 that would find a different viewer than was asked for.
+		"POB_MSB_VIEWER="+viewerEnv(opts.viewer),
 		// Which release the guest's Linux app is fetched from, when there is no
 		// checkout to build one in. This CLI's own version is the answer: the
 		// app in the VM should be the app out here.
@@ -69,6 +74,21 @@ func cmdLaunchMSB(root string, opts launchOptions) {
 		}
 		fail("could not run %s: %v", script, err)
 	}
+}
+
+// viewerEnv decides what POB_MSB_VIEWER goes into the launch. --viewer turns
+// one on; the variable can also name which viewer to open, and a name is the
+// more specific of the two — so --viewer with one set opens that viewer, and
+// --viewer with nothing set opens whichever the script finds. Set without the
+// flag it is still an opt-in, since the script reads the same variable.
+func viewerEnv(on bool) string {
+	if named := os.Getenv("POB_MSB_VIEWER"); named != "" && named != "0" {
+		return named
+	}
+	if on {
+		return "1"
+	}
+	return "0"
 }
 
 func boolEnv(on bool) string {

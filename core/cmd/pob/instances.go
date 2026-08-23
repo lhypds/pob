@@ -53,14 +53,15 @@ func cmdNew(root, name string) {
 }
 
 // launchOptions is everything a launch was told: which instance, whether the
-// macro runs after it, which macro that is, and the two modes — the whole
-// screen, and a machine of its own.
+// macro runs after it, which macro that is, the two modes — the whole screen,
+// and a machine of its own — and whether to open a window on that machine.
 type launchOptions struct {
 	instance   string
 	start      bool
 	macroPSL   string
 	fullscreen bool
 	msb        bool
+	viewer     bool
 }
 
 // cmdLaunch picks the instance to start and starts it. The running check
@@ -122,6 +123,8 @@ func parseLaunchArgs(args []string) launchOptions {
 			opts.fullscreen = true
 		case arg == "--msb":
 			opts.msb = true
+		case arg == "--viewer":
+			opts.viewer = true
 		case strings.HasPrefix(arg, "-"):
 			fail("unknown launch option %q — run `pob help`", arg)
 		default:
@@ -130,6 +133,12 @@ func parseLaunchArgs(args []string) launchOptions {
 	}
 	if opts.macroPSL != "" && !opts.start {
 		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, opts.macroPSL)
+	}
+	// The screen --viewer opens a window on is the microVM's. A launch on this
+	// desktop has its window on this screen already, so the flag there is an
+	// instruction with nothing to carry it out: said rather than ignored.
+	if opts.viewer && !opts.msb {
+		fail("--viewer opens a window on the microVM's screen, so it goes with --msb — `pob launch --msb --viewer`")
 	}
 	opts.instance = strings.TrimSpace(strings.Join(name, " "))
 	return opts
