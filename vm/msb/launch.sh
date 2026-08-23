@@ -15,8 +15,16 @@
 #
 # The app, this directory and ~/.pob go in as read-only mounts rather than
 # image layers, so a rebuilt app (linux-x11/build_docker.sh) or an edited
-# run.sh takes effect on the next launch with no image work at all. The
-# sandbox itself is replaced at every launch: what survives it is on the host.
+# run.sh takes effect on the next launch with no image work at all. Nothing the
+# guest writes comes back: what survives a launch is on the host.
+#
+# A launch is a machine of its own, and it is named the way an instance is:
+# msb-<4 hex>, drawn fresh, the counterpart of the pb-<4 hex> in ~/.pob. So a
+# second launch stands beside the first rather than taking its place, several
+# Pobs can be driven at once from one checkout, and no name means "whichever
+# machine was up last" the way a numbered one would. POB_MSB_NAME names one
+# machine instead, and that one is replaced at every launch: it is the address a
+# script keeps typing.
 #
 # It runs from either end of an install: from a checkout, where the Linux app is
 # built here, and from beside an installed app — Pob.app/Contents/Resources/vm/msb
@@ -26,7 +34,9 @@
 # Usage: vm/msb/launch.sh            (or: pob launch --msb)
 #
 # Environment:
-#   POB_MSB_NAME        sandbox name                     (default pob-msb)
+#   POB_MSB_NAME        the one sandbox to be, replacing whatever is under that
+#                       name (default: a new machine each launch, named
+#                       msb-<4 hex> the way an instance is named pb-<4 hex>)
 #   POB_MSB_IMAGE       image tag                        (default pob-msb:latest)
 #   POB_MSB_CPUS        vCPUs                            (default 2)
 #   POB_MSB_MEMORY      guest memory                     (default 4G)
@@ -55,7 +65,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-NAME="${POB_MSB_NAME:-pob-msb}"
+# Empty is "any new machine", and which one it turns out to be can only be
+# settled once msb is there to be asked what is already up — see "the sandbox's
+# name" below.
+NAME="${POB_MSB_NAME:-}"
+PINNED_NAME=0
+[ -n "$NAME" ] && PINNED_NAME=1
 IMAGE="${POB_MSB_IMAGE:-pob-msb:latest}"
 CPUS="${POB_MSB_CPUS:-2}"
 MEMORY="${POB_MSB_MEMORY:-4G}"
@@ -113,6 +128,43 @@ command -v msb >/dev/null 2>&1 || die "microsandbox is not installed — get it 
 command -v docker >/dev/null 2>&1 || die "Docker is required to build the guest image."
 docker info >/dev/null 2>&1 || die "The Docker daemon is not running — start Docker first."
 [ -d "$POB_HOME" ] || die "there is no $POB_HOME to copy — run \`pob\` once first."
+
+# ── the sandbox's name ───────────────────────────────────────────────────────
+# Which machine this launch is. A name given is that machine and no other, and
+# the launch takes it over; no name is a machine of this launch's own, named the
+# way ~/.pob names an instance — msb-<4 hex> beside its pb-<4 hex>.
+#
+# Drawn rather than counted, and that is the point of it: a number would have to
+# mean something ("the second machine up"), which stops being true the moment the
+# first one is stopped, and a name that is only ever itself can be printed once
+# and typed back for as long as the machine is there.
+#
+# Two bytes of /dev/urandom as hex, which is exactly what core does for an
+# instance id (core/internal/storage/storage.go). Drawn again if it is taken:
+# 65536 names and a handful of machines make that a formality, and a collision
+# would otherwise silently replace somebody else's VM.
+ALL_SANDBOXES="$(msb list -q 2>/dev/null || true)"
+RUNNING_SANDBOXES="$(msb list --running -q 2>/dev/null || true)"
+sandbox_exists() { printf '%s\n' "$ALL_SANDBOXES" | grep -qx "$1"; }
+running_sandbox() { printf '%s\n' "$RUNNING_SANDBOXES" | grep -qx "$1"; }
+
+if [ "$PINNED_NAME" = "0" ]; then
+    for _ in $(seq 100); do
+        NAME="msb-$(od -An -tx1 -N2 /dev/urandom | tr -d ' \n')"
+        sandbox_exists "$NAME" || break
+    done
+    [ -n "$NAME" ] || die "could not draw a name for the sandbox."
+fi
+
+# What is already up, said before the minutes of building start: each of these
+# holds the memory and the disk below, and a host runs out of both without ever
+# saying so in a way that points here. Pob's own machines are the msb-* ones and
+# the pob-msb* an older launch left behind.
+OTHER_PODS="$(printf '%s\n' "$RUNNING_SANDBOXES" | grep -Ec '^(msb-|pob-msb)' || true)"
+if [ "$OTHER_PODS" -gt 0 ] && [ "$PINNED_NAME" = "0" ]; then
+    echo "ℹ️  $OTHER_PODS Pob VM(s) already up — this is another beside them, at $MEMORY and $DISK each."
+    echo "   \`pob\` lists them; POB_MSB_NAME=<name> reuses one instead."
+fi
 
 # ── the viewer, if the launch is one to watch ────────────────────────────────
 # Found now and opened at the end, so a viewer that is not installed is said
@@ -348,6 +400,12 @@ WEB_GUEST="$(json_number "$SETTINGS" server_port 8033)"
 MCP_GUEST="$(json_number "$SETTINGS" mcp_port 8032)"
 VNC_GUEST=5900
 
+# Which instance the guest will come up on: whatever INSTANCE names now, since
+# what the guest reads at boot is the copy of this file that goes in with it.
+# Read here rather than inside the geometry block below, which is one of the two
+# things that want it — the other is the record this launch leaves for `pob`.
+INSTANCE_ID="$(tr -d ' \t\r\n' < "$POB_HOME/INSTANCE" 2>/dev/null || true)"
+
 # ── the screen the frame has to fit on ───────────────────────────────────────
 # Every coordinate in a macro is measured from inside Pob's frame, so the frame
 # has to come up the size it was recorded at — and a frame that does not fit on
@@ -359,7 +417,6 @@ VNC_GUEST=5900
 # toolbar above it, and a margin. Naming a geometry says this differently and
 # is taken as said.
 if [ -z "${POB_MSB_GEOMETRY:-}" ]; then
-    INSTANCE_ID="$(tr -d ' \t\r\n' < "$POB_HOME/INSTANCE" 2>/dev/null || true)"
     INSTANCE_JSON="$POB_HOME/$INSTANCE_ID/instance.json"
     FRAME_W="$(json_number "$INSTANCE_JSON" window_width 0)"
     FRAME_H="$(json_number "$INSTANCE_JSON" window_height 0)"
@@ -399,11 +456,15 @@ WANT_VNC="${POB_MSB_VNC_PORT:-$VNC_GUEST}"
 WANT_WEB="${POB_MSB_WEB_PORT:-$WEB_GUEST}"
 WANT_MCP="${POB_MSB_MCP_PORT:-$MCP_GUEST}"
 
-# The sandbox from an earlier launch is stopped here rather than replaced below,
-# and the difference is the ports: a running VM holds the ones it published, and
-# a launch that stepped around its own last one would move every address it
-# prints one number along, at every launch, forever.
-if msb list --running -q 2>/dev/null | grep -qx "$NAME"; then
+# The machine this launch is taking over is stopped here rather than replaced
+# below, and the difference is the ports: a running VM holds the ones it
+# published, and a launch that stepped around its own last one would move every
+# address it prints one number along, at every launch, forever.
+#
+# Only a named launch reaches this: an unnamed one picked a name nothing running
+# holds, and stepping around the ports of the machines still up is exactly what
+# it should do.
+if running_sandbox "$NAME"; then
     echo "🧹 Stopping the $NAME left from an earlier launch…"
     msb stop "$NAME" >/dev/null 2>&1 || true
     # Letting go of them takes a moment longer than stopping, and a scan run
@@ -422,8 +483,9 @@ free_port "$WANT_MCP"; MCP_HOST="$PORT"
 
 # ── the sandbox ──────────────────────────────────────────────────────────────
 # --replace, so a launch is a launch: the guest's own state is a copy of this
-# machine's and is made again from it in a few seconds, and a VM left over from
-# an earlier run is the one thing that could answer in its place.
+# machine's and is made again from it in a few seconds, and a stopped VM under
+# this name — the one the launch is taking over, or the one whose number was
+# handed back — is the only thing that could answer in its place.
 #
 # Published on 127.0.0.1 only. The guest's Pob server has no authentication and
 # its VNC password is printed a few lines below — both are as open as the
@@ -443,6 +505,33 @@ msb run -d --replace --name "$NAME" "$IMAGE" --pull never \
     --env "POB_MSB_VNC_PASSWORD=$VNC_PASSWORD" \
     --quiet >/dev/null ||
     die "microsandbox could not start the VM — \`msb doctor\` says whether this host can."
+
+# ── what this machine is running, for `pob` to list ──────────────────────────
+# microsandbox knows the ports, the state and the screen of every sandbox it
+# has — `msb inspect --format json` is where `pob` reads those from, and it is
+# the authority on them. The one thing it cannot know is which instance is
+# inside: the guest reads that from the copy of INSTANCE that went in with it,
+# and by then it is a file on a disk of its own.
+#
+# So it is left here instead, one small file per machine, for `pob` to put a
+# name to what it finds up. A launch by hand leaves none, and a VM with no
+# record still lists — with a dash where the instance would be.
+VMS_DIR="$STATE_DIR/vms"
+mkdir -p "$VMS_DIR"
+printf '{"instance":"%s","name":"%s","vnc_port":%s,"web_port":%s,"mcp_port":%s,"started":%s}\n' \
+    "$INSTANCE_ID" "$NAME" "$VNC_HOST" "$WEB_HOST" "$MCP_HOST" "$(date +%s)" \
+    > "$VMS_DIR/$NAME.json" 2>/dev/null || true
+
+# The records of machines microsandbox no longer has at all. A stopped sandbox
+# keeps its own — it is still a machine, and `msb start` brings it back to the
+# instance named here — but a removed one is a file about nothing.
+if SANDBOXES="$(msb list -q 2>/dev/null)"; then
+    for RECORD in "$VMS_DIR"/*.json; do
+        [ -e "$RECORD" ] || continue
+        RECORD_NAME="${RECORD##*/}"
+        printf '%s\n' "$SANDBOXES" | grep -qx "${RECORD_NAME%.json}" || rm -f "$RECORD"
+    done
+fi
 
 # ── waiting for Pob ──────────────────────────────────────────────────────────
 # `pob status` inside the guest answers only once the app is up and pob-core is
@@ -488,11 +577,12 @@ echo "  msb exec $NAME -- pob start        # replay the macro"
 echo "  msb exec $NAME -- pob screenshot   # capture the guest's screen"
 echo "  msb exec -t $NAME -- bash          # a shell in the VM"
 echo "  msb logs $NAME                     # what the desktop printed"
-echo "  msb stop $NAME                     # shut the VM down"
+echo "  pob kill $NAME                     # shut this VM down"
+echo "  pob                                # every instance and VM, with its screen"
 
 # ── and, if it was asked for, the viewer ─────────────────────────────────────
 # The address is printed either way; this is only the step of opening something
-# on it. It happens before the macro starts, so a --viewer --start launch is a
+# on it. It happens before the macro starts, so a --vncviewer --start launch is a
 # window that is already up when the run begins.
 if [ -n "$VIEWER_CMD" ]; then
     # The password file a VNC viewer signs in with: eight bytes of password,

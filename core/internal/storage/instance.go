@@ -117,3 +117,33 @@ func SetInstanceID(root, id string) error {
 	}
 	return os.WriteFile(filepath.Join(root, instancePointer), []byte(id+"\n"), 0o644)
 }
+
+// DeleteInstance removes an instance directory and everything under it — its
+// macros, its logs and every session in them.
+//
+// The id is checked the way SetInstanceID checks it, and here that check is
+// what stands between a name and the rest of ~/.pob: this ends in a RemoveAll
+// of a path built from it, and a `..` inside one would take the directory above
+// with it. Nothing but a pb- name with no separators in it gets that far.
+func DeleteInstance(root, id string) error {
+	if !strings.HasPrefix(id, InstancePrefix) || strings.ContainsAny(id, `/\`) {
+		return fmt.Errorf("%q is not an instance id", id)
+	}
+	dir := filepath.Join(root, id)
+	if _, err := os.Stat(dir); err != nil {
+		return err
+	}
+	return os.RemoveAll(dir)
+}
+
+// ClearInstanceID removes <root>/INSTANCE, so the next machine to ask which
+// instance is in use is answered with a new one. It is what deleting the last
+// instance leaves behind: a pointer at a directory that is not there would
+// otherwise be resolved as an instance again, id and all.
+func ClearInstanceID(root string) error {
+	err := os.Remove(filepath.Join(root, instancePointer))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}

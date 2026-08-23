@@ -76,7 +76,7 @@ What the launch does
 $ pob launch --msb
 📦 App:      /Users/you/code/pob/linux-x11/dist/Pob (arm64)
 📦 Image:    pob-msb:latest
-🚀 Starting the sandbox pob-msb (2 vCPU, 4G, 12G, 1440x1095x24)…
+🚀 Starting the sandbox msb-4f2a (2 vCPU, 4G, 12G, 1440x1095x24)…
 ⏳ Waiting for Pob to answer inside the VM…
 
 Instance:   pb-b424 (pid 254)
@@ -163,15 +163,34 @@ guest is on:
 ```
 open vnc://:pob@127.0.0.1:5901     # the guest's screen, live
 open http://127.0.0.1:8033/        # the web UI (Web UI)
-msb exec pob-msb -- pob status     # the CLI, inside the guest
+msb exec msb-4f2a -- pob status     # the CLI, inside the guest
 ```
 
-`--viewer` does the first of those as part of the launch, for a run that is
+The launch prints those addresses, and `pob` — the bare command — lists them
+again afterwards, which is what to run when the terminal that printed them is
+long gone:
+
+```
+VMs:
+   SANDBOX        INSTANCE   STATE     SCREEN
+   msb-4f2a       pb-d7df    running   vnc://127.0.0.1:5901  (password: pob)
+   msb-91c7       pb-91ab    running   vnc://127.0.0.1:5902  (password: pob)
+```
+
+The port and the password come from microsandbox itself — `msb inspect <name>
+--format json`, which is the authority on what a sandbox was actually started
+with, mappings moved by a port already in use included. The instance column is
+the one thing it cannot answer: the guest reads that from the copy of
+`INSTANCE` that went in with it, so each launch leaves a note of what it sent
+in `~/.pob/msb/vms/<name>.json`. A VM started by hand has none, and lists with
+a dash there.
+
+`--vncviewer` does the first of those as part of the launch, for a run that is
 meant to be watched:
 
 ```
-pob launch --msb --viewer          # a machine, a Pob on it, and a window on it
-pob launch --msb --start --viewer  # …with the window up before the macro begins
+pob launch --msb --vncviewer          # a machine, a Pob on it, and a window on it
+pob launch --msb --start --vncviewer  # …with the window up before the macro begins
 ```
 
 It opens **TigerVNC** where there is one — `vncviewer` on the `PATH`, or the
@@ -208,14 +227,22 @@ The `pob` command *inside* the guest is the one that can drive it: the
 not this machine's. So it goes through `msb exec`, which is the guest's terminal:
 
 ```
-msb exec pob-msb -- pob start                  # replay the macro
-msb exec pob-msb -- pob start --macropsl f     # replay that one
-msb exec pob-msb -- pob screenshot             # capture the guest's screen
-msb exec pob-msb -- pob stop
-msb exec -t pob-msb -- bash                    # a shell in the VM
-msb logs pob-msb                               # what the desktop printed
-msb stop pob-msb                               # shut the machine down
+msb exec msb-4f2a -- pob start                  # replay the macro
+msb exec msb-4f2a -- pob start --macropsl f     # replay that one
+msb exec msb-4f2a -- pob screenshot             # capture the guest's screen
+msb exec msb-4f2a -- pob stop
+msb exec -t msb-4f2a -- bash                    # a shell in the VM
+msb logs msb-4f2a                               # what the desktop printed
+pob kill msb-4f2a                               # shut the machine down
+pob kill --all                                 # …every one that is up
 ```
+
+The last two are Pob's own words for `msb stop`, which still says it too. What
+`pob kill` takes is a name out of the listing a bare `pob` prints, and either
+column of it will do: the sandbox — `pob kill msb-4f2a` — or the instance
+running inside it, `pob kill pb-d7df`, which stops that instance wherever it is,
+this machine included. Bare, with no name at all, `pob kill` is the Pob on this
+desktop and never a VM.
 
 `pob launch --msb --start` does the first of those as part of the launch, which
 is the one command a cron entry or a CI step wants: a machine, a Pob on it, and
@@ -240,7 +267,7 @@ in it fails at the slot — `pob check` inside the guest says so, and so does th
 key if a macro needs one:
 
 ```
-msb exec -t pob-msb -- bash        # then install psl as you would anywhere
+msb exec -t msb-4f2a -- bash        # then install psl as you would anywhere
 ```
 
 That lasts as long as the sandbox, which is until the next launch. A macro that
@@ -254,17 +281,38 @@ what most macros drive. `launch("libreoffice")` in the guest needs
 Its lifetime
 ------------
 
-The sandbox is **replaced at every launch** — `msb run --replace` — because its
-state is a copy of this machine's and is made again from it in seconds. What
-survives a launch is on the host, which is where you were editing it anyway.
+**Every launch is a machine of its own**, named the way an instance is: a launch
+draws `msb-<4 hex>` — `msb-4f2a`, `msb-91c7` — beside the `pb-<4 hex>` in
+`~/.pob`, from the same two bytes of randomness core draws an instance id from.
+So a second `pob launch --msb` stands beside the first instead of taking its
+place, and several Pobs can be driven at once from one checkout. The launch
+prints the name it drew and every command for that machine, and says how many
+were already up before it: each one holds its own memory and disk, and a host
+runs out of both without ever pointing here.
+
+Drawn rather than counted, because a number would have to mean something. "The
+second machine up" stops being true the moment the first one is stopped, and a
+name that is only ever itself is one you can read off a launch from an hour ago
+and still type. Nothing takes a name back, either: a stopped machine keeps its
+own until `msb rm <name>` is asked for it, so `msb list` is a history of the
+machines that were and `pob` is the list of the ones that are.
+
+`POB_MSB_NAME=<name>` asks for one machine instead of a new one, and **that one
+is replaced at every launch** — `msb run --replace` — because its state is a
+copy of this machine's and is made again from it in seconds. It is the shape to
+use from a script: the address stays the same across launches, which is what
+lets the next line be an `msb exec` against it. What survives a launch is on
+the host either way, which is where you were editing it anyway.
 
 The VM is up for exactly as long as Pob is: `run.sh` waits on the app, so
-`msb exec pob-msb -- pob kill` ends the machine rather than leaving a desktop
+`msb exec msb-4f2a -- pob kill` ends the machine rather than leaving a desktop
 with nobody on it. That one answers
 `error: runtime error: exec session ended without exit event`, which is not a
 failure — it is what killing the machine you are talking *through* looks like
-from here; `msb ls` says `stopped` afterwards. `msb stop pob-msb` is the same
-end said from this side.
+from here; `msb ls` says `stopped` afterwards. `pob kill <name>` is the same end
+said from this side, and the one to reach for: it names the machine out of the
+same listing `pob` prints, and it does not have to talk through the guest to
+end it.
 
 Nothing about this touches the Pob on your own desktop. Launch one here and one
 in a VM if you like — they share the `~/.pob` the guest copied at boot and
@@ -276,9 +324,9 @@ When something is wrong
 
 - **Black frames.** Almost always the compositor: Pob writes
   `No compositor — transparency unavailable` across its own window when there
-  isn't one, and the frame under an opaque overlay is black. `msb logs pob-msb`
+  isn't one, and the frame under an opaque overlay is black. `msb logs msb-4f2a`
   should show `starting xcompmgr`; a guest where it died is one to look at with
-  `msb exec -t pob-msb -- bash`.
+  `msb exec -t msb-4f2a -- bash`.
 - **The guest is not running the app you just built.** The `📦 App:` line the
   launch prints says which app went in and where it came from: `this checkout`,
   `the checkout you are in`, or `release <version>, not a build of yours` — that
@@ -289,12 +337,12 @@ When something is wrong
 - **Screen Sharing asks for a password.** Type `pob`, or open
   `vnc://:pob@127.0.0.1:5901` — see the section above for why there is one at
   all.
-- **`--viewer` says there is no VNC viewer to open.** It found neither TigerVNC
+- **`--vncviewer` says there is no VNC viewer to open.** It found neither TigerVNC
   nor, off macOS, anything to fall back on — install one (`brew install --cask
   tigervnc`, `apt install tigervnc-viewer`) or name the one you have with
   `POB_MSB_VIEWER`. The launch itself is unaffected: without the flag it prints
   the address and opens nothing.
-- **`--viewer` opened a window that asks for the password anyway.** The password
+- **`--vncviewer` opened a window that asks for the password anyway.** The password
   file could not be written and the launch said so; type `pob`, and see
   `POB_MSB_VNC_PASSWORD` for taking the password off altogether.
 - **Clicks landing high, screenshots coming back short.** The frame is taller
@@ -306,7 +354,7 @@ When something is wrong
 - **`launch()` opened it but did not place it.** openbox is not running; the log
   says whether it started.
 - **The launch waits and then gives up.** It prints the last of `msb logs` when
-  it does, and leaves the machine up on purpose — `msb exec -t pob-msb -- bash`
+  it does, and leaves the machine up on purpose — `msb exec -t msb-4f2a -- bash`
   is the way in.
 - **`msb doctor` is not happy.** Nothing here will boot until it is. On macOS it
   wants a recent host and its own `libkrunfw`; the installer above puts that
@@ -321,12 +369,12 @@ answers to "not on this machine" rather than settings of Pob's:
 
 | | |
 |-|-|
-| `POB_MSB_NAME` | The sandbox's name, `pob-msb`. Another name is another machine, side by side |
+| `POB_MSB_NAME` | The one machine to be, replacing whatever is under that name. Unset — the default — is a new machine each launch, under a name drawn as `msb-<4 hex>` |
 | `POB_MSB_CPUS`, `POB_MSB_MEMORY`, `POB_MSB_DISK` | `2`, `4G`, `12G` |
 | `POB_MSB_GEOMETRY` | The screen, `WIDTHxHEIGHTxDEPTH`. Default: made from the instance's window |
 | `POB_MSB_VNC_PORT`, `POB_MSB_WEB_PORT`, `POB_MSB_MCP_PORT` | The host side of each mapping. Default: the guest's own number, or the next free one |
 | `POB_MSB_VNC_PASSWORD` | What a viewer signs in with, `pob`. Empty for no password, which macOS's Screen Sharing will not open |
-| `POB_MSB_VIEWER` | `1` to open a viewer on the guest's screen when Pob answers — what `--viewer` sets — or the command to open it with. `0`, the default, opens nothing and prints the address |
+| `POB_MSB_VIEWER` | `1` to open a viewer on the guest's screen when Pob answers — what `--vncviewer` sets — or the command to open it with. `0`, the default, opens nothing and prints the address |
 | `POB_MSB_IMAGE` | The image tag, `pob-msb:latest` |
 | `POB_MSB_APP` | A Linux `dist/Pob` directory to run in the guest, instead of building or fetching one |
 | `POB_MSB_REBUILD` | `1` to build the image with Docker's layer cache thrown away, which is how it picks up newer packages. An edited `Dockerfile` needs nothing: the build runs at every launch and is the cache doing nothing when there is nothing to do |

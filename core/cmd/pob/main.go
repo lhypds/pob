@@ -9,7 +9,7 @@
 //
 // Usage examples:
 //
-//	pob                              show the instance
+//	pob                              show what is on this machine
 //	pob new "Work laptop"            create an instance and switch to it
 //	pob launch                       start the app (asks which, with several)
 //	pob launch --start               start the app and run its macro
@@ -17,7 +17,7 @@
 //	                                 no toolbar — driven from here on
 //	pob launch --msb                 start it in a microVM of its own, on a
 //	                                 copy of this ~/.pob, with Firefox in it
-//	pob launch --msb --viewer        …and open a VNC window on its screen
+//	pob launch --msb --vncviewer     …and open a VNC window on its screen
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
 //	pob start                        run src/main.macro.psl (pob stop stops it)
@@ -62,8 +62,12 @@ Macro options (on start, check, and launch --start):
                      the instance's src/
 
 Commands:
-  (none)             Show the instance and its sessions; with --session show
-                     that session
+  (none)             Show what is on this machine: the version, ~/.pob and psl,
+                     then every instance — the one a bare launch would start
+                     marked * — and every microVM that is up, each with the
+                     instance inside it and the vnc:// address of its screen.
+                     What the running instance is doing is status; with
+                     --session, show that session instead
   launch [instance]  Start the app. With more than one instance and nothing
                      named, lists them and asks which to start — arrow keys to
                      move, enter to start. <instance> is a name or an id
@@ -78,17 +82,23 @@ Commands:
                      desktop: a Linux machine with a screen nobody is looking
                      at, Firefox installed, and a copy of this machine's ~/.pob
                      inside it. Prints the address to watch it at (VNC) and the
-                     web UI's. Needs microsandbox and Docker —
+                     web UI's. Every launch is another machine, named msb-xxxx
+                     the way an instance is named pb-xxxx, so several run side by
+                     side; POB_MSB_NAME=<name> takes one over instead. Needs
+                     microsandbox and Docker —
                      see docs/Pob/16_Microsandbox.md
-  launch --msb --viewer
+  launch --msb --vncviewer
                      The same launch, with a VNC viewer opened on the guest's
                      screen once Pob is up — TigerVNC where it is installed,
                      macOS's Screen Sharing otherwise. POB_MSB_VIEWER names
                      another. Only with --msb: it is that machine's screen
   new [name]         Create an instance — its own src/ macros and logs — and make
                      it the one Pob starts next
+  del, delete        Delete an instance, named after the word: its macros and
+                     every session in it. Asks first, unless --yes; refuses
+                     while anything is running it, here or in a VM
   status             Live status of the instance
-  sessions           List the instance's sessions
+  sessions           List every instance's sessions, under a heading each
   check              Read src/main.macro.psl and the files it calls, and look
                      over what a run needs of this machine — psl, what psl fills
                      slots with, the app and the core behind it, settings.json.
@@ -112,6 +122,10 @@ Commands:
   clickthrough on    Pass clicks on the overlay down to the window underneath
   clickthrough off   Keep them; the overlay takes the clicks itself
   kill, shutdown     Quit the running instance: the app and its core
+  kill <name>        Stop what that name is running, from the listing a bare pob
+                     prints: an instance id or name, stopped wherever it is
+                     running — this machine, a microVM, or both — or a sandbox
+                     name, which is that VM and the Pob on it. --all is every VM
   relaunch           Quit the running instance and start it again. This is also
                      how fullscreen is left and entered on a Pob that is up:
                      --fullscreen brings it back over the whole screen, and a
@@ -137,14 +151,14 @@ Update options (after "update"):
   --bin DIR          Where the pob symlink goes (Linux and macOS)
 
 Examples:
-  pob                          # what's running?
+  pob                          # what is on this machine?
   pob new "Work laptop"        # create an instance and switch to it
   pob launch                   # start the app (asks which, with several)
   pob launch --start           # start it and run the macro straight away
   pob launch --fullscreen      # start it over the whole screen, no toolbar
   pob launch --msb             # start it in a Linux microVM of its own
   pob launch --msb --start     # …and run the macro in there
-  pob launch --msb --viewer    # …and open a VNC window on its screen
+  pob launch --msb --vncviewer # …and open a VNC window on its screen
   pob check                    # is the macro sound, and can this machine run it?
   pob start                    # replay this instance's main macro
   pob start --macropsl login.macro.psl   # replay that file instead
@@ -179,7 +193,7 @@ func main() {
 		}
 	}
 
-	// --fullscreen, --msb and --viewer are options of the launch, not of the CLI: they
+	// --fullscreen, --msb and --vncviewer are options of the launch, not of the CLI: they
 	// choose how the app is started, so they are read only after the word that
 	// starts it. Before the command word they are said rather than left to the
 	// flag package, whose "flag provided but not defined" and whole usage
@@ -191,7 +205,7 @@ func main() {
 			break
 		}
 		switch arg {
-		case "--fullscreen", "-fullscreen", "--msb", "-msb", "--viewer", "-viewer":
+		case "--fullscreen", "-fullscreen", "--msb", "-msb", "--vncviewer", "-vncviewer":
 			name := "--" + strings.TrimLeft(arg, "-")
 			fail("%s says how to start the app, so it goes after launch — `pob launch %s`", name, name)
 		}
@@ -232,8 +246,14 @@ func main() {
 	case "new":
 		cmdNew(root, strings.TrimSpace(strings.Join(args[1:], " ")))
 
+	// del, and delete for whoever types the word out. Not rm: what this takes
+	// is an instance rather than a path, and rm reads like the one that takes a
+	// path.
+	case "del", "delete":
+		cmdDel(root, parseDelArgs(args[1:], command))
+
 	case "sessions":
-		listSessionsCmd(root, theInstance(root).ID)
+		listSessionsCmd(root)
 
 	case "status":
 		showStatus(runningInstance(root))
@@ -282,7 +302,7 @@ func main() {
 	// shutdown is the same command said the way an app is quit rather than the
 	// way a process is.
 	case "kill", "shutdown":
-		cmdKill(root)
+		cmdKill(root, parseKillArgs(args[1:], command))
 
 	// Not runningInstance either: half of what it does is a launch, and a
 	// stopped Pob is something it can still finish rather than refuse.
@@ -363,6 +383,59 @@ func fullscreenOnly(args []string, command string) bool {
 		fullscreen = true
 	}
 	return fullscreen
+}
+
+// parseKillArgs splits what follows `kill` into what is being stopped: nothing,
+// which is the Pob on this machine, or a name — an instance, or the sandbox a
+// microVM runs under. Everything that is not a flag is that name, joined back
+// up, since an instance called "Work laptop" arrives as two arguments.
+func parseKillArgs(args []string, command string) killOptions {
+	opts := killOptions{}
+	var names []string
+	for _, arg := range args {
+		switch arg {
+		case "--all", "-all":
+			opts.all = true
+		case "--msb", "-msb":
+			// It was the flag for this a version ago, and it reads like it
+			// still should be — so it is answered with the shape that replaced
+			// it rather than as an unknown option.
+			fail("%s takes the name itself — `pob %s <instance or VM>`, or `pob %s` for the Pob on this machine",
+				command, command, command)
+		default:
+			if strings.HasPrefix(arg, "-") {
+				fail("unknown %s option %q — run `pob help`", command, arg)
+			}
+			names = append(names, arg)
+		}
+	}
+	opts.target = strings.TrimSpace(strings.Join(names, " "))
+	if opts.all && opts.target != "" {
+		fail("--all is every VM, so it goes without a name — `pob %s --all`, or `pob %s %s`",
+			command, command, opts.target)
+	}
+	return opts
+}
+
+// parseDelArgs splits what follows `del` into the instance to delete and
+// whether the confirmation has been answered in advance. Everything that is not
+// a flag is the name, joined up, the same way `kill` and `launch` take one.
+func parseDelArgs(args []string, command string) delOptions {
+	opts := delOptions{word: command}
+	var names []string
+	for _, arg := range args {
+		switch arg {
+		case "--yes", "-yes", "-y":
+			opts.yes = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				fail("unknown %s option %q — run `pob help`", command, arg)
+			}
+			names = append(names, arg)
+		}
+	}
+	opts.target = strings.TrimSpace(strings.Join(names, " "))
+	return opts
 }
 
 func onOffWord(args []string, command, on, off string) bool {

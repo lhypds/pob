@@ -5,7 +5,7 @@
 #
 # It is the image's CMD, so it is the sandbox's workload: the sandbox is up for
 # exactly as long as this script is, and everything it prints is what
-# `msb logs pob-msb` shows. It is started by launch.sh on the host and is not
+# `msb logs <sandbox>` shows. It is started by launch.sh on the host and is not
 # meant to be run anywhere else — three read-only mounts are the whole of what
 # it needs, and all three come from there.
 #

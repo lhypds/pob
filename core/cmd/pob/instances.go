@@ -123,7 +123,7 @@ func parseLaunchArgs(args []string) launchOptions {
 			opts.fullscreen = true
 		case arg == "--msb":
 			opts.msb = true
-		case arg == "--viewer":
+		case arg == "--vncviewer":
 			opts.viewer = true
 		case strings.HasPrefix(arg, "-"):
 			fail("unknown launch option %q — run `pob help`", arg)
@@ -134,11 +134,11 @@ func parseLaunchArgs(args []string) launchOptions {
 	if opts.macroPSL != "" && !opts.start {
 		fail("%s names the macro to run, so it goes with --start — `pob launch --start %s %s`", macroPSLFlag, macroPSLFlag, opts.macroPSL)
 	}
-	// The screen --viewer opens a window on is the microVM's. A launch on this
+	// The screen --vncviewer opens a window on is the microVM's. A launch on this
 	// desktop has its window on this screen already, so the flag there is an
 	// instruction with nothing to carry it out: said rather than ignored.
 	if opts.viewer && !opts.msb {
-		fail("--viewer opens a window on the microVM's screen, so it goes with --msb — `pob launch --msb --viewer`")
+		fail("--vncviewer opens a window on the microVM's screen, so it goes with --msb — `pob launch --msb --vncviewer`")
 	}
 	opts.instance = strings.TrimSpace(strings.Join(name, " "))
 	return opts

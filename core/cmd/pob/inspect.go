@@ -136,37 +136,144 @@ func listSessions(instanceDir string) []sessionInfo {
 // --- views ----------------------------------------------------------------
 
 func showInstance(root string) {
-	inst := theInstance(root)
+	// What is true of this machine, above the lists of what is on it: the
+	// version, where it all lives, and whether psl is there — three things that
+	// belong to no single instance and that nothing in the tables would say.
+	//
+	// psl earns its line by being the one piece a run needs that goes missing
+	// quietly: a macro with a `:: … ::` in it stops at the slot, and until then
+	// everything looks installed. `pob check` is the long version.
+	fmt.Printf("Pob %s\n", version)
+	fmt.Printf("Root:       %s\n", root)
+	fmt.Printf("psl:        %s\n", pslLine(root))
 
-	if inst.Running {
-		showStatus(inst)
-	} else {
-		fmt.Printf("Instance:   %s (stopped)\n", inst.ID)
-		if inst.Name != "" {
-			fmt.Printf("Name:       %s\n", inst.Name)
-		}
-		fmt.Printf("Started:    %s\n", formatTime(inst.StartTime))
-		fmt.Printf("Ended:      %s\n", formatTime(inst.EndTime))
-	}
-
-	fmt.Printf("Logs:       %s\n", inst.LogsDir)
-
-	sessions := listSessions(inst.LogsDir)
-	if len(sessions) == 0 {
-		fmt.Println("\nNo sessions.")
-		return
-	}
-	fmt.Println("\nSessions:")
-	printSessionTable(sessions, "  ")
+	// Every instance on this machine, and every machine of its own that is up.
+	//
+	// The current instance's own details used to be here — its id, when it last
+	// started and ended, its log directory — and they answered a question this
+	// view is not asked: a bare `pob` is read to find out what there *is*, and
+	// what one instance is *doing* is `pob status`, which is live and one word
+	// away. The instance a launch would start is still marked in the table.
+	//
+	// The sessions used to be here too and are `pob sessions` now: an instance
+	// that has been run for a week answers with hundreds of them.
+	printInstanceTable(root, theInstance(root))
+	printVMTable(root)
 }
 
-func listSessionsCmd(root, instanceID string) {
-	sessions := listSessions(filepath.Join(root, instanceID, "logs"))
-	if len(sessions) == 0 {
-		fmt.Printf("No sessions for instance %s.\n", instanceID)
+// pslLine is the compiler and where it was found, or the name and that it was
+// not — psl.Compiler's own words, the same ones `pob status` and `pob check`
+// print, read straight from settings.json rather than through config, which
+// would create the files it reads.
+func pslLine(root string) string {
+	settings := readJSONFile(filepath.Join(root, "settings.json"))
+	return psl.Compiler{Binary: pslBinary(settings), Dir: root}.Describe()
+}
+
+// printInstanceTable lists the instances under ~/.pob, marking the one INSTANCE
+// names — the one a bare `pob launch` starts. That one arrives already probed,
+// since the block above this asked it for everything it has just printed.
+func printInstanceTable(root string, current *Instance) {
+	instances := storage.ListInstances(root)
+	if len(instances) == 0 {
 		return
 	}
-	printSessionTable(sessions, "")
+	fmt.Println("\nInstances:")
+	fmt.Printf("%-2s %-10s %-20s %-9s %s\n", "", "ID", "NAME", "STATE", "LAST RUN")
+	for _, info := range instances {
+		mark := " "
+		running := false
+		if current != nil && info.ID == current.ID {
+			mark = "*"
+			running = current.Running
+		} else {
+			// Asked of the instance rather than read off its file:
+			// instance.json records the run that started, and a Pob that was
+			// killed rather than quit never came back to write that it had
+			// ended. The probe is a connection to a port on this machine —
+			// refused at once when there is nothing behind it, which is the
+			// answer for every stopped instance.
+			if inst := loadInstance(root, info.ID); inst != nil && inst.Running {
+				running = true
+			}
+		}
+		name := info.Name
+		if name == "" {
+			name = "—"
+		}
+		state := "stopped"
+		if running {
+			state = "running"
+		}
+		fmt.Printf("%-2s %-10s %-20s %-9s %s\n", mark, info.ID, name, state, formatTime(info.StartTime))
+	}
+}
+
+// printVMTable lists the microVMs, which are instances too — a copy of one of
+// the above, running on a Linux machine of its own. The screen is the address a
+// VNC viewer opens: it is the only way to look at one of these, so it belongs
+// in the listing rather than only in the launch that printed it once.
+func printVMTable(root string) {
+	vms := msbVMs(root)
+	if len(vms) == 0 {
+		return
+	}
+	// The sandbox column is as wide as the widest name: POB_MSB_NAME takes
+	// whatever it is given, and a name longer than the column pushes every
+	// column after it along on that row alone — a listing that reads as
+	// misaligned rather than as one long name.
+	// The floor is the width the drawn names sit in — msb-<4 hex> is shorter
+	// than the heading, and a column that shrank to it would put the next one a
+	// space away from it.
+	width := 14
+	for _, vm := range vms {
+		if len(vm.Name) > width {
+			width = len(vm.Name)
+		}
+	}
+	row := fmt.Sprintf("%%-2s %%-%ds %%-10s %%-9s %%s\n", width)
+
+	fmt.Println("\nVMs:")
+	fmt.Printf(row, "", "SANDBOX", "INSTANCE", "STATE", "SCREEN")
+	for _, vm := range vms {
+		state := "stopped"
+		if vm.Running {
+			state = "running"
+		}
+		fmt.Printf(row, "", vm.Name, vm.InstanceLabel(), state, vm.Screen())
+	}
+}
+
+// listSessionsCmd lists every instance's sessions, under a heading for each.
+// One instance's are rarely the question on a machine with several — which run
+// left the screenshots, which one was yesterday — and the id in the heading is
+// what `pob --session` is asked with.
+func listSessionsCmd(root string) {
+	instances := storage.ListInstances(root)
+	if len(instances) == 0 {
+		fmt.Println("No instances.")
+		return
+	}
+	found := 0
+	for _, info := range instances {
+		sessions := listSessions(filepath.Join(root, info.ID, "logs"))
+		if len(sessions) == 0 {
+			continue
+		}
+		if found > 0 {
+			fmt.Println()
+		}
+		found++
+		if info.Name != "" {
+			fmt.Printf("Instance %s (%s)\n", info.ID, info.Name)
+		} else {
+			fmt.Printf("Instance %s\n", info.ID)
+		}
+		printSessionTable(sessions, "  ")
+	}
+	if found == 0 {
+		fmt.Println("No sessions.")
+	}
 }
 
 func printSessionTable(sessions []sessionInfo, prefix string) {
@@ -184,8 +291,23 @@ func printSessionTable(sessions []sessionInfo, prefix string) {
 func showSession(root, instanceID, sessionID string) {
 	dir := filepath.Join(root, instanceID, "logs", sessionID)
 	sessionJSON := readJSONFile(filepath.Join(dir, "session.json"))
+	// A session id from another instance is still an id off the listing `pob
+	// sessions` prints, which is every instance's now — so it is looked for
+	// where it was listed rather than answered as missing.
 	if sessionJSON == nil {
-		fail("session %s not found under instance %s", sessionID, instanceID)
+		for _, info := range storage.ListInstances(root) {
+			if info.ID == instanceID {
+				continue
+			}
+			other := filepath.Join(root, info.ID, "logs", sessionID)
+			if found := readJSONFile(filepath.Join(other, "session.json")); found != nil {
+				dir, instanceID, sessionJSON = other, info.ID, found
+				break
+			}
+		}
+	}
+	if sessionJSON == nil {
+		fail("no session %s under any instance — `pob sessions` lists them", sessionID)
 	}
 
 	start := intField(sessionJSON, "start_time")

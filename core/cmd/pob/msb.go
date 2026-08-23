@@ -76,10 +76,10 @@ func cmdLaunchMSB(root string, opts launchOptions) {
 	}
 }
 
-// viewerEnv decides what POB_MSB_VIEWER goes into the launch. --viewer turns
+// viewerEnv decides what POB_MSB_VIEWER goes into the launch. --vncviewer turns
 // one on; the variable can also name which viewer to open, and a name is the
-// more specific of the two — so --viewer with one set opens that viewer, and
-// --viewer with nothing set opens whichever the script finds. Set without the
+// more specific of the two — so --vncviewer with one set opens that viewer, and
+// --vncviewer with nothing set opens whichever the script finds. Set without the
 // flag it is still an opt-in, since the script reads the same variable.
 func viewerEnv(on bool) string {
 	if named := os.Getenv("POB_MSB_VIEWER"); named != "" && named != "0" {

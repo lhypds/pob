@@ -11,20 +11,153 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"pob/core/internal/storage"
 )
+
+// killOptions is what `pob kill` was told to stop: nothing, which is the Pob on
+// this machine, or a name — and --all, which is every microVM that is up.
+type killOptions struct {
+	all bool
+	// target is an instance, wherever it is running, or a VM by the name of
+	// its sandbox. Both are in the listing a bare `pob` prints, which is where
+	// a name typed here comes from.
+	target string
+}
 
 // cmdKill stops the instance this machine is running — `pob kill`, and `pob
 // shutdown`, which is the same command under the word for it that reads like
 // what it does to an app rather than what it does to a process. Nothing
 // running is not a failure: the command's business is that Pob is stopped, and
 // it is.
-func cmdKill(root string) {
+//
+// A name stops what that name is running, here or on a machine of its own —
+// killNamed settles which. --all is every VM.
+func cmdKill(root string, opts killOptions) {
+	if opts.all {
+		killEveryVM(root)
+		return
+	}
+	if opts.target != "" {
+		killNamed(root, opts.target)
+		return
+	}
 	inst := theInstance(root)
 	if !inst.Running {
 		fmt.Printf("Pob is not running (instance %s).\n", inst.ID)
 		return
 	}
 	stopInstance(root, inst)
+}
+
+// killNamed stops what the name names. An instance is stopped wherever it is
+// running — this machine, a microVM, or more than one of them — because that is
+// what naming an instance asks for: the id is the thing being run, and where it
+// happens to be running is an answer this can find rather than a question to
+// put back to whoever typed it.
+//
+// A sandbox name is the machine itself and is looked for first, being the more
+// specific of the two: one machine, rather than an instance wherever it is.
+func killNamed(root, target string) {
+	vms := msbVMs(root)
+	for _, vm := range vms {
+		if vm.Name != target {
+			continue
+		}
+		if !vm.Running {
+			fmt.Printf("The VM %s is not running.\n", vm.Name)
+			return
+		}
+		stopVM(vm)
+		return
+	}
+
+	instances := storage.ListInstances(root)
+	info, ok := findInstance(instances, target)
+	if !ok {
+		failNoSuchTarget(target, instances, vms)
+	}
+
+	// Every place it is up: the machines running a copy of it, and this one.
+	var inVMs []msbVM
+	for _, vm := range vms {
+		if vm.Running && vm.Instance == info.ID {
+			inVMs = append(inVMs, vm)
+		}
+	}
+	local := loadInstance(root, info.ID)
+	here := local != nil && local.Running
+
+	places := len(inVMs)
+	if here {
+		places++
+	}
+	switch places {
+	case 0:
+		fmt.Printf("Nothing is running instance %s.\n", info.ID)
+		return
+	case 1:
+	default:
+		// Said before rather than found out afterwards: one word is about to
+		// end more than one thing, and the lines below say which as they go.
+		fmt.Printf("Instance %s is running in %d places — stopping all of them.\n", info.ID, places)
+	}
+	for _, vm := range inVMs {
+		stopVM(vm)
+	}
+	if here {
+		stopInstance(root, local)
+	}
+}
+
+// killEveryVM is `pob kill --all`: every microVM that is up. The Pob on this
+// machine is not one of them — that one is `pob kill`, which is the word for it
+// with nothing added.
+func killEveryVM(root string) {
+	if !msbInstalled() {
+		fail("microsandbox is not installed, so there is no VM to stop — see docs/Pob/16_Microsandbox.md")
+	}
+	stopped := 0
+	for _, vm := range msbVMs(root) {
+		if vm.Running {
+			stopVM(vm)
+			stopped++
+		}
+	}
+	if stopped == 0 {
+		fmt.Println("No Pob VM is running.")
+	}
+}
+
+// failNoSuchTarget answers a name that is neither, with what the names are: it
+// was a near miss or a memory, and both are answered by the list rather than by
+// being told the name was wrong.
+func failNoSuchTarget(target string, instances []storage.InstanceInfo, vms []msbVM) {
+	var known []string
+	for _, info := range instances {
+		known = append(known, info.ID)
+	}
+	for _, vm := range vms {
+		if vm.Running {
+			known = append(known, vm.Name)
+		}
+	}
+	if len(known) == 0 {
+		fail("no instance or VM called %q, and there is nothing running — `pob launch` starts one", target)
+	}
+	fail("no instance or VM called %q. There is: %s", target, strings.Join(known, ", "))
+}
+
+func stopVM(vm msbVM) {
+	where := ""
+	if vm.Instance != "" {
+		where = " (instance " + vm.Instance + ")"
+	}
+	fmt.Printf("Stopping the VM %s%s…\n", vm.Name, where)
+	if err := msbStop(vm.Name); err != nil {
+		fail("could not stop %s: %v", vm.Name, err)
+	}
+	fmt.Printf("%s is stopped. `pob launch --msb` starts another.\n", vm.Name)
 }
 
 // cmdRelaunch is `pob relaunch`: the instance quit and started again, on the
@@ -73,7 +206,7 @@ func stopInstance(root string, inst *Instance) {
 	if err := signalStop(target); err != nil {
 		fail("could not stop pid %d: %v", target, err)
 	}
-	if waitUntilStopped(root, 10*time.Second) {
+	if waitUntilStopped(root, inst.ID, 10*time.Second) {
 		fmt.Printf("Instance %s stopped.\n", inst.ID)
 		return
 	}
@@ -84,7 +217,7 @@ func stopInstance(root string, inst *Instance) {
 	if target != core {
 		_ = forceStop(core)
 	}
-	if !waitUntilStopped(root, 5*time.Second) {
+	if !waitUntilStopped(root, inst.ID, 5*time.Second) {
 		fail("instance %s is still answering after pid %d was killed", inst.ID, target)
 	}
 	fmt.Printf("Instance %s killed.\n", inst.ID)
@@ -114,10 +247,13 @@ func isShellName(name string) bool {
 
 // waitUntilStopped polls until the instance stops answering its control port,
 // which is what every other command reads as "not running" too.
-func waitUntilStopped(root string, timeout time.Duration) bool {
+// waitUntilStopped polls the instance that was stopped — by id, not whichever
+// one INSTANCE names: `pob kill <instance>` can be aimed at another, and asking
+// after the current one would call that stopped the moment this one is.
+func waitUntilStopped(root, id string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for {
-		if !theInstance(root).Running {
+		if inst := loadInstance(root, id); inst == nil || !inst.Running {
 			return true
 		}
 		if time.Now().After(deadline) {

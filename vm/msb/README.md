@@ -13,7 +13,7 @@ directory it talks about.
 ```
 pob launch --msb              # a machine, a Pob on it
 pob launch --msb --start      # …and the macro running
-pob launch --msb --viewer     # …and a VNC window open on its screen
+pob launch --msb --vncviewer  # …and a VNC window open on its screen
 bash vm/msb/launch.sh         # the same thing without the pob command
 ```
 
@@ -26,7 +26,7 @@ bash vm/msb/launch.sh         # the same thing without the pob command
 State lives in `~/.pob/msb/`: `loaded-image` is the Docker image id last handed
 to microsandbox, so a launch with nothing to load does not load a gigabyte, and
 `app/<version>-<arch>/` is the guest's Linux app when it was fetched from a
-release rather than built here. `--viewer` leaves two more there — `vnc-passwd`,
+release rather than built here. `--vncviewer` leaves two more there — `vnc-passwd`,
 the guest's VNC password in the form a viewer signs in with, and `viewer.log`,
 what the viewer it opened had to say.
 
@@ -51,8 +51,17 @@ Once it is up:
 open vnc://:pob@127.0.0.1:5901   # watch the guest's screen (the launch prints the port)
 vncviewer -passwd ~/.pob/msb/vnc-passwd 127.0.0.1::5901   # …the same, in TigerVNC
 open http://127.0.0.1:8033/      # the web UI
-msb exec pob-msb -- pob start    # replay the macro
-msb exec -t pob-msb -- bash      # a shell in the VM
-msb logs pob-msb                 # what the desktop printed
-msb stop pob-msb                 # shut the machine down
+msb exec msb-4f2a -- pob start    # replay the macro
+msb exec -t msb-4f2a -- bash      # a shell in the VM
+msb logs msb-4f2a                 # what the desktop printed
+pob kill msb-4f2a                 # shut the machine down (msb stop msb-4f2a too)
+pob                              # every instance and VM, with each VM's screen
 ```
+
+Each launch is its own machine: unnamed, it takes the first of `msb-4f2a`,
+`msb-4f2a-2`, … that no running sandbox holds, so a second `pob launch --msb`
+comes up beside the first with its own screen and ports (the launch prints
+both, and the name to put in the commands above). `POB_MSB_NAME=<name>` asks
+for one machine instead, replacing it at every launch — the shape to use from a
+script, where the address has to stay put. `msb list --running` is the roll
+call; each machine holds its own 4G and 12G until it is stopped.
