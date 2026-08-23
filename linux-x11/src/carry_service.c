@@ -109,6 +109,16 @@ static int carried_dx, carried_dy;
 static gboolean previous_seeded;
 static int previous_x, previous_y, previous_w, previous_h;
 
+// Whether a button was holding the frame at the last look.
+//
+// A drag is a move with a button on it, and the two are not seen at the same
+// instant: the window manager places the frame where the pointer left it, and
+// the look that first sees the new position can be the one after the button
+// came up. A quick drag — a flick of the titlebar, over in a tenth of a second
+// — is exactly that shape, and asking only about the button *now* calls it a
+// move nobody made and carries nothing.
+static gboolean previous_down;
+
 // ── X helpers ───────────────────────────────────────────────────────────────
 
 static Display *display(void) {
@@ -437,6 +447,8 @@ static void follow_frame(void) {
     previous_seeded = TRUE;
 
     gboolean down = pointer_button_down();
+    gboolean was_down = previous_down;
+    previous_down = down;
 
     // A resize is not a move: it changes what the frame covers rather than
     // where it sits, and the windows below are meant to stay put under it.
@@ -453,7 +465,12 @@ static void follow_frame(void) {
         // own — mapping one at startup, putting one back when a monitor goes
         // away, undoing a maximize — moves with nobody holding it, and dragging
         // some app along with that is nobody's intent.
-        if (!moved || !down) return;
+        //
+        // "Held" reaches one look back, which is what makes a quick drag one:
+        // the move and the button coming up land in the same tick often enough
+        // that requiring the button now would drop every drag short enough not
+        // to span two looks.
+        if (!moved || !(down || was_down)) return;
         dragging = TRUE;
     } else if (!moved) {
         // A drag can stand still, and while it does the windows under the frame
@@ -557,6 +574,10 @@ void carry_service_set_enabled(gboolean on) {
             gtk_window_get_size(g_state.window, &previous_w, &previous_h);
             previous_seeded = TRUE;
         }
+        // Nothing was holding the frame before there was anything watching it.
+        // A button remembered from the last time the lock was on would make the
+        // first move after this one a drag it never belonged to.
+        previous_down = FALSE;
         start_polling();
         return;
     }
@@ -572,6 +593,7 @@ void carry_service_seed(void) {
         gtk_window_get_position(g_state.window, &previous_x, &previous_y);
     gtk_window_get_size(g_state.window, &previous_w, &previous_h);
     previous_seeded = TRUE;
+    previous_down = FALSE;
     release_latch();
 }
 

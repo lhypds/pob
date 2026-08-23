@@ -291,6 +291,23 @@ newer_source() {
 release_app() {
     local dir="$STATE_DIR/app/$VERSION-$ARCH" archive url
     if [ -x "$dir/Pob/pob" ]; then
+        # Kept under a version number, which is the one thing a version number
+        # cannot always tell apart: a Pob installed again out of a checkout is a
+        # different 0.2.14 from the one that was published, and the unpack of the
+        # published one sits here answering for both. The guest then runs code
+        # from before whatever is being worked on now — a fix made this morning
+        # missing from the VM it was made for, with nothing on screen to say so.
+        #
+        # No version string settles which is which, so the mtimes do: every
+        # install replaces this script, so a script newer than the unpack means
+        # the unpack is not from the Pob now asking for it.
+        if [ "$SCRIPT_DIR/launch.sh" -nt "$dir/Pob/pob" ]; then
+            echo "⚠️  The guest's app is an unpack of release $VERSION made before this Pob was" >&2
+            echo "    installed, so it is not a build of what is in the checkout now:" >&2
+            echo "    $dir/Pob" >&2
+            echo "    Run --msb from the checkout, or name the build you want in the guest:" >&2
+            echo "    POB_MSB_APP=<checkout>/linux-x11/dist/Pob" >&2
+        fi
         echo "$dir/Pob"
         return
     fi

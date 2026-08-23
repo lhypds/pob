@@ -364,6 +364,19 @@ When something is wrong
   everywhere except when you are testing a change to the shell. Run `--msb` from
   inside the checkout (any directory under it will do), or name the build:
   `POB_MSB_APP=~/code/pob/linux-x11/dist/Pob pob launch --msb`.
+
+  Which directory you are in is the whole of it: an installed `pob` looks for a
+  `linux-x11/dist/Pob` above the *current* directory, so the same command run
+  from `~` fetches the release and run from the checkout hands over your build.
+  A change made and built and still not in the guest is almost always this.
+
+  The release side of that is unpacked into `~/.pob/msb/app/<version>-<arch>`
+  once and kept, and a version number cannot tell a published 0.2.14 from a
+  0.2.14 you have built since — so once that directory exists, every launch from
+  outside a checkout keeps handing the guest the published one. The launch says
+  so when the unpack is older than the Pob asking for it. `export
+  POB_MSB_APP=~/code/pob/linux-x11/dist/Pob` in your shell is the way to stop
+  thinking about it while you are working on the shell.
 - **Screen Sharing will not connect — "requires a password to sign in".** The
   guest's screen asks for nothing, and that is the one thing Screen Sharing
   cannot open. Use TigerVNC (`vncviewer 127.0.0.1::5901`), or launch with a
