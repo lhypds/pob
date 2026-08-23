@@ -177,6 +177,33 @@ fi
 # nothing on the PATH, and macOS's own Screen Sharing, which every Mac has and
 # `open` starts on a vnc:// URL.
 VIEWER_CMD=""
+
+# What a name on the PATH really points at. Whichever viewer is found is started
+# by its own path rather than through the link, and on macOS that is not
+# cosmetic: a bundled app started through a symlink from outside the bundle has
+# no bundle at all — the executable path is the link's, so nothing looks in
+# Contents/ and the Info.plist beside the binary is never read.
+#
+# TigerVNC's says NSHighResolutionCapable=false, and it is the only thing
+# keeping the viewer off Retina. Without it the window is laid out in points and
+# the guest's screen is painted one framebuffer pixel to one *device* pixel — a
+# 1440x1095 desktop drawn a quarter of the size, in the bottom-left corner of a
+# window four times too big, with black around it. Started by its real path,
+# /Applications/TigerVNC.app/Contents/MacOS/vncviewer, the same viewer fills the
+# window. `brew install --cask tigervnc` links exactly that binary into
+# /opt/homebrew/bin, so the PATH candidate below is usually one of these.
+resolve_symlink() {
+    local path="$1" target hops=0
+    while [ -L "$path" ] && [ "$hops" -lt 20 ]; do
+        target="$(readlink "$path")"
+        case "$target" in
+            /*) path="$target" ;;
+            *)  path="$(dirname "$path")/$target" ;;
+        esac
+        hops=$((hops + 1))
+    done
+    printf '%s\n' "$path"
+}
 if [ "$VIEWER" != "0" ]; then
     case "$VIEWER" in
         1|on|yes|true)
@@ -186,7 +213,7 @@ if [ "$VIEWER" != "0" ]; then
                 "$HOME/Applications/TigerVNC.app/Contents/MacOS/vncviewer"
             do
                 if command -v "$candidate" >/dev/null 2>&1; then
-                    VIEWER_CMD="$candidate"
+                    VIEWER_CMD="$(resolve_symlink "$(command -v "$candidate")")"
                     break
                 fi
             done
@@ -213,7 +240,7 @@ if [ "$VIEWER" != "0" ]; then
         *)
             command -v "$VIEWER" >/dev/null 2>&1 ||
                 die "POB_MSB_VIEWER is \"$VIEWER\", and there is no such command here."
-            VIEWER_CMD="$VIEWER"
+            VIEWER_CMD="$(resolve_symlink "$(command -v "$VIEWER")")"
             ;;
     esac
 fi

@@ -222,6 +222,13 @@ take a server offering no authentication and open straight onto it:
 vncviewer 127.0.0.1::5901        # TigerVNC — the address the launch printed
 ```
 
+On macOS, run TigerVNC by its path inside the bundle —
+`/Applications/TigerVNC.app/Contents/MacOS/vncviewer` — rather than through the
+`vncviewer` Homebrew links onto the `PATH`: started through the symlink it has
+no bundle to read its `Info.plist` from, and paints the guest's screen into a
+quarter of its own window (see [When something is
+wrong](#when-something-is-wrong)). `--vncviewer` does this for you.
+
 The exception is macOS's **Screen Sharing, which will not open a server that
 offers no authentication**: it answers with *"Screen Sharing requires a password
 to sign in to 127.0.0.1:5901"* and there is no password to type. A server
@@ -354,6 +361,31 @@ When something is wrong
   cannot open. Use TigerVNC (`vncviewer 127.0.0.1::5901`), or launch with a
   password for it: `POB_MSB_VNC_PASSWORD=pob pob launch --msb`, then
   `open vnc://:pob@127.0.0.1:5901`.
+- **The guest's screen fills a quarter of the TigerVNC window, in the bottom-left
+  corner, with black around it.** On macOS, TigerVNC started *through a symlink*
+  — `brew install --cask tigervnc` links the binary into `/opt/homebrew/bin`, so
+  plain `vncviewer` is usually one — runs with no bundle around it, and the
+  `NSHighResolutionCapable=false` in the app's `Info.plist` is what nothing
+  reads. The viewer then lays its window out in points and paints the screen one
+  framebuffer pixel to one device pixel, which on a Retina display is half the
+  size in each direction. Start it by its real path instead:
+
+  ```
+  /Applications/TigerVNC.app/Contents/MacOS/vncviewer 127.0.0.1::5901
+  ```
+
+  `--vncviewer` resolves the symlink itself, so a launch that opens the window
+  is unaffected; this is the by-hand command. A window already up cannot be
+  talked round — resizing it does not repaint it at the right size — so it is
+  the next one that comes up right.
+
+  The real path can come up in a quarter too, and then it is the bundle that
+  macOS has lost track of rather than the path. Registering it again is the
+  whole fix, and it lasts:
+
+  ```
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/TigerVNC.app
+  ```
 - **`--vncviewer` says there is no VNC viewer to open.** It found neither TigerVNC
   nor, off macOS, anything to fall back on — install one (`brew install --cask
   tigervnc`, `apt install tigervnc-viewer`) or name the one you have with
