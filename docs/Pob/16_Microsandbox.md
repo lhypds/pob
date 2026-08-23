@@ -76,7 +76,7 @@ What the launch does
 $ pob launch --msb
 📦 App:      /Users/you/code/pob/linux-x11/dist/Pob (arm64)
 📦 Image:    pob-msb:latest
-🚀 Starting the sandbox msb-4f2a (2 vCPU, 4G, 12G, 1440x1095x24)…
+🚀 Starting the sandbox msb-4f2a (2 vCPU, 4G, 12G, 1024x768x24)…
 ⏳ Waiting for Pob to answer inside the VM…
 
 Instance:   pb-b424 (pid 254)
@@ -143,15 +143,23 @@ sessions, its screenshots — stays in the guest and goes when the guest does.
 The screen it comes up on
 -------------------------
 
-Every coordinate in a macro is measured from inside Pob's frame, so a frame that
-comes up smaller in the guest than it was recorded at is a macro whose lower
-half lands off the screen. The launch reads the window the instance was left at
-out of its `instance.json` and makes the screen from that — the frame, plus room
-for the title bar and the toolbar above it, and a margin, with `1440x900` as the
-floor.
+The guest's screen is **1024x768**. It is small enough that the viewer opens a
+window rather than most of a display, and it is the size to write a macro
+against unless there is a reason not to.
 
 `POB_MSB_GEOMETRY=1920x1200x24` says it yourself, and is what to do when the
-macro expects a particular display rather than a particular window.
+macro expects a particular display.
+
+The frame has to fit on it. Every coordinate in a macro is measured from inside
+Pob's frame, so the frame has to come up the size it was recorded at — and a
+frame taller than the guest's screen is clipped by it, which is clicks past the
+bottom edge landing on nothing and screenshots coming back short. The launch
+reads the window the instance was left at out of its `instance.json` and says
+when it will not fit, with both ways out: a window of **904x608** or smaller is
+what 1024x768 holds once the title bar, the toolbar above it and a margin are
+taken off, and `POB_MSB_GEOMETRY` is the other direction. It does not resize
+anything itself — growing the screen would be the launch not doing what it was
+asked, and shrinking the window would move every coordinate in the macro.
 
 
 Watching it, and driving it
@@ -379,6 +387,14 @@ When something is wrong
   talked round — resizing it does not repaint it at the right size — so it is
   the next one that comes up right.
 
+  To keep typing `vncviewer`, put a wrapper that does the same thing earlier on
+  the `PATH` than Homebrew's link — `~/.local/bin/vncviewer`, two lines:
+
+  ```sh
+  #!/bin/sh
+  exec /Applications/TigerVNC.app/Contents/MacOS/vncviewer "$@"
+  ```
+
   The real path can come up in a quarter too, and then it is the bundle that
   macOS has lost track of rather than the path. Registering it again is the
   whole fix, and it lasts:
@@ -396,8 +412,9 @@ When something is wrong
   launch said so — type the password, or drop the variable and the screen asks
   for nothing.
 - **Clicks landing high, screenshots coming back short.** The frame is taller
-  than the guest's screen and is being clipped by it. Raise it with
-  `POB_MSB_GEOMETRY`.
+  than the guest's 1024x768 screen and is being clipped by it — the launch says
+  so when it starts. Shrink the window to 904x608 or smaller, or raise the
+  screen with `POB_MSB_GEOMETRY`.
 - **Empty boxes where the text should be.** A font is missing for those
   characters. The image carries CJK and emoji; anything past that — Arabic,
   Devanagari, Thai — is a `fonts-noto-*` package in `vm/msb/Dockerfile` away.
@@ -421,7 +438,7 @@ answers to "not on this machine" rather than settings of Pob's:
 |-|-|
 | `POB_MSB_NAME` | The one machine to be, replacing whatever is under that name. Unset — the default — is a new machine each launch, under a name drawn as `msb-<4 hex>` |
 | `POB_MSB_CPUS`, `POB_MSB_MEMORY`, `POB_MSB_DISK` | `2`, `4G`, `12G` |
-| `POB_MSB_GEOMETRY` | The screen, `WIDTHxHEIGHTxDEPTH`. Default: made from the instance's window |
+| `POB_MSB_GEOMETRY` | The screen, `WIDTHxHEIGHTxDEPTH`. Default: `1024x768x24` |
 | `POB_MSB_VNC_PORT`, `POB_MSB_WEB_PORT`, `POB_MSB_MCP_PORT` | The host side of each mapping. Default: the guest's own number, or the next free one |
 | `POB_MSB_VNC_PASSWORD` | What a viewer signs in with. Unset, the default, is no password at all; set one for macOS's Screen Sharing, the one viewer that will not open a server that asks for nothing |
 | `POB_MSB_VIEWER` | `1` to open a viewer on the guest's screen when Pob answers — what `--vncviewer` sets — or the command to open it with. `0`, the default, opens nothing and prints the address |

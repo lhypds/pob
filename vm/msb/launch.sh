@@ -41,7 +41,7 @@
 #   POB_MSB_CPUS        vCPUs                            (default 2)
 #   POB_MSB_MEMORY      guest memory                     (default 4G)
 #   POB_MSB_DISK        writable root disk               (default 12G)
-#   POB_MSB_GEOMETRY    the screen Pob comes up on       (default 1440x900x24)
+#   POB_MSB_GEOMETRY    the screen Pob comes up on       (default 1024x768x24)
 #   POB_MSB_VNC_PORT    host port for the VNC view       (default 5900)
 #   POB_MSB_VNC_PASSWORD  what a viewer signs in with    (default none; set one
 #                       for macOS's Screen Sharing, which will not open a
@@ -76,7 +76,7 @@ IMAGE="${POB_MSB_IMAGE:-pob-msb:latest}"
 CPUS="${POB_MSB_CPUS:-2}"
 MEMORY="${POB_MSB_MEMORY:-4G}"
 DISK="${POB_MSB_DISK:-12G}"
-GEOMETRY="${POB_MSB_GEOMETRY:-1440x900x24}"
+GEOMETRY="${POB_MSB_GEOMETRY:-1024x768x24}"
 FULLSCREEN="${POB_MSB_FULLSCREEN:-0}"
 VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-}"
 VIEWER="${POB_MSB_VIEWER:-0}"
@@ -446,25 +446,38 @@ VNC_GUEST=5900
 INSTANCE_ID="$(tr -d ' \t\r\n' < "$POB_HOME/INSTANCE" 2>/dev/null || true)"
 
 # ── the screen the frame has to fit on ───────────────────────────────────────
-# Every coordinate in a macro is measured from inside Pob's frame, so the frame
-# has to come up the size it was recorded at — and a frame that does not fit on
-# the guest's screen is clipped by it: the clicks below the bottom edge land on
-# nothing, and the screenshots come back short.
+# 1024x768 is the screen unless a launch says otherwise: small enough that the
+# viewer's window is a window rather than most of a display, and the size a
+# guest is expected to be driven at.
 #
-# The window the instance was left at is in its instance.json, so the screen is
-# made from that: the frame, plus room for the title bar and the shell's own
-# toolbar above it, and a margin. Naming a geometry says this differently and
-# is taken as said.
-if [ -z "${POB_MSB_GEOMETRY:-}" ]; then
-    INSTANCE_JSON="$POB_HOME/$INSTANCE_ID/instance.json"
-    FRAME_W="$(json_number "$INSTANCE_JSON" window_width 0)"
-    FRAME_H="$(json_number "$INSTANCE_JSON" window_height 0)"
-    SCREEN_W=$((FRAME_W + 120))
-    SCREEN_H=$((FRAME_H + 160))
-    if [ "$SCREEN_W" -lt 1440 ]; then SCREEN_W=1440; fi
-    if [ "$SCREEN_H" -lt 900 ]; then SCREEN_H=900; fi
-    GEOMETRY="${SCREEN_W}x${SCREEN_H}x24"
-fi
+# It is not derived from the instance any more, so it is worth saying when the
+# instance will not fit on it. Every coordinate in a macro is measured from
+# inside Pob's frame, so the frame has to come up the size it was recorded at —
+# and a frame that does not fit on the guest's screen is clipped by it: the
+# clicks below the bottom edge land on nothing, and the screenshots come back
+# short. The window the instance was left at is in its instance.json, and the
+# room the guest's desktop wants around it is the title bar and the shell's own
+# toolbar above that, plus a margin.
+#
+# Said rather than fixed. Growing the screen to fit would be a launch quietly
+# not doing what it was asked, and shrinking the window would move every
+# coordinate in the macro; which of the two to do is the instance's business.
+INSTANCE_JSON="$POB_HOME/$INSTANCE_ID/instance.json"
+FRAME_W="$(json_number "$INSTANCE_JSON" window_width 0)"
+FRAME_H="$(json_number "$INSTANCE_JSON" window_height 0)"
+SCREEN_W="${GEOMETRY%%x*}"
+SCREEN_H="${GEOMETRY#*x}"; SCREEN_H="${SCREEN_H%%x*}"
+case "$SCREEN_W$SCREEN_H" in
+    *[!0-9]*|"") ;;   # a geometry this cannot read is one to hand over as it is
+    *)
+        if [ "$((FRAME_W + 120))" -gt "$SCREEN_W" ] || [ "$((FRAME_H + 160))" -gt "$SCREEN_H" ]; then
+            echo "⚠️  $INSTANCE_ID was left at ${FRAME_W}x${FRAME_H}, which does not fit on a ${SCREEN_W}x${SCREEN_H} screen —"
+            echo "    the frame will be clipped, and clicks past the edge will land on nothing."
+            echo "    Resize the window to $((SCREEN_W - 120))x$((SCREEN_H - 160)) or smaller, or give the"
+            echo "    guest a screen it fits on: POB_MSB_GEOMETRY=$((FRAME_W + 120))x$((FRAME_H + 160))x24"
+        fi
+        ;;
+esac
 
 # /dev/tcp rather than lsof or nc: it is bash itself, so it is there on both
 # hosts microsandbox runs on. Nothing is listening on the host side of a mapping

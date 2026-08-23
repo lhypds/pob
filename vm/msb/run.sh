@@ -10,7 +10,7 @@
 # it needs, and all three come from there.
 #
 # Environment, all set by launch.sh:
-#   POB_MSB_GEOMETRY    Xvfb screen, WIDTHxHEIGHTxDEPTH  (default 1440x900x24)
+#   POB_MSB_GEOMETRY    Xvfb screen, WIDTHxHEIGHTxDEPTH  (default 1024x768x24)
 #   POB_MSB_FULLSCREEN  1 to start Pob over the whole screen
 #   POB_MSB_VNC_PORT    port x11vnc serves that screen on (default 5900)
 #   POB_MSB_VNC_PASSWORD  what a viewer signs in with; empty (the default) for
@@ -20,7 +20,7 @@
 
 set -u
 
-GEOMETRY="${POB_MSB_GEOMETRY:-1440x900x24}"
+GEOMETRY="${POB_MSB_GEOMETRY:-1024x768x24}"
 FULLSCREEN="${POB_MSB_FULLSCREEN:-0}"
 VNC_PORT="${POB_MSB_VNC_PORT:-5900}"
 VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-}"

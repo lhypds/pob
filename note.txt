@@ -7,3 +7,7 @@ msb exec msb-b400 -- pob start
 
 TigerVNC connect
 vncviewer 127.0.0.1:5901
+
+Microsandbox
+msb stop xxx
+msb rm xxx
