@@ -13,7 +13,8 @@
 #   POB_MSB_GEOMETRY    Xvfb screen, WIDTHxHEIGHTxDEPTH  (default 1440x900x24)
 #   POB_MSB_FULLSCREEN  1 to start Pob over the whole screen
 #   POB_MSB_VNC_PORT    port x11vnc serves that screen on (default 5900)
-#   POB_MSB_VNC_PASSWORD  what a viewer signs in with; empty for no password
+#   POB_MSB_VNC_PASSWORD  what a viewer signs in with; empty (the default) for
+#                       no password at all
 #   POB_MSB_APP_DIR     the Pob app mount                (default /mnt/pob-app)
 #   POB_MSB_HOME_MOUNT  the host's ~/.pob, read-only      (default /mnt/pob-home)
 
@@ -22,7 +23,7 @@ set -u
 GEOMETRY="${POB_MSB_GEOMETRY:-1440x900x24}"
 FULLSCREEN="${POB_MSB_FULLSCREEN:-0}"
 VNC_PORT="${POB_MSB_VNC_PORT:-5900}"
-VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-pob}"
+VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-}"
 APP_DIR="${POB_MSB_APP_DIR:-/mnt/pob-app}"
 HOME_MOUNT="${POB_MSB_HOME_MOUNT:-/mnt/pob-home}"
 
@@ -161,15 +162,17 @@ SERVICE_PIDS+=($!)
 # xsetroot leaves no root pixmap for it to paint.)
 
 # ── the way in ───────────────────────────────────────────────────────────────
-# There is a password, and it is not there to keep anyone out: the port is
-# published to 127.0.0.1 on the host and nowhere else (see launch.sh), so
-# whoever can reach it is already at the machine. It is there because macOS's
-# Screen Sharing will not open a server that offers no authentication at all —
-# it asks for a password that does not exist and the connection ends in that
-# dialog. A server offering VNC authentication is one it signs in to.
+# No password, and none is needed to keep anyone out: the port is published to
+# 127.0.0.1 on the host and nowhere else (see launch.sh), so whoever can reach
+# it is already at the machine. What a password would buy is a dialog between a
+# launch and the screen it just made — TigerVNC, Remmina and RealVNC all take a
+# server offering no authentication and open straight onto it.
 #
-# POB_MSB_VNC_PASSWORD='' takes it back off, for a viewer that would rather
-# have no auth (TigerVNC, Remmina, RealVNC all connect either way).
+# POB_MSB_VNC_PASSWORD=<word> puts one on, and macOS's Screen Sharing is the
+# reason it can be: that viewer will not open a server offering no
+# authentication at all — it asks for a password that does not exist and the
+# connection ends in that dialog. A server offering VNC authentication is one
+# it signs in to.
 VNC_AUTH=(-nopw)
 if [ -n "$VNC_PASSWORD" ]; then
     mkdir -p "$HOME/.vnc"

@@ -89,7 +89,7 @@ psl:        /usr/local/bin/psl (not found)
 MCP:        running — http://127.0.0.1:8032/sse
 Server:     http://172.16.0.30:8033/
 
-🖥  Screen:   vnc://127.0.0.1:5901   (password: pob)
+🖥  Screen:   vnc://127.0.0.1:5901   (no password)
 🌐 Web UI:   http://127.0.0.1:8033/
 🔌 MCP:      http://127.0.0.1:8032/mcp
 ```
@@ -161,7 +161,7 @@ Three ways in, all of them on `127.0.0.1` and none of them on the network the
 guest is on:
 
 ```
-open vnc://:pob@127.0.0.1:5901     # the guest's screen, live
+vncviewer 127.0.0.1::5901          # the guest's screen, live
 open http://127.0.0.1:8033/        # the web UI (Web UI)
 msb exec msb-4f2a -- pob status     # the CLI, inside the guest
 ```
@@ -173,11 +173,11 @@ long gone:
 ```
 VMs:
    SANDBOX        INSTANCE   STATE     SCREEN
-   msb-4f2a       pb-d7df    running   vnc://127.0.0.1:5901  (password: pob)
-   msb-91c7       pb-91ab    running   vnc://127.0.0.1:5902  (password: pob)
+   msb-4f2a       pb-d7df    running   vnc://127.0.0.1:5901
+   msb-91c7       pb-91ab    running   vnc://127.0.0.1:5902
 ```
 
-The port and the password come from microsandbox itself — `msb inspect <name>
+The port comes from microsandbox itself — `msb inspect <name>
 --format json`, which is the authority on what a sandbox was actually started
 with, mappings moved by a port already in use included. The instance column is
 the one thing it cannot answer: the guest reads that from the copy of
@@ -195,9 +195,9 @@ pob launch --msb --start --vncviewer  # …with the window up before the macro b
 
 It opens **TigerVNC** where there is one — `vncviewer` on the `PATH`, or the
 binary inside `TigerVNC.app`, which is where Homebrew's cask puts it and it puts
-nothing on the `PATH` — and falls back to macOS's Screen Sharing. It signs
-itself in: the guest's VNC password is written where the viewer can read it,
-`~/.pob/msb/vnc-passwd`, in the format every VNC viewer has read since AT&T's.
+nothing on the `PATH` — and falls back to macOS's Screen Sharing, which is the
+one viewer the guest's screen is not open to (see below). There is nothing to
+sign in with, so the window comes straight up on the screen.
 The window is detached from the launch, so the command finishes and the window
 stays; what a viewer that did not connect had to say is in
 `~/.pob/msb/viewer.log`. `POB_MSB_VIEWER=<command>` names a different viewer —
@@ -212,15 +212,30 @@ apt install tigervnc-viewer      # Debian, Ubuntu
 The viewer is looked for before the image is built, so a machine without one
 hears about it in the first second of the launch rather than after the boot.
 
-The VNC password is `pob`, and it is not there to keep anyone out — the port is
-published to `127.0.0.1` and the guest's network is not on the LAN, so whoever
-can reach it is already at this machine. It is there because macOS's **Screen
-Sharing will not open a server that offers no authentication**: it answers with
-*"Screen Sharing requires a password to sign in to 127.0.0.1:5901"* and there is
-no password to type. A server offering VNC authentication is one it signs into,
-which is what the password buys. Put it in the URL as above, or type it into that
-dialog. `POB_MSB_VNC_PASSWORD=''` takes it back off for a viewer that would
-rather have none — TigerVNC, RealVNC and Remmina all connect either way.
+**There is no VNC password**, and none is needed to keep anyone out — the port
+is published to `127.0.0.1` and the guest's network is not on the LAN, so
+whoever can reach it is already at this machine. What one would buy is a dialog
+between a launch and the screen it just made. TigerVNC, RealVNC and Remmina all
+take a server offering no authentication and open straight onto it:
+
+```
+vncviewer 127.0.0.1::5901        # TigerVNC — the address the launch printed
+```
+
+The exception is macOS's **Screen Sharing, which will not open a server that
+offers no authentication**: it answers with *"Screen Sharing requires a password
+to sign in to 127.0.0.1:5901"* and there is no password to type. A server
+offering VNC authentication is one it signs into, so that is the one viewer worth
+putting a password on for:
+
+```
+POB_MSB_VNC_PASSWORD=pob pob launch --msb
+open vnc://:pob@127.0.0.1:5901
+```
+
+With a password set, `--vncviewer` writes it where the viewer can read it —
+`~/.pob/msb/vnc-passwd`, in the format every VNC viewer has read since AT&T's —
+and signs the window in itself.
 
 The `pob` command *inside* the guest is the one that can drive it: the
 [Control API](11_Control%20API.md) is loopback-only, and the guest's loopback is
@@ -334,17 +349,20 @@ When something is wrong
   everywhere except when you are testing a change to the shell. Run `--msb` from
   inside the checkout (any directory under it will do), or name the build:
   `POB_MSB_APP=~/code/pob/linux-x11/dist/Pob pob launch --msb`.
-- **Screen Sharing asks for a password.** Type `pob`, or open
-  `vnc://:pob@127.0.0.1:5901` — see the section above for why there is one at
-  all.
+- **Screen Sharing will not connect — "requires a password to sign in".** The
+  guest's screen asks for nothing, and that is the one thing Screen Sharing
+  cannot open. Use TigerVNC (`vncviewer 127.0.0.1::5901`), or launch with a
+  password for it: `POB_MSB_VNC_PASSWORD=pob pob launch --msb`, then
+  `open vnc://:pob@127.0.0.1:5901`.
 - **`--vncviewer` says there is no VNC viewer to open.** It found neither TigerVNC
   nor, off macOS, anything to fall back on — install one (`brew install --cask
   tigervnc`, `apt install tigervnc-viewer`) or name the one you have with
   `POB_MSB_VIEWER`. The launch itself is unaffected: without the flag it prints
   the address and opens nothing.
-- **`--vncviewer` opened a window that asks for the password anyway.** The password
-  file could not be written and the launch said so; type `pob`, and see
-  `POB_MSB_VNC_PASSWORD` for taking the password off altogether.
+- **`--vncviewer` opened a window that asks for a password.** Only a launch given
+  a `POB_MSB_VNC_PASSWORD` can: the password file could not be written and the
+  launch said so — type the password, or drop the variable and the screen asks
+  for nothing.
 - **Clicks landing high, screenshots coming back short.** The frame is taller
   than the guest's screen and is being clipped by it. Raise it with
   `POB_MSB_GEOMETRY`.
@@ -373,7 +391,7 @@ answers to "not on this machine" rather than settings of Pob's:
 | `POB_MSB_CPUS`, `POB_MSB_MEMORY`, `POB_MSB_DISK` | `2`, `4G`, `12G` |
 | `POB_MSB_GEOMETRY` | The screen, `WIDTHxHEIGHTxDEPTH`. Default: made from the instance's window |
 | `POB_MSB_VNC_PORT`, `POB_MSB_WEB_PORT`, `POB_MSB_MCP_PORT` | The host side of each mapping. Default: the guest's own number, or the next free one |
-| `POB_MSB_VNC_PASSWORD` | What a viewer signs in with, `pob`. Empty for no password, which macOS's Screen Sharing will not open |
+| `POB_MSB_VNC_PASSWORD` | What a viewer signs in with. Unset, the default, is no password at all; set one for macOS's Screen Sharing, the one viewer that will not open a server that asks for nothing |
 | `POB_MSB_VIEWER` | `1` to open a viewer on the guest's screen when Pob answers — what `--vncviewer` sets — or the command to open it with. `0`, the default, opens nothing and prints the address |
 | `POB_MSB_IMAGE` | The image tag, `pob-msb:latest` |
 | `POB_MSB_APP` | A Linux `dist/Pob` directory to run in the guest, instead of building or fetching one |

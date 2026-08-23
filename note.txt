@@ -1,0 +1,9 @@
+
+Commands
+--------
+
+Start a pob session in a Microsandbox instance
+msb exec msb-b400 -- pob start
+
+TigerVNC connect
+vncviewer 127.0.0.1:5901

@@ -43,8 +43,9 @@
 #   POB_MSB_DISK        writable root disk               (default 12G)
 #   POB_MSB_GEOMETRY    the screen Pob comes up on       (default 1440x900x24)
 #   POB_MSB_VNC_PORT    host port for the VNC view       (default 5900)
-#   POB_MSB_VNC_PASSWORD  what a viewer signs in with    (default pob; empty
-#                       for none, which macOS's Screen Sharing will not open)
+#   POB_MSB_VNC_PASSWORD  what a viewer signs in with    (default none; set one
+#                       for macOS's Screen Sharing, which will not open a
+#                       server that asks for nothing)
 #   POB_MSB_VIEWER      1 to open a viewer on the guest's screen once Pob is
 #                       up, or the viewer command to open it with (default 0)
 #   POB_MSB_WEB_PORT    host port for the Pob server     (default: its own)
@@ -77,8 +78,7 @@ MEMORY="${POB_MSB_MEMORY:-4G}"
 DISK="${POB_MSB_DISK:-12G}"
 GEOMETRY="${POB_MSB_GEOMETRY:-1440x900x24}"
 FULLSCREEN="${POB_MSB_FULLSCREEN:-0}"
-# Unset means the default, and empty means no password — so the - form, not :-.
-VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-pob}"
+VNC_PASSWORD="${POB_MSB_VNC_PASSWORD-}"
 VIEWER="${POB_MSB_VIEWER:-0}"
 START="${POB_MSB_START:-0}"
 MACROPSL="${POB_MSB_MACROPSL:-}"
@@ -192,6 +192,18 @@ if [ "$VIEWER" != "0" ]; then
             done
             if [ -z "$VIEWER_CMD" ] && [ "$(uname -s)" = "Darwin" ]; then
                 VIEWER_CMD="open"   # Screen Sharing, on the vnc:// URL below
+                # And it is the one viewer that cannot open the guest's screen
+                # as the guest now serves it: no password means no
+                # authentication offered, and Screen Sharing ends in its own
+                # sign-in dialog rather than on the screen. Said here, in the
+                # first second of a launch that takes minutes.
+                if [ -z "$VNC_PASSWORD" ]; then
+                    echo "⚠️  No TigerVNC here, so this would open macOS Screen Sharing —" >&2
+                    echo "   and that one will not connect to a server with no password." >&2
+                    echo "   Either install a viewer that will:" >&2
+                    echo "     brew install --cask tigervnc" >&2
+                    echo "   or give the guest a password for it: POB_MSB_VNC_PASSWORD=pob" >&2
+                fi
             fi
             [ -n "$VIEWER_CMD" ] || die "no VNC viewer to open — install TigerVNC:
    brew install --cask tigervnc          (macOS)
@@ -487,9 +499,9 @@ free_port "$WANT_MCP"; MCP_HOST="$PORT"
 # this name — the one the launch is taking over, or the one whose number was
 # handed back — is the only thing that could answer in its place.
 #
-# Published on 127.0.0.1 only. The guest's Pob server has no authentication and
-# its VNC password is printed a few lines below — both are as open as the
-# machine they are reachable from, and that machine is this one.
+# Published on 127.0.0.1 only. Neither the guest's Pob server nor its screen
+# asks for anything — both are as open as the machine they are reachable from,
+# and that machine is this one.
 echo "🚀 Starting the sandbox $NAME (${CPUS} vCPU, $MEMORY, $DISK, $GEOMETRY)…"
 msb run -d --replace --name "$NAME" "$IMAGE" --pull never \
     --cpus "$CPUS" --memory "$MEMORY" --root-disk "$DISK" \
@@ -585,9 +597,15 @@ echo "  pob                                # every instance and VM, with its scr
 # on it. It happens before the macro starts, so a --vncviewer --start launch is a
 # window that is already up when the run begins.
 if [ -n "$VIEWER_CMD" ]; then
-    # The password file a VNC viewer signs in with: eight bytes of password,
-    # NUL-padded, DES-encrypted under the one key every VNC has used since
-    # AT&T's — which is the whole of the "encryption" in a VNC password file.
+    # The password file a VNC viewer signs in with — written only for a launch
+    # that was given a password, which is the launch meant for macOS's Screen
+    # Sharing. A screen that asks for nothing needs no file, and the one an
+    # earlier launch left is about a password nothing serves any more, so it
+    # goes rather than sitting there looking current.
+    #
+    # Eight bytes of password, NUL-padded, DES-encrypted under the one key every
+    # VNC has used since AT&T's — which is the whole of the "encryption" in a
+    # VNC password file.
     #
     # The key below is the published one with the bits of each byte reversed,
     # because that is the order VNC feeds it to DES in. openssl writes those
@@ -618,6 +636,8 @@ if [ -n "$VIEWER_CMD" ]; then
             VNC_PASSWD_FILE=""
             echo "⚠️  Could not write a password file for the viewer — it will ask for one ($VNC_PASSWORD)."
         fi
+    else
+        rm -f "$STATE_DIR/vnc-passwd"
     fi
 
     # TigerVNC's own arguments are for TigerVNC only: a viewer named in

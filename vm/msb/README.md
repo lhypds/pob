@@ -26,9 +26,9 @@ bash vm/msb/launch.sh         # the same thing without the pob command
 State lives in `~/.pob/msb/`: `loaded-image` is the Docker image id last handed
 to microsandbox, so a launch with nothing to load does not load a gigabyte, and
 `app/<version>-<arch>/` is the guest's Linux app when it was fetched from a
-release rather than built here. `--vncviewer` leaves two more there — `vnc-passwd`,
-the guest's VNC password in the form a viewer signs in with, and `viewer.log`,
-what the viewer it opened had to say.
+release rather than built here. `--vncviewer` leaves `viewer.log` there too,
+what the viewer it opened had to say (and `vnc-passwd`, the sign-in file a
+viewer wants, only on the launch that was given a `POB_MSB_VNC_PASSWORD`).
 
 Pob itself is not in the image. The app, this directory and `~/.pob` go in as
 read-only mounts at boot, so a rebuilt app (`linux-x11/build_docker.sh`) or an
@@ -48,8 +48,7 @@ with, so it is fetched from the release that install is one of and kept in
 Once it is up:
 
 ```
-open vnc://:pob@127.0.0.1:5901   # watch the guest's screen (the launch prints the port)
-vncviewer -passwd ~/.pob/msb/vnc-passwd 127.0.0.1::5901   # …the same, in TigerVNC
+vncviewer 127.0.0.1::5901        # watch the guest's screen (the launch prints the port)
 open http://127.0.0.1:8033/      # the web UI
 msb exec msb-4f2a -- pob start    # replay the macro
 msb exec -t msb-4f2a -- bash      # a shell in the VM
