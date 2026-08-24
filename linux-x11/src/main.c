@@ -351,6 +351,137 @@ gboolean app_content_rect(GdkRectangle *out) {
     return TRUE;
 }
 
+// ── putting the frame back where it was ─────────────────────────────────────
+//
+// Three steps, and what makes them three is that the frame is placed by the
+// window manager: where it went can only be read back after the WM has been
+// round to put it there, so each step waits a round trip for the last one.
+//
+//   unmaximize_in_place    the frame comes off the maximized state
+//   settle_placed_frame    did it land where it was asked to? ask again if not
+//   start_carry_when_placed   carry takes over a frame that has stopped moving
+#define PLACE_SETTLE_MS 300
+
+// Where the frame was asked to be, and the step waiting to look.
+static int placed_x, placed_y;
+static guint place_settle_source;
+
+static gboolean settle_placed_frame(gpointer data);
+static gboolean start_carry_when_placed(gpointer data);
+
+// Takes a maximized frame off the maximized state without moving it — the
+// window is left standing over exactly the pixels it was covering, as an
+// ordinary window of that size and position.
+//
+// The lock is what needs this (see app_update_window_lock). TRUE when there was
+// a maximized frame to put back, and the frame is on its way rather than where
+// it will end up.
+static gboolean unmaximize_in_place(void) {
+    if (!g_state.window || !gtk_window_is_maximized(g_state.window)) return FALSE;
+
+    int x = 0, y = 0;
+    gtk_window_get_position(g_state.window, &x, &y);
+
+    // Only the position is asked for here. The size is already held, as the
+    // size the window opens at (hold_window_size, called before this), and that
+    // is a number GTK turns into hints itself — where a window asked outright
+    // to be a size while it is still maximized is asked in a different
+    // arithmetic than the one it will be measured in a moment later, and comes
+    // out a shadow's width short about half the time.
+    //
+    // The move is asked for after the state is dropped rather than before, so
+    // the window manager's own restore — back to whatever the frame was before
+    // it was maximized — is overwritten instead of raced with.
+    gtk_window_unmaximize(g_state.window);
+    gtk_window_move(g_state.window, x, y);
+    app_logger_log("Window unmaximized in place at %d,%d", x, y);
+
+    placed_x = x;
+    placed_y = y;
+    if (place_settle_source) g_source_remove(place_settle_source);
+    place_settle_source = g_timeout_add(PLACE_SETTLE_MS, settle_placed_frame, NULL);
+    return TRUE;
+}
+
+// Where did it land?
+//
+// A move asked for while the window is still maximized is a move a
+// client-side-decorated window gets slightly wrong: GTK places the window by
+// its own top-left and reports it by the visible frame's, and the invisible
+// shadow band the theme draws between the two is not in GTK's arithmetic while
+// the window is maximized — a maximized window has no shadow. The frame lands a
+// shadow's width down and to the right of where it was asked for.
+//
+// So the position is asked for a second time, now that the window is an
+// ordinary one again and the band is back. Asked for, not corrected by the
+// difference: the difference *is* the band, and asking again is what puts it
+// in. Once only — a window manager that places windows where it likes would
+// otherwise be argued with forever.
+static gboolean settle_placed_frame(gpointer data) {
+    (void)data;
+    place_settle_source = 0;
+    if (!g_state.window) return G_SOURCE_REMOVE;
+
+    int x = 0, y = 0;
+    gtk_window_get_position(g_state.window, &x, &y);
+    if (x != placed_x || y != placed_y) {
+        gtk_window_move(g_state.window, placed_x, placed_y);
+        app_logger_log("Window frame landed at %d,%d rather than %d,%d — asked again",
+                       x, y, placed_x, placed_y);
+    }
+    place_settle_source =
+        g_timeout_add(PLACE_SETTLE_MS, start_carry_when_placed, NULL);
+    return G_SOURCE_REMOVE;
+}
+
+// Carry starts, from where the frame has come to rest.
+//
+// It is what watches the frame for drags, and it notices them by the frame
+// having moved — so a frame still being put back is a drag it would invent, and
+// the windows under the frame would travel a shadow's width for a lock nobody
+// dragged anything with. Its own seeding (carry_service_set_enabled) takes the
+// frame as it now stands, which is the point of waiting for it to stand still.
+static gboolean start_carry_when_placed(gpointer data) {
+    (void)data;
+    place_settle_source = 0;
+    carry_service_set_enabled(g_state.is_locked || g_state.is_executing);
+    return G_SOURCE_REMOVE;
+}
+
+// Writes the size the frame has now down as the size it opens at, which is the
+// only way to keep the lock from resizing it.
+//
+// On the other two shells the lock is a resize taken away and nothing else:
+// AppKit drops .resizable, the Windows shell refuses the edge drag, and either
+// way the window stays the size it was. GTK does not work like that. A window
+// it has been told is not resizable is one GTK sizes itself, and the size it
+// reaches for is the one the window was given to open at
+// (gtk_window_set_default_size) — not the size the window has on screen. It
+// says that size to the window manager as min = max hints, and the window
+// manager obeys, so a frame dragged smaller since startup is snapped back to
+// the startup size by the act of locking it. Geometry hints of our own are no
+// answer either: the non-resizable path overwrites them (all measured against
+// GTK 3.24 on the microVM's openbox, with the frame small and the lock going
+// on).
+//
+// In the guest that is the difference between a window and a window taller than
+// the screen it is on: ~/.pob is copied in whole (vm/msb/run.sh), so a frame
+// left at 997x935 on a Mac is what the guest's Pob opens with on a 1024x768
+// screen, and the lock is what makes it take it.
+//
+// The size is read and written in GTK's own space — the visible frame, without
+// the invisible shadow band around it — which is the space default sizes are
+// said in. GTK puts the band back when it turns this into hints for the window
+// manager.
+static void hold_window_size(void) {
+    if (!g_state.window) return;
+    int w = 0, h = 0;
+    gtk_window_get_size(g_state.window, &w, &h);
+    if (w <= 0 || h <= 0) return;
+    gtk_window_set_default_size(g_state.window, w, h);
+    app_logger_log("Window held at %dx%d", w, h);
+}
+
 // The lock holds the frame's size, and holds it onto what it frames.
 //
 // Moving stays allowed, because with the lock on a move no longer costs
@@ -365,8 +496,23 @@ void app_update_window_lock(void) {
     // to carry.
     if (g_state.is_fullscreen) return;
     gboolean locked = g_state.is_locked || g_state.is_executing;
+    // What the frame is held at is the size it has this moment, said where GTK
+    // reads a fixed size from (hold_window_size). Before the window is on
+    // screen — a lock restored at startup — that is the frame it is opening
+    // with, which is the right answer there too.
+    if (locked) hold_window_size();
+    // A maximized frame comes off the maximized state first, over the same
+    // pixels it was already covering: the lock would otherwise move it. A
+    // window that cannot be resized is one a window manager will not keep
+    // maximized either, and it answers the fixed size below by unmaximizing —
+    // openbox, the window manager in the microVM, puts the frame back where it
+    // was maximized *from* while the lock holds it at the size it has now. A
+    // frame filling the screen lands mostly off it, toolbar and all.
+    gboolean placing = locked && unmaximize_in_place();
     gtk_window_set_resizable(g_state.window, !locked);
-    carry_service_set_enabled(locked);
+    // A frame still being put back is handed to carry by the placement itself,
+    // once it has stopped moving (start_carry_when_placed).
+    if (!placing) carry_service_set_enabled(locked);
     // The input shape only keeps GTK's resize handles while resizing is allowed.
     app_update_click_through();
 }
@@ -928,6 +1074,40 @@ static void build_headerbar(void) {
 
 // ── window frame persistence ────────────────────────────────────────────────
 
+// A saved frame is not always one this screen can hold, so it comes back cut
+// down to what the work area can take of it.
+//
+// ~/.pob travels. The microVM is handed a copy of it whole (vm/msb/run.sh), so
+// the frame an instance was left at on a Mac is the frame the guest's Pob opens
+// with on its 1024x768 screen — and the lock travels in that copy too, which
+// makes it a window a third of which is below the bottom edge and no drag to
+// bring it back, since the lock is what holds it at that size (hold_window_size).
+static void clamp_frame_to_workarea(int *x, int *y, int *w, int *h) {
+    GdkDisplay *display = gdk_display_get_default();
+    if (!display) return;
+    GdkMonitor *monitor = gdk_display_get_monitor_at_point(display, *x, *y);
+    if (!monitor) monitor = gdk_display_get_primary_monitor(display);
+    if (!monitor) return;
+
+    GdkRectangle area;
+    gdk_monitor_get_workarea(monitor, &area);
+    if (area.width <= 0 || area.height <= 0) return;
+
+    int cw = MIN(*w, area.width);
+    int ch = MIN(*h, area.height);
+    int cx = CLAMP(*x, area.x, area.x + area.width - cw);
+    int cy = CLAMP(*y, area.y, area.y + area.height - ch);
+    if (cw == *w && ch == *h && cx == *x && cy == *y) return;
+
+    app_logger_log("Saved frame %dx%d+%d+%d does not fit the %dx%d work area — "
+                   "opening at %dx%d+%d+%d",
+                   *w, *h, *x, *y, area.width, area.height, cw, ch, cx, cy);
+    *w = cw;
+    *h = ch;
+    *x = cx;
+    *y = cy;
+}
+
 static gboolean save_frame_now(gpointer data) {
     (void)data;
     save_frame_timeout = 0;
@@ -1162,6 +1342,7 @@ static void on_activate(GtkApplication *app, gpointer data) {
     } else {
         int x, y, w, h;
         if (settings_get_window_frame(&x, &y, &w, &h)) {
+            clamp_frame_to_workarea(&x, &y, &w, &h);
             gtk_window_set_default_size(g_state.window, w, h);
             gtk_window_move(g_state.window, x, y);
         } else {

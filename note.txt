@@ -2,6 +2,9 @@
 Commands
 --------
 
+Open a Microsandbox instance and connect with TigerVNC
+pob launch --msb --vncviewer
+
 Start a pob session in a Microsandbox instance
 msb exec msb-b400 -- pob start
 
@@ -11,3 +14,12 @@ vncviewer 127.0.0.1:5901
 Microsandbox
 msb stop xxx
 msb rm xxx
+
+Delete all Microsandbox instances
+msb list -q | grep '^msb-' | xargs msb rm -f
+
+Rebuild install and lanch a Sandbox
+./build.sh && ./install.sh && pob launch --msb --vncviewer
+
+Launch a sandbox with fullscreen
+pob launch --msb --vncviewer --fullscreen
