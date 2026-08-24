@@ -50,6 +50,9 @@ public class ContentView : FrameworkElement
         Color.FromArgb((byte)(255 * 0.08), AppState.Accent.R, AppState.Accent.G, AppState.Accent.B)));
     private static readonly Brush BlueStroke = Freeze(new SolidColorBrush(AppState.Accent));
     private static readonly Pen BluePen = FreezePen(new Pen(BlueStroke, 1));
+    private static readonly Brush DotFill = Freeze(new SolidColorBrush(Color.FromArgb(217, 0, 0, 0)));
+    private static readonly Pen DotRing = FreezePen(
+        new Pen(Freeze(new SolidColorBrush(Color.FromArgb(128, 255, 255, 255))), 1));
     private static readonly Typeface LabelFont =
         new(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
@@ -268,6 +271,19 @@ public class ContentView : FrameworkElement
         dc.Pop();
         dc.Pop();
 
+        // What a hidden menu leaves on screen: a small black dot in the
+        // top-right corner, and the only way back to the toolbar. The white
+        // ring is what makes it findable — the dot sits over whatever
+        // application the frame is parked on, and a bare black circle on a dark
+        // window is a dot nobody can find again.
+        if (AppState.IsMenuHidden)
+        {
+            var center = new Point(w - AppState.MenuDotInset, AppState.MenuDotInset);
+            double r = AppState.MenuDotDiameter / 2;
+            dc.DrawEllipse(DotFill, null, center, r, r);
+            dc.DrawEllipse(null, DotRing, center, r - 0.5, r - 0.5);
+        }
+
         // Screenshot flash.
         if (_flashOpacity > 0)
         {
@@ -296,6 +312,11 @@ public class ContentView : FrameworkElement
         base.OnMouseLeftButtonDown(e);
         Point pos = e.GetPosition(this);
 
+        // The dot the hidden menu left behind never gets this far: the overlay
+        // window takes its press in OnPreviewLeftButtonDown, where the resize
+        // border is handled, because what the press means — a menu, or a window
+        // being dragged — is only settled when the button comes up.
+
         if (AppState.IsTargeting)
         {
             double scale = Scale;
@@ -319,7 +340,9 @@ public class ContentView : FrameworkElement
         }
 
         // Plain click: bring the overlay window forward (macOS onTapGesture).
-        AppState.Toolbar?.Activate();
+        // Not while the menu is hidden — the toolbar window is off the screen
+        // then, and the dot above is what brings it back.
+        if (!AppState.IsMenuHidden) AppState.Toolbar?.Activate();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)

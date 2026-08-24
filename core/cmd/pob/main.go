@@ -17,6 +17,8 @@
 //	                                 no toolbar — driven from here on
 //	pob launch --msb                 start it in a microVM of its own, on a
 //	                                 copy of this ~/.pob, with Firefox in it
+//	                                 (asks how many machines to start)
+//	pob launch --msb --count 10      …ten of them, side by side
 //	pob launch --msb --vncviewer     …and open a VNC window on its screen
 //	pob check                        read the macro and this machine, and say
 //	                                 what is wrong with either
@@ -84,9 +86,15 @@ Commands:
                      inside it. Prints the address to watch it at (VNC) and the
                      web UI's. Every launch is another machine, named msb-xxxx
                      the way an instance is named pb-xxxx, so several run side by
-                     side; POB_MSB_NAME=<name> takes one over instead. Needs
-                     microsandbox and Docker —
+                     side; POB_MSB_NAME=<name> takes one over instead. After the
+                     instance it asks how many machines to start — enter is one.
+                     Needs microsandbox and Docker —
                      see docs/Pob/16_Microsandbox.md
+  launch --msb --count N
+                     Start N of those machines instead of asking, each with its
+                     own name, ports and copy of the instance, one after the
+                     other. --count 1 is the way a script says the question is
+                     answered; 20 is the most one launch starts
   launch --msb --vncviewer
                      The same launch, with a VNC viewer opened on the guest's
                      screen once Pob is up — TigerVNC where it is installed,
@@ -164,6 +172,7 @@ Examples:
   pob launch --start           # start it and run the macro straight away
   pob launch --fullscreen      # start it over the whole screen, no toolbar
   pob launch --msb             # start it in a Linux microVM of its own
+  pob launch --msb --count 10  # …ten machines of it, one after the other
   pob launch --msb --start     # …and run the macro in there
   pob launch --msb --vncviewer # …and open a VNC window on its screen
   pob check                    # is the macro sound, and can this machine run it?
@@ -212,10 +221,17 @@ func main() {
 		if !strings.HasPrefix(arg, "-") {
 			break
 		}
-		switch arg {
-		case "--fullscreen", "-fullscreen", "--msb", "-msb", "--vncviewer", "-vncviewer":
+		switch {
+		case arg == "--fullscreen", arg == "-fullscreen", arg == "--msb", arg == "-msb",
+			arg == "--vncviewer", arg == "-vncviewer":
 			name := "--" + strings.TrimLeft(arg, "-")
 			fail("%s says how to start the app, so it goes after launch — `pob launch %s`", name, name)
+		// The same, for the one of them that takes a number: it is said with the
+		// number it would be typed with, so the answer is a line to run rather
+		// than a line to correct.
+		case arg == msbCountFlag, arg == "-count", strings.HasPrefix(arg, msbCountFlag+"="):
+			fail("%s says how many microVMs to start, so it goes after launch — `pob launch --msb %s 10`",
+				msbCountFlag, msbCountFlag)
 		}
 	}
 

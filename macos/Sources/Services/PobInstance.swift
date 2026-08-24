@@ -232,6 +232,95 @@ final class PobInstance: NSObject, ObservableObject {
                       height: min(Self.startingSize.height, room.height))
     }
 
+    // MARK: - Hidden menu
+
+    /// Where the dot a hidden menu leaves behind sits, and how big it is —
+    /// shared by the view that draws it (ContentView) and the click-through
+    /// decision that has to keep those pixels live. Its center is `inset` from
+    /// the content's top-right corner; `hit` is the box that takes the click,
+    /// which is a good deal wider than the dot — it is small on purpose, and
+    /// the window is dragged by it as well as pressed.
+    enum MenuDot {
+        static let inset: CGFloat = 20
+        static let diameter: CGFloat = 8
+        static let hit: CGFloat = 20
+    }
+
+    private(set) var isMenuHidden = false
+
+    /// The titlebar the window was wearing when the menu went away: what the
+    /// frame gives up on the way out and takes back on the way in.
+    private var hiddenTitlebarHeight: CGFloat = 0
+
+    /// The toolbar itself, held for as long as the menu is hidden.
+    ///
+    /// AppKit takes the toolbar off a window the moment it stops being titled —
+    /// `window.toolbar` is nil on the other side of the flip — and SwiftUI does
+    /// not put its own back. Without this, what comes back with the titlebar is
+    /// an empty strip, and every button on it is gone for the rest of the run.
+    private var hiddenToolbar: NSToolbar?
+
+    /// Takes the titlebar off the window — toolbar, title and window buttons
+    /// with it — and puts it back.
+    ///
+    /// The frame gives up exactly the titlebar it was wearing, so the content
+    /// stands over the same pixels it did a moment before: the content is what a
+    /// screenshot is of and what every click is aimed through, and a macro
+    /// recorded before the menu went away still lands where it was aimed.
+    ///
+    /// The mode belongs to the run rather than to the instance — nothing is
+    /// written to instance.json, so the next launch comes up with its toolbar.
+    /// A window that opened with nothing on it but a dot would be a window whose
+    /// only way back was a dot nobody was told about.
+    func setMenuHidden(_ hidden: Bool) {
+        guard let window, !AppOptions.fullscreen, hidden != isMenuHidden else { return }
+        isMenuHidden = hidden
+
+        if hidden {
+            let contentInScreen = window.convertToScreen(window.contentLayoutRect)
+            hiddenTitlebarHeight = window.frame.height - contentInScreen.height
+            hiddenToolbar = window.toolbar
+            // Not resizable: a borderless window has no frame to take hold of,
+            // so an edge kept live would be an edge that swallows the clicks
+            // meant for the application below and resizes nothing. The lock's
+            // half of the mask comes back with the titlebar — the view's
+            // updateWindowLock runs again the moment this returns.
+            window.styleMask = [.borderless]
+            window.setFrame(contentInScreen, display: true)
+        } else {
+            var frame = window.frame
+            frame.size.height += hiddenTitlebarHeight
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            // A titlebar rebuilt from a styleMask comes back with none of the
+            // styling attach(window:) gave the first one — the toolbar least of
+            // all, which is why it was kept.
+            window.titlebarAppearsTransparent = false
+            window.titleVisibility = .hidden
+            window.title = "Pob \(AppDelegate.version)"
+            window.toolbar = hiddenToolbar
+            hiddenToolbar = nil
+            window.toolbarStyle = .unifiedCompact
+            window.toolbar?.isVisible = true
+            // Last: the frame is only right once the titlebar it makes room for
+            // is the one that will be there.
+            window.setFrame(frame, display: true)
+        }
+
+        // The frame moved even though the content did not, and the two are
+        // measured against each other everywhere downstream.
+        bridge.windowGeometryChanged()
+        updateIgnoresMouseEvents()
+    }
+
+    /// The dot's hit box in screen coordinates. With the menu hidden the frame
+    /// *is* the content, so the box hangs off the frame's own top-right corner.
+    private func menuDotRectInScreen(for frame: NSRect) -> NSRect {
+        let hit = MenuDot.hit
+        return NSRect(x: frame.maxX - MenuDot.inset - hit / 2,
+                      y: frame.maxY - MenuDot.inset - hit / 2,
+                      width: hit, height: hit)
+    }
+
     // MARK: - Click-through
 
     /// Width of the window-edge band kept live while click-through is on, so
@@ -353,11 +442,19 @@ final class PobInstance: NSObject, ObservableObject {
             wf.insetBy(dx: -border, dy: -border).contains(mouse) &&
             (mouse.x - wf.minX <= border || wf.maxX - mouse.x <= border ||
              mouse.y - wf.minY <= border || wf.maxY - mouse.y <= border)
-        // Top 50 pt covers the compact unified toolbar + traffic-light buttons.
-        let inToolbar = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
-            mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
+        // The chrome that stays live while everything inside it passes clicks
+        // through. Ordinarily the top 50 pt, which covers the compact unified
+        // toolbar and the traffic-light buttons; with the menu hidden there is
+        // no toolbar left to keep, and the dot is the whole of it instead.
+        let inChrome: Bool
+        if isMenuHidden {
+            inChrome = menuDotRectInScreen(for: wf).contains(mouse)
+        } else {
+            inChrome = mouse.x >= wf.minX && mouse.x <= wf.maxX &&
+                mouse.y >= (wf.maxY - 50) && mouse.y <= wf.maxY
+        }
 
-        setIgnoresMouseEvents(!(inToolbar || onEdge), on: window)
+        setIgnoresMouseEvents(!(inChrome || onEdge), on: window)
     }
 
     /// Each assignment is a round trip to the window server and the poll runs
@@ -381,6 +478,12 @@ extension PobInstance {
     /// ordinary launch up as a window the size of the screen.
     private func saveWindowFrame() {
         guard let window, !AppOptions.fullscreen else { return }
-        settings.saveWindowFrame(window.frame)
+        var frame = window.frame
+        // With the menu hidden the frame is the content and nothing else. What
+        // is written down is the frame with its titlebar back on, so the next
+        // run — which starts with the toolbar showing — opens the content over
+        // the same pixels rather than a titlebar's worth short of them.
+        if isMenuHidden { frame.size.height += hiddenTitlebarHeight }
+        settings.saveWindowFrame(frame)
     }
 }

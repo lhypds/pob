@@ -19,6 +19,16 @@
 #define POB_ACCENT_CSS "#007AFF"
 #define POB_RED_CSS "#FF3B30" // SwiftUI Color.red = systemRed
 
+// Where the dot a hidden menu leaves behind sits, and how big it is — shared by
+// the view that draws it (content_view.c) and the input shape that has to keep
+// those pixels live (main.c). Its center is POB_MENU_DOT_INSET from the
+// content's top-right corner; the box that takes the click is a good deal wider
+// than the dot — it is small on purpose, and the window is dragged by it as
+// well as pressed. Logical pixels.
+#define POB_MENU_DOT_INSET 20
+#define POB_MENU_DOT_DIAMETER 8
+#define POB_MENU_DOT_HIT 20
+
 typedef struct AppState {
     GtkApplication *app;
     GtkWindow *window;
@@ -45,6 +55,17 @@ typedef struct AppState {
     // the command line and never written to instance.json: the `pob` command
     // is what drives a Pob started this way, and what quits it again.
     gboolean is_fullscreen;
+
+    // "Hide Menu": the headerbar comes off the window — toolbar, title and
+    // window buttons with it — and a small black dot in the content's top-right
+    // corner is the whole of Pob left on the screen. Like fullscreen it belongs
+    // to the run rather than to the instance: nothing is written to
+    // instance.json, so the next launch comes up with its toolbar rather than
+    // with a dot nobody was told about.
+    gboolean is_menu_hidden;
+    // The headerbar the frame was wearing when the menu went away: what the
+    // frame gives up on the way out and takes back on the way in.
+    int hidden_bar_height;
 } AppState;
 
 extern AppState g_state;
@@ -62,6 +83,9 @@ void app_set_executing(gboolean executing);  // called from core_bridge (main th
 void app_set_server_url(const char *url);
 void app_set_targeting(gboolean targeting);  // also syncs toolbar + click-through
 void app_set_cropping(gboolean cropping);
+// Takes the headerbar off the window and puts it back — the "Hide Menu" button
+// and the dot it leaves behind (content_view.c) are the two ways in.
+void app_set_menu_hidden(gboolean hidden);
 // The lock, click-through and recording as the `pob` CLI asks for them, over
 // core_bridge's ui.lock / ui.clickThrough / ui.record. Each does what pressing
 // the toolbar button does — icon, tooltip and instance.json included — so a

@@ -67,7 +67,12 @@ func cmdNew(root, name string) {
 
 // launchOptions is everything a launch was told: which instance, whether the
 // macro runs after it, which macro that is, the two modes — the whole screen,
-// and a machine of its own — and whether to open a window on that machine.
+// and a machine of its own — whether to open a window on that machine, and how
+// many machines there are to be.
+//
+// count is 0 for a launch that did not say, which is what makes the question
+// worth asking: see msbCount. It is a --msb number and nothing else — this
+// desktop runs the one Pob, however many times the flag is typed.
 type launchOptions struct {
 	instance   string
 	start      bool
@@ -75,6 +80,7 @@ type launchOptions struct {
 	fullscreen bool
 	msb        bool
 	viewer     bool
+	count      int
 }
 
 // cmdLaunch picks the instance to start and starts it. The running check
@@ -126,7 +132,8 @@ func cmdLaunch(root string, opts launchOptions) {
 // since what was asked for was a run.
 func parseLaunchArgs(args []string) launchOptions {
 	args, file := takeMacroPSL(args)
-	opts := launchOptions{macroPSL: file}
+	args, count := takeMSBCount(args)
+	opts := launchOptions{macroPSL: file, count: count}
 	var name []string
 	for _, arg := range args {
 		switch {
@@ -152,6 +159,14 @@ func parseLaunchArgs(args []string) launchOptions {
 	// instruction with nothing to carry it out: said rather than ignored.
 	if opts.viewer && !opts.msb {
 		fail("--vncviewer opens a window on the microVM's screen, so it goes with --msb — `pob launch --msb --vncviewer`")
+	}
+	// And the number is a number of microVMs. A launch on this desktop starts
+	// the one Pob this machine runs — there is no second screen to put another
+	// on — so a count here is an instruction with nothing to carry it out.
+	if opts.count > 0 && !opts.msb {
+		fail("%s is how many microVMs to start, so it goes with --msb — `pob launch --msb %s %d`.\n"+
+			"      On this desktop there is the one Pob, whatever the number says",
+			msbCountFlag, msbCountFlag, opts.count)
 	}
 	opts.instance = strings.TrimSpace(strings.Join(name, " "))
 	return opts

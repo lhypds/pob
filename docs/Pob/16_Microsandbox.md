@@ -320,6 +320,30 @@ prints the name it drew and every command for that machine, and says how many
 were already up before it: each one holds its own memory and disk, and a host
 runs out of both without ever pointing here.
 
+**Several at once** is what that makes possible, and the launch asks for it
+rather than leaving it to be typed again: after the instance list comes one more
+question, `How many VMs? [1]:`, and enter is the one machine almost always
+wanted. Answer `10` and the launch is ten machines — ten names, ten sets of
+ports, ten copies of the same instance — started one after another, with a
+`── VM 3 of 10 ──` line between them and a count at the end.
+
+```
+pob launch --msb                      # asks; enter is one machine
+pob launch --msb --count 10           # ten, without being asked
+pob launch --msb --count 10 --start   # …each of them replaying the macro
+```
+
+`--count` is that answer given in advance, which is what a script or a cron
+entry needs: with nobody at the keyboard the question is not asked and the
+launch is one machine. `20` is the most one launch takes — each machine holds
+its own memory and disk, so a `100` typed for a `10` would take the host down
+while looking like a launch — and the command run again adds twenty more. They
+come up one after another and not at once, because each picks the host ports it
+publishes by looking for free ones and has to see the one before it; if one will
+not start, the launch stops there and says which ones are up. `POB_MSB_NAME` is
+the one launch that refuses a count: that name is a single machine replaced at
+every launch, so ten of them would be that machine built ten times over.
+
 Drawn rather than counted, because a number would have to mean something. "The
 second machine up" stops being true the moment the first one is stopped, and a
 name that is only ever itself is one you can read off a launch from an hour ago

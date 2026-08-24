@@ -123,6 +123,12 @@
                 <Button x:Name="ResetBtn" Style="{StaticResource ToolButton}" ToolTip="Reset Mouse Position" Click="OnResetClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE72C;"/>
                 </Button>
+                <!-- Hide Menu: takes this whole window off the screen and
+                     leaves the dot the overlay draws in its place. ChevronUp,
+                     the bar folding away upwards. -->
+                <Button x:Name="HideMenuBtn" Style="{StaticResource ToolButton}" ToolTip="Hide Menu" Click="OnHideMenuClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE70E;"/>
+                </Button>
             </StackPanel>
         </DockPanel>
     </Border>

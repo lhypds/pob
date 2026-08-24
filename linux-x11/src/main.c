@@ -159,6 +159,7 @@ static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic",
 static const char *const ICONS_LOCKED[] = {"changes-prevent-symbolic", NULL};
 static const char *const ICONS_UNLOCKED[] = {"changes-allow-symbolic", NULL};
 static const char *const ICONS_RESET[] = {"view-refresh-symbolic", "edit-undo-symbolic", NULL};
+static const char *const ICONS_HIDE_MENU[] = {"pan-up-symbolic", "go-up-symbolic", NULL};
 static const char *const ICONS_MINIMIZE[] = {"window-minimize-symbolic", "go-down-symbolic", NULL};
 static const char *const ICONS_MAXIMIZE[] = {"window-maximize-symbolic", "go-up-symbolic", NULL};
 static const char *const ICONS_RESTORE[] = {"window-restore-symbolic", "view-restore-symbolic", NULL};
@@ -295,9 +296,16 @@ void app_update_click_through(void) {
         // cursor, no resize. A locked (or executing) window cannot be resized
         // anyway, so it keeps the band out and the invisible shadow catches
         // no clicks.
+        //
+        // A hidden menu has no headerbar on the window at all, and the
+        // allocation GTK left on the hidden widget is the one it had when it
+        // was last on screen — a band that now falls across the top of the
+        // content. The frame starts at the content instead, and the dot below
+        // is what is kept live in the headerbar's place.
         gboolean resizable = !g_state.is_locked && !g_state.is_executing;
+        int top = g_state.is_menu_hidden ? content.y : hb.y;
         cairo_rectangle_int_t frame = {
-            content.x, hb.y, content.width, content.y + content.height - hb.y,
+            content.x, top, content.width, content.y + content.height - top,
         };
         if (resizable) {
             frame.x = 0;
@@ -306,12 +314,29 @@ void app_update_click_through(void) {
             frame.height = alloc.height;
         }
         cairo_region_t *region = cairo_region_create_rectangle(&frame);
-        cairo_rectangle_int_t hbr = {hb.x, hb.y, hb.width, hb.height};
-        cairo_region_union_rectangle(region, &hbr);
+        if (!g_state.is_menu_hidden) {
+            cairo_rectangle_int_t hbr = {hb.x, hb.y, hb.width, hb.height};
+            cairo_region_union_rectangle(region, &hbr);
+        }
 
         cairo_rectangle_int_t hole = {content.x, content.y, content.width,
                                       content.height};
         cairo_region_subtract_rectangle(region, &hole);
+
+        // The dot the hidden menu left behind, added back after the hole is
+        // punched: it is the only way to the toolbar, and it lives inside the
+        // content area, which is the part of the window that has just been
+        // given away. Not while the agent is driving, though — those same
+        // pixels are where a macro's clicks are aimed, and a live dot would
+        // swallow one meant for the application below.
+        if (g_state.is_menu_hidden && !g_state.is_executing) {
+            cairo_rectangle_int_t dot = {
+                content.x + content.width - POB_MENU_DOT_INSET - POB_MENU_DOT_HIT / 2,
+                content.y + POB_MENU_DOT_INSET - POB_MENU_DOT_HIT / 2,
+                POB_MENU_DOT_HIT, POB_MENU_DOT_HIT,
+            };
+            cairo_region_union_rectangle(region, &dot);
+        }
 
         gtk_widget_input_shape_combine_region(win, region);
         cairo_region_destroy(region);
@@ -580,6 +605,85 @@ void app_set_cropping(gboolean cropping) {
     content_view_update_cursor_style();
 }
 
+// Moves and resizes the frame in one go, lock and all.
+//
+// A locked window is one GTK sizes itself, from the size it was given to open
+// at (see hold_window_size), and it refuses gtk_window_resize outright — so the
+// lock comes off for the length of the placement and the new size is written
+// down as the size it opens at before it goes back on.
+static void place_frame(int x, int y, int w, int h) {
+    // A maximized frame is one the window manager places, and it answers
+    // gtk_window_resize and gtk_window_move with nothing at all. It comes off
+    // the maximized state first, over the same pixels it was already covering
+    // — the move below overwrites the WM's own restore.
+    if (gtk_window_is_maximized(g_state.window))
+        gtk_window_unmaximize(g_state.window);
+    gboolean resizable = gtk_window_get_resizable(g_state.window);
+    if (!resizable) gtk_window_set_resizable(g_state.window, TRUE);
+    gtk_window_resize(g_state.window, w, h);
+    gtk_window_move(g_state.window, x, y);
+    if (!resizable) {
+        gtk_window_set_default_size(g_state.window, w, h);
+        gtk_window_set_resizable(g_state.window, FALSE);
+    }
+}
+
+// Takes the headerbar off the window — toolbar, title and window buttons with
+// it — and puts it back. What is left is the content area and a small black dot
+// in its top-right corner (content_view.c draws it, app_update_click_through
+// keeps its pixels live), and clicking the dot brings it all back.
+//
+// The frame gives up exactly the headerbar it was wearing: moved down by its
+// height and shortened by it, so the content stands over the same pixels it did
+// a moment before. The content is what a screenshot is of and what every click
+// is aimed through, so a macro recorded before the menu went away still lands
+// where it was aimed.
+void app_set_menu_hidden(gboolean hidden) {
+    // Nothing to hide in fullscreen: the headerbar is never shown there, and
+    // the frame is the screen rather than something to take a strip off.
+    if (g_state.is_fullscreen) return;
+    if (g_state.is_menu_hidden == hidden) return;
+    if (!g_state.window || !g_state.headerbar) return;
+
+    int x = 0, y = 0, w = 0, h = 0;
+    gtk_window_get_position(g_state.window, &x, &y);
+    gtk_window_get_size(g_state.window, &w, &h);
+
+    if (hidden) {
+        GtkAllocation hb;
+        gtk_widget_get_allocation(g_state.headerbar, &hb);
+        g_state.hidden_bar_height = hb.height;
+        g_state.is_menu_hidden = TRUE;
+        gtk_widget_set_no_show_all(g_state.headerbar, TRUE);
+        gtk_widget_hide(g_state.headerbar);
+    } else {
+        g_state.is_menu_hidden = FALSE;
+        gtk_widget_set_no_show_all(g_state.headerbar, FALSE);
+        gtk_widget_show(g_state.headerbar);
+    }
+
+    int bar = hidden ? g_state.hidden_bar_height : -g_state.hidden_bar_height;
+    app_logger_log("Menu %s — frame %dx%d+%d+%d becomes %dx%d+%d+%d",
+                   hidden ? "hidden" : "shown", w, h, x, y, w, h - bar, x, y + bar);
+
+    // Carry follows the frame, and it cannot tell this from a drag: the frame
+    // is about to move a headerbar's worth down the screen with a button that
+    // was down a moment ago (the press that opened this), which is the shape of
+    // a quick drag. It goes off for the length of the placement and is seeded
+    // again from where the frame comes to rest — the same wait the lock uses.
+    carry_service_set_enabled(FALSE);
+    place_frame(x, y + bar, w, h - bar);
+    if (place_settle_source) g_source_remove(place_settle_source);
+    place_settle_source =
+        g_timeout_add(PLACE_SETTLE_MS, start_carry_when_placed, NULL);
+
+    app_update_click_through();
+    // The dot's hand cursor goes with the dot, and the press that was on it is
+    // over: this is what puts the pointer back to the mode's own cursor.
+    content_view_update_cursor_style();
+    gtk_widget_queue_draw(g_state.content);
+}
+
 void app_set_executing(gboolean executing) {
     g_state.is_executing = executing;
     if (executing) content_view_reset_anim();
@@ -833,6 +937,11 @@ static void on_reset_clicked(GtkButton *b, gpointer d) {
     content_view_show_message("Mouse position reset");
 }
 
+static void on_hidemenu_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    app_set_menu_hidden(TRUE);
+}
+
 // ── headerbar (toolbar + context menu + drag lock) ──────────────────────────
 
 static gboolean on_headerbar_button_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
@@ -1024,6 +1133,7 @@ static void build_headerbar(void) {
                      G_CALLBACK(on_clickthrough_realize), NULL);
     g_state.lock_btn = icon_button(ICONS_UNLOCKED, "Window Unlocked (click to lock)");
     GtkWidget *reset_btn = icon_button(ICONS_RESET, "Reset Mouse Position");
+    GtkWidget *hidemenu_btn = icon_button(ICONS_HIDE_MENU, "Hide Menu");
     GtkWidget *minimize_btn = icon_button(ICONS_MINIMIZE, "Minimize");
     maximize_btn = icon_button(ICONS_MAXIMIZE, "Maximize");
     GtkWidget *close_btn = icon_button(ICONS_CLOSE, "Close");
@@ -1041,6 +1151,7 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.clickthrough_btn, "clicked", G_CALLBACK(on_clickthrough_clicked), NULL);
     g_signal_connect(g_state.lock_btn, "clicked", G_CALLBACK(on_lock_clicked), NULL);
     g_signal_connect(reset_btn, "clicked", G_CALLBACK(on_reset_clicked), NULL);
+    g_signal_connect(hidemenu_btn, "clicked", G_CALLBACK(on_hidemenu_clicked), NULL);
     g_signal_connect(minimize_btn, "clicked", G_CALLBACK(on_minimize_clicked), NULL);
     g_signal_connect(maximize_btn, "clicked", G_CALLBACK(on_maximize_clicked), NULL);
     g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_clicked), NULL);
@@ -1060,6 +1171,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), close_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), maximize_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), minimize_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), hidemenu_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), reset_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.lock_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
@@ -1164,6 +1276,14 @@ static gboolean save_frame_now(gpointer data) {
     int x, y, w, h;
     gtk_window_get_position(g_state.window, &x, &y);
     gtk_window_get_size(g_state.window, &w, &h);
+    // With the menu hidden the frame is the content and nothing else. What is
+    // written down is the frame with its headerbar back on, so the next run —
+    // which starts with the toolbar showing — opens the content over the same
+    // pixels rather than a headerbar's worth short of them.
+    if (g_state.is_menu_hidden) {
+        y -= g_state.hidden_bar_height;
+        h += g_state.hidden_bar_height;
+    }
     // The WM sends synthetic ConfigureNotify on focus changes; don't rewrite
     // settings.json unless the frame actually moved or resized.
     static int last_x, last_y, last_w, last_h;

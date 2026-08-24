@@ -44,6 +44,7 @@ struct InstanceContentView: View {
     @State private var cropCurrent: CGPoint? = nil
     @State private var isClickThrough = true
     @State private var isLocked = false
+    @State private var isMenuHidden = false
     @State private var isRecording = false
     @State private var showRecordWarning = false
     @State private var mousePosition: CGPoint? = nil
@@ -117,6 +118,18 @@ struct InstanceContentView: View {
                 )
                 .allowsHitTesting(false)
 
+            // The way back from a hidden menu. Everything else Pob draws on the
+            // screen has gone — toolbar, titlebar, window buttons — and this is
+            // the whole of what is left to press, parked in the corner of the
+            // frame where it is least likely to be over anything being watched.
+            if isMenuHidden {
+                MenuDotButton { isMenuHidden = false }
+                    .frame(width: PobInstance.MenuDot.hit, height: PobInstance.MenuDot.hit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.trailing, PobInstance.MenuDot.inset - PobInstance.MenuDot.hit / 2)
+                    .padding(.top, PobInstance.MenuDot.inset - PobInstance.MenuDot.hit / 2)
+            }
+
             Color.white
                 .opacity(screenshotFlashOpacity)
                 .allowsHitTesting(false)
@@ -166,6 +179,13 @@ struct InstanceContentView: View {
         .onChange(of: isLocked) { locked in
             updateWindowLock()
             instance.settings.saveWindowLocked(locked)
+        }
+        .onChange(of: isMenuHidden) { hidden in
+            instance.setMenuHidden(hidden)
+            // The window's style mask was rebuilt from nothing on the way back;
+            // this puts the lock's half of it — whether the frame can be
+            // resized — back on top.
+            updateWindowLock()
         }
         .onChange(of: isClickThrough) { enabled in
             updateClickThrough()
@@ -484,6 +504,12 @@ struct InstanceContentView: View {
             }
             .help("Reset Mouse Position")
         }
+        ToolbarItem(placement: .automatic) {
+            Button(action: { isMenuHidden = true }) {
+                Image(systemName: "chevron.up")
+            }
+            .help("Hide Menu")
+        }
     }
 
     // MARK: - Helpers
@@ -583,6 +609,10 @@ struct InstanceContentView: View {
         guard !AppOptions.fullscreen else { return }
         let shouldLock = isLocked || bridge.isExecuting
         instance.carry.setEnabled(shouldLock)
+        // A hidden menu leaves a borderless window, which has no frame to take
+        // hold of and so no resize to take away. The mask is left alone until
+        // the titlebar comes back, which runs this again.
+        guard !instance.isMenuHidden else { return }
         if shouldLock {
             window.styleMask.remove(.resizable)
         } else {
@@ -622,6 +652,95 @@ private struct InstanceLogButton: View {
         )
         .overlay(HoverDetectorView(isHovered: $isHovered))
         .help("Instance Log — ⌥ for app.log")
+    }
+}
+
+/// What a hidden menu leaves on screen: a small black dot in the frame's
+/// top-right corner, the only way back to the toolbar — and, since the titlebar
+/// that used to be dragged is part of what went away, the only way to move the
+/// window. A press that goes nowhere shows the menu; a press that travels takes
+/// the window with it.
+///
+/// An NSView rather than a SwiftUI Button, because the window it sits in is
+/// borderless for as long as the menu is hidden, and a borderless window cannot
+/// become key: the click that reaches it is a click on an inactive window, which
+/// AppKit throws away unless the view under it asks for the first one.
+private struct MenuDotButton: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context _: Context) -> MenuDotNSView {
+        let view = MenuDotNSView()
+        view.onClick = action
+        return view
+    }
+
+    func updateNSView(_ nsView: MenuDotNSView, context _: Context) {
+        nsView.onClick = action
+    }
+}
+
+private class MenuDotNSView: NSView {
+    var onClick: (() -> Void)?
+
+    /// Where the pointer and the frame stood when the dot was pressed, and
+    /// whether that press has since become a drag.
+    private var dragStartMouse: NSPoint?
+    private var dragStartOrigin: NSPoint?
+    private var didDrag = false
+
+    /// How far the pointer travels before a press counts as a drag rather than
+    /// a click. A dot this small is pressed with a hand that is never perfectly
+    /// still, and a menu that refused to come back because the pointer moved a
+    /// pixel would be a menu with no way back at all.
+    private static let dragThreshold: CGFloat = 3
+
+    override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    /// Black, with a faint white ring: the dot sits over whatever application
+    /// the frame is parked on, and a bare black circle on a dark window is a dot
+    /// nobody can find again.
+    override func draw(_: NSRect) {
+        let d = PobInstance.MenuDot.diameter
+        let rect = NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)
+        NSColor.black.withAlphaComponent(0.85).setFill()
+        NSBezierPath(ovalIn: rect).fill()
+        let ring = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+        ring.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.5).setStroke()
+        ring.stroke()
+    }
+
+    override func mouseDown(with _: NSEvent) {
+        // Screen coordinates on both sides, so the arithmetic below is not
+        // measured against a view that is travelling with the window.
+        dragStartMouse = NSEvent.mouseLocation
+        dragStartOrigin = window?.frame.origin
+        didDrag = false
+    }
+
+    /// Moves the frame by the pointer's own delta — the same as dragging the
+    /// titlebar, so the lock carries the windows below along with it (the frame
+    /// move is what CarryService is watching for).
+    override func mouseDragged(with _: NSEvent) {
+        guard let window, let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
+        let mouse = NSEvent.mouseLocation
+        let dx = mouse.x - startMouse.x
+        let dy = mouse.y - startMouse.y
+        if !didDrag, abs(dx) < Self.dragThreshold, abs(dy) < Self.dragThreshold { return }
+        didDrag = true
+        window.setFrameOrigin(NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy))
+    }
+
+    override func mouseUp(with _: NSEvent) {
+        let wasDrag = didDrag
+        dragStartMouse = nil
+        dragStartOrigin = nil
+        didDrag = false
+        if !wasDrag { onClick?() }
     }
 }
 

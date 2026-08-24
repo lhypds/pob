@@ -44,8 +44,26 @@ public partial class OverlayWindow : Window
     public bool IsResizing => _resizing;
 
     private bool _passThrough;
-    private bool _edgeHot;
+    // The pointer is over something this window must keep for itself: the
+    // resize border, or the dot a hidden menu left in the corner.
+    private bool _pointerHot;
     private DispatcherTimer? _edgeWatch;
+
+    // The dot a hidden menu leaves behind is pressed here rather than in the
+    // ContentView, because what a press on it means is only settled when the
+    // button comes up: a press that goes nowhere brings the menu back, and one
+    // that travels moves the window — the titlebar that used to be dragged is
+    // part of what went away.
+    private bool _dotPressed;
+    private bool _dotDragged;
+    private NativeMethods.POINT _dotStartCursor;
+    private Point _dotStartFrame;
+
+    // How far the pointer travels before a press counts as a drag rather than a
+    // click. A dot this small is pressed with a hand that is never perfectly
+    // still, and a menu that refused to come back because the pointer moved a
+    // pixel would be a menu with no way back at all.
+    private const double DotDragThreshold = 3;
 
     // Matches the Root border's CornerRadius — see ClipContentToCorners. Not a
     // constant, because fullscreen squares the shape off: the rounding is there
@@ -97,7 +115,7 @@ public partial class OverlayWindow : Window
         if (!pass)
         {
             _edgeWatch?.Stop();
-            _edgeHot = false;
+            _pointerHot = false;
         }
         ApplyHitTest();
         // Nothing for the watch to find in fullscreen: there is no resize
@@ -109,7 +127,7 @@ public partial class OverlayWindow : Window
     private void ApplyHitTest()
     {
         NativeMethods.SetExStyleFlag(Hwnd, NativeMethods.WS_EX_TRANSPARENT,
-                                     _passThrough && !_edgeHot && !_resizing);
+                                     _passThrough && !_pointerHot && !_resizing && !_dotPressed);
     }
 
     private void StartEdgeWatch()
@@ -121,14 +139,31 @@ public partial class OverlayWindow : Window
 
     private void OnEdgeWatchTick(object? sender, EventArgs e)
     {
-        if (_resizing) return; // mouse is captured — leave the flag lifted
+        // Mouse is captured — leave the flag lifted for the length of the drag.
+        if (_resizing || _dotPressed) return;
         Zone zone = PointerZone();
-        Cursor? cursor = ZoneCursor(zone);
+        bool onDot = PointerOnMenuDot();
+        Cursor? cursor = onDot ? Cursors.Hand : ZoneCursor(zone);
         if (Cursor != cursor) Cursor = cursor;
-        bool hot = zone != Zone.None;
-        if (hot == _edgeHot) return;
-        _edgeHot = hot;
+        bool hot = zone != Zone.None || onDot;
+        if (hot == _pointerHot) return;
+        _pointerHot = hot;
         ApplyHitTest();
+    }
+
+    // Whether the pointer is over the dot a hidden menu left in the corner —
+    // the only button Pob has while the toolbar window is off the screen, and
+    // so the one place inside the content area that must keep its own clicks.
+    //
+    // Never while the agent is driving, though: the dot sits inside the content
+    // area, where a macro's clicks are aimed, and a live dot would swallow one
+    // meant for the application below. It comes back the moment the run ends.
+    private bool PointerOnMenuDot()
+    {
+        if (!AppState.IsMenuHidden || AppState.IsExecuting || !IsVisible) return false;
+        NativeMethods.GetCursorPos(out NativeMethods.POINT p);
+        Point local = PointFromScreen(new Point(p.X, p.Y));
+        return AppState.MenuDotHitRect(ActualWidth).Contains(local);
     }
 
     // The resize zone under the real pointer. Read from the OS rather than
@@ -187,6 +222,23 @@ public partial class OverlayWindow : Window
 
     private void OnPreviewLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        // The dot goes first: with the menu hidden it is the only thing Pob has
+        // left on the screen, so nothing else on the content area may take its
+        // press — a mode left running from before the menu went away included.
+        if (AppState.IsMenuHidden && AppState.MenuDotHitRect(ActualWidth).Contains(e.GetPosition(this)))
+        {
+            _dotPressed = true;
+            _dotDragged = false;
+            // Screen coordinates on both sides, so the arithmetic is not
+            // measured against a window that is travelling with the pointer.
+            NativeMethods.GetCursorPos(out _dotStartCursor);
+            _dotStartFrame = new Point(Left, Top);
+            Root.CaptureMouse();
+            ApplyHitTest();
+            e.Handled = true;
+            return;
+        }
+
         if (!ResizeAllowed) return;
         Zone zone = HitTestZone(e.GetPosition(this));
         if (zone == Zone.None) return;
@@ -207,16 +259,60 @@ public partial class OverlayWindow : Window
             e.Handled = true;
             return;
         }
-        Cursor = ResizeAllowed ? ZoneCursor(HitTestZone(e.GetPosition(this))) : null;
+        if (_dotPressed)
+        {
+            DragByDot();
+            e.Handled = true;
+            return;
+        }
+        Point pos = e.GetPosition(this);
+        if (AppState.IsMenuHidden && AppState.MenuDotHitRect(ActualWidth).Contains(pos))
+            Cursor = Cursors.Hand;
+        else
+            Cursor = ResizeAllowed ? ZoneCursor(HitTestZone(pos)) : null;
     }
 
     private void OnPreviewLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // What the press on the dot turned out to mean: a window moved, or a
+        // menu asked for.
+        if (_dotPressed)
+        {
+            bool wasDrag = _dotDragged;
+            _dotPressed = false;
+            _dotDragged = false;
+            Root.ReleaseMouseCapture();
+            ApplyHitTest();
+            e.Handled = true;
+            if (!wasDrag) AppState.SetMenuHidden(false);
+            return;
+        }
+
         if (!_resizing) return;
         _resizing = false;
         _resizeZone = Zone.None;
         Root.ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    // Moves the window by the pointer's own delta from where the dot was
+    // pressed, rather than by each step's, so a drag does not walk the frame
+    // away from the pointer a fraction at a time.
+    //
+    // Only this window is moved: App's LocationChanged glue brings the (hidden)
+    // toolbar window along and tells Carry about the move, so a locked frame
+    // takes the windows below with it exactly as a titlebar drag would.
+    private void DragByDot()
+    {
+        NativeMethods.GetCursorPos(out NativeMethods.POINT cur);
+        double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        double dx = (cur.X - _dotStartCursor.X) / scale;
+        double dy = (cur.Y - _dotStartCursor.Y) / scale;
+        if (!_dotDragged &&
+            Math.Abs(dx) < DotDragThreshold && Math.Abs(dy) < DotDragThreshold) return;
+        _dotDragged = true;
+        Left = _dotStartFrame.X + dx;
+        Top = _dotStartFrame.Y + dy;
     }
 
     private void ApplyResize()

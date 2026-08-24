@@ -9,6 +9,7 @@
 // region trick on X11.
 using System.IO;
 using System.Reflection;
+using System.Windows;
 using System.Windows.Media;
 using Pob.Services;
 using Pob.Views;
@@ -43,6 +44,28 @@ public static class AppState
     // instance — it is read from the command line and never written to
     // instance.json, so an ordinary launch comes back an ordinary window.
     public static bool IsFullscreen;
+
+    // "Hide Menu": the toolbar window goes off screen — titlebar, window
+    // buttons and all — and a small black dot in the content's top-right
+    // corner is the whole of Pob left to press. Like fullscreen it belongs to
+    // the run rather than to the instance: nothing is written to
+    // instance.json, so the next launch comes up with its toolbar rather than
+    // with a dot nobody was told about.
+    public static bool IsMenuHidden;
+
+    // Where that dot sits and how big it is, in DIP: its center is MenuDotInset
+    // from the content's top-right corner, and the box that takes the press is
+    // a good deal wider than the dot — it is small on purpose, and the window
+    // is dragged by it as well as pressed. Shared by the ContentView that draws
+    // it and the OverlayWindow that has to keep those pixels live while the
+    // clicks around them pass through.
+    public const double MenuDotInset = 20;
+    public const double MenuDotDiameter = 8;
+    public const double MenuDotHit = 20;
+
+    public static Rect MenuDotHitRect(double contentWidth) =>
+        new(contentWidth - MenuDotInset - MenuDotHit / 2, MenuDotInset - MenuDotHit / 2,
+            MenuDotHit, MenuDotHit);
 
     // ── version ─────────────────────────────────────────────────────────────
 
@@ -125,6 +148,36 @@ public static class AppState
     }
 
     public static bool IsResizeLocked => IsLocked || IsExecuting;
+
+    // Takes the toolbar window off the screen — titlebar, window buttons and
+    // all — and brings it back. What is left is the content overlay and a small
+    // black dot in its top-right corner (ContentView draws it, OverlayWindow
+    // keeps its pixels live), and clicking the dot brings it all back.
+    //
+    // Nothing moves: the two windows are separate here, so the content stands
+    // over exactly the pixels it did before. It is what a screenshot is of and
+    // what every click is aimed through, and a macro recorded before the menu
+    // went away still lands where it was aimed.
+    public static void SetMenuHidden(bool hidden)
+    {
+        // Nothing to hide in fullscreen: the toolbar window is already off
+        // screen there, and hiding it twice would only put it back.
+        if (IsFullscreen || IsMenuHidden == hidden || Toolbar == null) return;
+        IsMenuHidden = hidden;
+        if (hidden)
+        {
+            Toolbar.Hide();
+        }
+        else
+        {
+            Toolbar.Show();
+            Toolbar.Activate();
+        }
+        Overlay?.ContentView.InvalidateVisual();
+        // While clicks pass through the overlay it takes the pointer watch to
+        // keep the dot live, and the watch only runs while they do.
+        UpdateClickThrough();
+    }
 
     public static void SetTargeting(bool targeting)
     {

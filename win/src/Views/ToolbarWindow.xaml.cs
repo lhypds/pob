@@ -287,6 +287,9 @@ public partial class ToolbarWindow : Window
         Content2?.ShowMessage("Mouse position reset");
     }
 
+    private void OnHideMenuClicked(object sender, RoutedEventArgs e) =>
+        AppState.SetMenuHidden(true);
+
     // ── window controls ─────────────────────────────────────────────────────
 
     private void OnMinimizeClicked(object sender, RoutedEventArgs e) =>

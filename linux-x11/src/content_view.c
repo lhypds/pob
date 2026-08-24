@@ -381,12 +381,63 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         }
     }
 
+    // What a hidden menu leaves on screen: a small black dot in the top-right
+    // corner, and the only way back to the toolbar. The white ring is what
+    // makes it findable — the dot sits over whatever application the frame is
+    // parked on, and a bare black circle on a dark window is a dot nobody can
+    // find again.
+    if (g_state.is_menu_hidden) {
+        double cx = W - POB_MENU_DOT_INSET, cy = POB_MENU_DOT_INSET;
+        double r = POB_MENU_DOT_DIAMETER / 2.0;
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.85);
+        cairo_arc(cr, cx, cy, r, 0, 2 * G_PI);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.5);
+        cairo_set_line_width(cr, 1);
+        cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * G_PI);
+        cairo_stroke(cr);
+    }
+
     // Screenshot flash.
     if (flash_opacity > 0) {
         cairo_set_source_rgba(cr, 1, 1, 1, flash_opacity);
         cairo_paint(cr);
     }
     return FALSE;
+}
+
+// ── the dot a hidden menu leaves behind ─────────────────────────────────────
+//
+// It is the only way back to the toolbar, and — since the headerbar that used
+// to be dragged is part of what went away — the only way to move the window. A
+// press that goes nowhere shows the menu; a press that travels takes the window
+// with it, exactly as dragging the headerbar did, so a locked frame carries the
+// windows below along with it (carry_service.c watches the frame, and a drag is
+// a move with a button on it).
+
+// Where the pointer and the frame stood when the dot was pressed, and whether
+// that press has since become a drag.
+static gboolean dot_pressed = FALSE;
+static gboolean dot_dragging = FALSE;
+static gboolean dot_hovered = FALSE;
+static double dot_start_root_x, dot_start_root_y;
+static int dot_start_win_x, dot_start_win_y;
+
+// How far the pointer travels before a press counts as a drag rather than a
+// click. A dot this small is pressed with a hand that is never perfectly still,
+// and a menu that refused to come back because the pointer moved a pixel would
+// be a menu with no way back at all.
+#define DOT_DRAG_THRESHOLD 3.0
+
+// Whether a click at (x, y), in the content's own logical pixels, landed on the
+// dot a hidden menu left behind.
+static gboolean on_menu_dot(GtkWidget *widget, double x, double y) {
+    if (!g_state.is_menu_hidden) return FALSE;
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(widget, &alloc);
+    double dx = x - (alloc.width - POB_MENU_DOT_INSET);
+    double dy = y - POB_MENU_DOT_INSET;
+    return fabs(dx) <= POB_MENU_DOT_HIT / 2.0 && fabs(dy) <= POB_MENU_DOT_HIT / 2.0;
 }
 
 // ── input ───────────────────────────────────────────────────────────────────
@@ -398,9 +449,23 @@ static void copy_to_clipboard(const char *text) {
 }
 
 static gboolean on_button_press(GtkWidget *widget, GdkEventButton *ev, gpointer data) {
-    (void)widget;
     (void)data;
     if (ev->button != 1) return FALSE;
+
+    // The dot goes first: with the menu hidden it is the only button Pob has
+    // left, so nothing else on the content area may take its press — a mode
+    // left running from before the menu went away included. What the press
+    // turns out to mean is settled on release: a menu, or a move.
+    if (on_menu_dot(widget, ev->x, ev->y)) {
+        dot_pressed = TRUE;
+        dot_dragging = FALSE;
+        // Root coordinates on both sides, so the arithmetic is not measured
+        // against a widget that is travelling with the window.
+        dot_start_root_x = ev->x_root;
+        dot_start_root_y = ev->y_root;
+        gtk_window_get_position(g_state.window, &dot_start_win_x, &dot_start_win_y);
+        return TRUE;
+    }
 
     if (g_state.is_targeting) {
         int scale = widget_scale();
@@ -431,6 +496,39 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *ev, gpointer 
 
 static gboolean on_motion(GtkWidget *widget, GdkEventMotion *ev, gpointer data) {
     (void)data;
+
+    // Moving the window by the dot. The frame is moved by the pointer's own
+    // delta rather than by each step's, so a drag the window manager rounds
+    // does not walk the frame away from the pointer a fraction at a time.
+    if (dot_pressed) {
+        double dx = ev->x_root - dot_start_root_x;
+        double dy = ev->y_root - dot_start_root_y;
+        if (!dot_dragging &&
+            fabs(dx) < DOT_DRAG_THRESHOLD && fabs(dy) < DOT_DRAG_THRESHOLD)
+            return TRUE;
+        dot_dragging = TRUE;
+        gtk_window_move(g_state.window, dot_start_win_x + (int)dx,
+                        dot_start_win_y + (int)dy);
+        return TRUE;
+    }
+
+    // Over the dot: the hand says there is something there to press, on a
+    // window whose every other pixel is a hole.
+    if (g_state.is_menu_hidden && !g_state.is_cropping) {
+        gboolean over = on_menu_dot(widget, ev->x, ev->y);
+        if (over != dot_hovered) {
+            dot_hovered = over;
+            GdkWindow *win = gtk_widget_get_window(widget);
+            if (win) {
+                GdkCursor *hand =
+                    over ? gdk_cursor_new_from_name(gdk_display_get_default(), "pointer")
+                         : NULL;
+                gdk_window_set_cursor(win, hand);
+                if (hand) g_object_unref(hand);
+            }
+        }
+    }
+
     if (g_state.is_targeting) {
         has_mouse_pos = TRUE;
         mouse_x = ev->x;
@@ -448,6 +546,17 @@ static gboolean on_motion(GtkWidget *widget, GdkEventMotion *ev, gpointer data) 
 static gboolean on_button_release(GtkWidget *widget, GdkEventButton *ev, gpointer data) {
     (void)widget;
     (void)data;
+
+    // What the press on the dot turned out to mean: a window moved, or a menu
+    // asked for.
+    if (dot_pressed && ev->button == 1) {
+        gboolean was_drag = dot_dragging;
+        dot_pressed = FALSE;
+        dot_dragging = FALSE;
+        if (!was_drag) app_set_menu_hidden(FALSE);
+        return TRUE;
+    }
+
     if (ev->button != 1 || !g_state.is_cropping || !crop_dragging) return FALSE;
     crop_dragging = FALSE;
 
@@ -477,6 +586,14 @@ static gboolean on_button_release(GtkWidget *widget, GdkEventButton *ev, gpointe
 static gboolean on_leave(GtkWidget *widget, GdkEventCrossing *ev, gpointer data) {
     (void)ev;
     (void)data;
+    // The cursor is somebody else's again. Put it back with the flag, so the
+    // two never disagree: a hand left set here is a hand the next entry — over
+    // the content rather than over the dot — would have no reason to clear.
+    if (dot_hovered) {
+        dot_hovered = FALSE;
+        GdkWindow *win = gtk_widget_get_window(widget);
+        if (win && !g_state.is_cropping) gdk_window_set_cursor(win, NULL);
+    }
     if (g_state.is_targeting) {
         has_mouse_pos = FALSE;
         gtk_widget_queue_draw(widget);
@@ -499,6 +616,9 @@ void content_view_update_cursor_style(void) {
     has_mouse_pos = FALSE;
     has_crop_rect = FALSE;
     crop_dragging = FALSE;
+    dot_hovered = FALSE;
+    dot_pressed = FALSE;
+    dot_dragging = FALSE;
     gtk_widget_queue_draw(view);
 }
 

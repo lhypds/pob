@@ -12,11 +12,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
 // msbScriptPath is where the launcher lives, relative to a checkout.
 var msbScriptPath = filepath.Join("vm", "msb", "launch.sh")
+
+// msbCountFlag says how many machines a launch is, and msbCountMax is as many
+// as one command will start. The cap is not a limit on the host — it is a
+// misplaced keystroke: every machine holds its own memory and its own disk (4G
+// and 12G by default), so a 100 typed for a 10 would take the host down while
+// looking like a launch. Another command starts another twenty.
+const (
+	msbCountFlag = "--count"
+	msbCountMax  = 20
+)
 
 // cmdLaunchMSB starts the VM and, with start, the macro on it. Unlike
 // cmdLaunch it does not mind a Pob already running here: what it launches is
@@ -46,6 +57,44 @@ func cmdLaunchMSB(root string, opts launchOptions) {
 	// which of the instances in it is the one to start.
 	selectInstance(root, opts.instance)
 
+	// And then how many machines that instance goes into — the second question
+	// of the same launch, asked once for all of them.
+	count := msbCount(opts)
+
+	for i := 1; i <= count; i++ {
+		if count > 1 {
+			fmt.Printf("\n── VM %d of %d ──\n", i, count)
+		}
+		if err := runMSBScript(script, opts); err != nil {
+			// The script has said what went wrong itself — everything it
+			// refuses, it refuses with a line about how to fix it. Only the
+			// exit status is worth carrying up, so a `pob launch --msb && …`
+			// reads correctly.
+			var exit *exec.ExitError
+			if errors.As(err, &exit) {
+				// What did come up is still up, and is worth a line: the ones
+				// before this were machines, not attempts, and nothing else
+				// will say they are there to be stopped.
+				if i > 1 {
+					fmt.Fprintf(os.Stderr, "pob: VM %d of %d did not start — %s before it still up, listed by `pob`.\n",
+						i, count, machines(i-1))
+				}
+				os.Exit(exit.ExitCode())
+			}
+			fail("could not run %s: %v", script, err)
+		}
+	}
+	if count > 1 {
+		fmt.Printf("\n%d VMs are up — `pob` lists them, `pob kill <name>` stops one.\n", count)
+	}
+}
+
+// runMSBScript is one machine: the launcher, run against the instance INSTANCE
+// now names, with what the launch was told in its environment. Called once per
+// machine and never in parallel — the script picks the host ports it publishes
+// by looking for free ones, so a second launch has to be able to see the first
+// one's before it chooses its own.
+func runMSBScript(script string, opts launchOptions) error {
 	cmd := exec.Command("bash", script)
 	cmd.Env = append(os.Environ(),
 		"POB_MSB_FULLSCREEN="+boolEnv(opts.fullscreen),
@@ -64,16 +113,95 @@ func cmdLaunchMSB(root string, opts launchOptions) {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// The script has said what went wrong itself — everything it refuses,
-		// it refuses with a line about how to fix it. Only the exit status is
-		// worth carrying up, so a `pob launch --msb && …` reads correctly.
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			os.Exit(exit.ExitCode())
+	return cmd.Run()
+}
+
+// msbCount settles how many machines this launch is: the number --count named,
+// the number typed at the prompt, or one.
+//
+// Asked whenever there is somebody to ask, the way the instance list is shown
+// whenever there is somebody to show it to — a launch says what it is about to
+// do rather than assuming, and enter is the answer for the one machine that is
+// almost always wanted. --count is that answer given in advance, and no
+// terminal is the way past the question for a scheduled or scripted run.
+//
+// A name pinned with POB_MSB_NAME is the one exception, and it is refused
+// rather than asked: that launch replaces the machine under that name, so ten
+// of them would be one machine built ten times over.
+func msbCount(opts launchOptions) int {
+	pinned := os.Getenv("POB_MSB_NAME") != ""
+	if opts.count > 0 {
+		if pinned && opts.count > 1 {
+			fail("POB_MSB_NAME is %q, and a named launch takes that one machine over — so %s %d would\n"+
+				"      build the same machine %d times. Unset it for %d machines of their own",
+				os.Getenv("POB_MSB_NAME"), msbCountFlag, opts.count, opts.count, opts.count)
 		}
-		fail("could not run %s: %v", script, err)
+		return opts.count
 	}
+	if pinned || !isTerminal(os.Stdin) {
+		return 1 // one machine by name, or nobody to ask
+	}
+
+	answer := prompt("How many VMs? [1]: ")
+	if answer == "" {
+		return 1
+	}
+	return msbCountValue(answer)
+}
+
+// msbCountValue reads what was typed or given as a number of machines. Nothing
+// is guessed from an answer that is not one: a launch that took "ten" for a 1
+// would start a single machine in answer to a command that asked for ten, and
+// the nine missing ones would only be noticed later.
+func msbCountValue(value string) int {
+	count, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || count < 1 {
+		fail("%q is not a number of VMs — %s takes 1 or more", value, msbCountFlag)
+	}
+	if count > msbCountMax {
+		fail("%d VMs is more than one launch starts: each holds its own memory and disk, so %d is the\n"+
+			"      most at a time. Run the launch again for the rest", count, msbCountMax)
+	}
+	return count
+}
+
+// machines is how the line above counts what came up: "the machine" for one,
+// "the 4 machines" for more.
+func machines(n int) string {
+	if n == 1 {
+		return "the machine"
+	}
+	return fmt.Sprintf("the %d machines", n)
+}
+
+// takeMSBCount pulls --count out of a launch's arguments the way takeMacroPSL
+// pulls --macropsl out of them, and hands back the number it named. 0 is "not
+// said", which is the launch that asks.
+func takeMSBCount(args []string) (rest []string, count int) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		var value string
+		switch {
+		case arg == msbCountFlag:
+			// The next argument is the number unless it is another flag, which
+			// is what `pob launch --msb --count --start` is: taking it would
+			// leave the launch reading "--start" as a number of machines, and
+			// the answer would be about that rather than about the number
+			// nobody typed.
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				fail("%s is how many VMs to start — `pob launch --msb %s 10`", msbCountFlag, msbCountFlag)
+			}
+			i++
+			value = args[i]
+		case strings.HasPrefix(arg, msbCountFlag+"="):
+			value = strings.TrimPrefix(arg, msbCountFlag+"=")
+		default:
+			rest = append(rest, arg)
+			continue
+		}
+		count = msbCountValue(value)
+	}
+	return rest, count
 }
 
 // viewerEnv decides what POB_MSB_VIEWER goes into the launch. --vncviewer turns
