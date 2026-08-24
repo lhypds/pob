@@ -185,17 +185,28 @@ func cmdRelaunch(root string, fullscreen bool) {
 }
 
 // stopInstance takes down an instance already established to be running, and
-// does not return until it has stopped answering its control port.
+// does not return until it has stopped answering its control port. A stop that
+// cannot be made is the end of the command: `kill` and `relaunch` are about
+// this one instance, and there is nothing else for either to go on and do.
 func stopInstance(root string, inst *Instance) {
+	if err := stopRunning(root, inst); err != nil {
+		fail("%v", err)
+	}
+}
+
+// stopRunning is the stop itself, for the caller that has more to do after one
+// that fails — `purge`, which is taking down every instance on the machine and
+// should not be left half finished by the one that will not go.
+func stopRunning(root string, inst *Instance) error {
 	// Ask the instance itself for the pid rather than trusting instance.json:
 	// the same answer that established it is running.
 	status, err := inst.get("/status", 3*time.Second)
 	if err != nil {
-		fail("cannot reach instance %s: %v", inst.ID, err)
+		return fmt.Errorf("cannot reach instance %s: %v", inst.ID, err)
 	}
 	core := int(intField(status, "pid"))
 	if core <= 0 {
-		fail("instance %s did not report its pid", inst.ID)
+		return fmt.Errorf("instance %s did not report its pid", inst.ID)
 	}
 
 	target := core
@@ -204,11 +215,11 @@ func stopInstance(root string, inst *Instance) {
 	}
 
 	if err := signalStop(target); err != nil {
-		fail("could not stop pid %d: %v", target, err)
+		return fmt.Errorf("could not stop pid %d: %v", target, err)
 	}
 	if waitUntilStopped(root, inst.ID, 10*time.Second) {
 		fmt.Printf("Instance %s stopped.\n", inst.ID)
-		return
+		return nil
 	}
 
 	// Still answering after being asked: there is nothing left to ask with.
@@ -218,9 +229,10 @@ func stopInstance(root string, inst *Instance) {
 		_ = forceStop(core)
 	}
 	if !waitUntilStopped(root, inst.ID, 5*time.Second) {
-		fail("instance %s is still answering after pid %d was killed", inst.ID, target)
+		return fmt.Errorf("instance %s is still answering after pid %d was killed", inst.ID, target)
 	}
 	fmt.Printf("Instance %s killed.\n", inst.ID)
+	return nil
 }
 
 // shellPID is the pid of the shell app that spawned this core, or 0 when the

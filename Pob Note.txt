@@ -1,0 +1,60 @@
+
+Pob Note
+========
+
+
+Pob
+---
+
+Perception & Operation Bridge
+
+
+Instances
+---------
+
+Create a new instance
+pob new
+pob new "Work laptop"
+
+
+TigerVNC
+--------
+
+TigerVNC connect
+vncviewer 127.0.0.1:5901
+
+
+Sandbox
+-------
+
+Microsandbox
+msb stop xxx
+msb rm xxx
+
+Open a Microsandbox instance and connect with TigerVNC
+pob launch --msb --vncviewer
+
+Start a pob session in a Microsandbox instance
+msb exec msb-b400 -- pob start
+
+Launch a sandbox with fullscreen
+pob launch --msb --vncviewer --fullscreen
+
+Delete all Microsandbox instances
+msb list -q | grep '^msb-' | xargs msb rm -f
+
+Rebuild install and lanch a Sandbox
+./build.sh && ./install.sh && pob launch --msb --vncviewer
+
+
+Reset
+-----
+
+Purge anything
+pob purge
+
+Rebuild and install and launch
+pob kill && ./build.sh && ./install.sh && pob launch
+
+kill all pob instances and delete them all
+pob kill; pob kill --all; for id in $(ls ~/.pob 2>/dev/null | grep '^pb-'); do pob del "$id" --yes; dones

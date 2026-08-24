@@ -256,6 +256,21 @@ func msbStop(name string) error {
 	return err
 }
 
+// msbRemove takes a machine away for good: -f is the guest stopped first if it
+// is up, and then the sandbox and the disk it was given are gone.
+//
+// This is `pob purge`'s, where a stop is not enough — a stopped sandbox is
+// still a sandbox, still listed and still holding its disk, and what purge means
+// for a machine is that it is not there any more. `pob kill` stays a stop: one
+// machine put down is one that can be looked at and started again.
+//
+// The same minute of ceiling msbStop gets, and for the same reason: what it
+// waits for is a guest coming down.
+func msbRemove(name string) error {
+	_, err := msbCommand(60*time.Second, "rm", "-f", name)
+	return err
+}
+
 func atoiOr(s string, fallback int) int {
 	n := 0
 	for _, c := range s {

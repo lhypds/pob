@@ -98,6 +98,12 @@ Commands:
   del, delete        Delete an instance, named after the word: its macros and
                      every session in it. Asks first, unless --yes; refuses
                      while anything is running it, here or in a VM
+  purge              Take everything Pob has on this machine away: every microVM,
+                     running or stopped, removed with its disk, and every
+                     instance with its macros and every session in it. What is
+                     running is stopped on the way, rather than refused the way
+                     del refuses it. Asks first — with the list of what is about
+                     to go — unless --yes. settings.json stays
   status             Live status of the instance
   sessions           List every instance's sessions, under a heading each
   check              Read src/main.macro.psl and the files it calls, and look
@@ -169,6 +175,7 @@ Examples:
   pob lock on                  # hold the window to its size
   pob clickthrough off         # let the overlay take clicks again
   pob relaunch                 # quit the app and start it again
+  pob purge                    # every VM and every instance, gone
   pob --session 1752712400
   pob mcp start
   pob update --check           # is there a newer release?
@@ -252,6 +259,12 @@ func main() {
 	// path.
 	case "del", "delete":
 		cmdDel(root, parseDelArgs(args[1:], command))
+
+	// Every instance and every VM, rather than the one thing del takes. Not
+	// runningInstance: what is running is what purge stops on its way through,
+	// and a machine with nothing up is one it still has everything to delete on.
+	case "purge":
+		cmdPurge(root, parsePurgeArgs(args[1:]))
 
 	case "sessions":
 		listSessionsCmd(root)
@@ -436,6 +449,27 @@ func parseDelArgs(args []string, command string) delOptions {
 		}
 	}
 	opts.target = strings.TrimSpace(strings.Join(names, " "))
+	return opts
+}
+
+// parsePurgeArgs reads what follows `purge`, which is only ever whether the
+// question has been answered in advance. A name is answered with the command
+// that takes one: purge is the whole machine by definition, and somebody who
+// typed an instance after it meant to delete that instance rather than
+// everything.
+func parsePurgeArgs(args []string) purgeOptions {
+	opts := purgeOptions{}
+	for _, arg := range args {
+		switch arg {
+		case "--yes", "-yes", "-y":
+			opts.yes = true
+		default:
+			if !strings.HasPrefix(arg, "-") {
+				fail("purge is everything on this machine, so it takes no name — `pob del %s` deletes that one instance", arg)
+			}
+			fail("unknown purge option %q — run `pob help`", arg)
+		}
+	}
 	return opts
 }
 

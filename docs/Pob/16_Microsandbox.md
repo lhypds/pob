@@ -327,6 +327,14 @@ and still type. Nothing takes a name back, either: a stopped machine keeps its
 own until `msb rm <name>` is asked for it, so `msb list` is a history of the
 machines that were and `pob` is the list of the ones that are.
 
+That history is what [`pob purge`](07_CLI.md) is for: every Pob machine
+microsandbox is holding, running or stopped, removed with its disk in one word —
+and the instances here with it, since a week of launches leaves both. It asks
+first, with the list of what is about to go, and it leaves the guest's image and
+app cached under `~/.pob/msb` alone, so the next `--msb` launch is still the
+quick one. Sandboxes that are not Pob's are not its business and are left where
+they are.
+
 `POB_MSB_NAME=<name>` asks for one machine instead of a new one, and **that one
 is replaced at every launch** — `msb run --replace` — because its state is a
 copy of this machine's and is made again from it in seconds. It is the shape to
