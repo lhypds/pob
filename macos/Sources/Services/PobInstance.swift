@@ -313,6 +313,26 @@ final class PobInstance: NSObject, ObservableObject {
         window.isOpaque = false
         window.backgroundColor = NSColor.clear
 
+        // The window's own drop shadow, off for as long as the menu is — this
+        // is what made the wash go darker the moment the menu was hidden.
+        //
+        // A titled window's shadow belongs to its frame and is drawn around it,
+        // so none of it lands on what the frame holds. Take the frame away and
+        // the shadow is taken from the window's alpha instead, and drawn behind
+        // the whole window — behind a content area that is 20% gray over
+        // nothing, which lets most of it through. Same wash, same application
+        // underneath, and both read as having gone darker. Measured against a
+        // white window: hiding the menu cost the content area about 3% of its
+        // brightness, and switching the shadow off with it leaves the two
+        // sides identical.
+        //
+        // The X11 shell asks its compositor for the same thing and for the same
+        // reason — see disable_compositor_shadow in linux-x11/src/main.c. An
+        // overlay that is a hole punched over somebody else's desktop has no
+        // business casting a shadow into the hole.
+        window.hasShadow = !hidden
+        window.invalidateShadow()
+
         // The frame moved even though the content did not, and the two are
         // measured against each other everywhere downstream.
         bridge.windowGeometryChanged()
