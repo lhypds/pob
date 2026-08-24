@@ -246,40 +246,23 @@
     return text.replace(SMART_CHARS_RE, (c) => SMART_CHARS[c]).replace(/[^\x20-\x7e]/g, "");
   }
 
-  // Browser-level shortcuts (Cmd+W, Cmd+R, Cmd+Tab) are claimed before the
-  // page sees them, so preventDefault can't stop them. Keyboard Lock is the
-  // only thing that can, and it needs a secure context plus fullscreen — so it
-  // engages on localhost but not on the plain-HTTP page served over the
-  // network. No beforeunload guard on purpose: it would prompt on every
-  // reload, and keepalive already gets the keystroke out through an accidental
-  // close.
-  const canLockKeys = !!(navigator.keyboard && navigator.keyboard.lock);
-  let tookFullscreen = false;
-
-  async function captureKeys() {
-    if (!canLockKeys) return;
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        tookFullscreen = true;
-      }
-      await navigator.keyboard.lock();
-    } catch {
-      // Fullscreen or lock refused — preventDefault still covers the rest.
-    }
-  }
-
-  function releaseKeys() {
-    if (canLockKeys) {
-      try {
-        navigator.keyboard.unlock();
-      } catch {}
-    }
-    if (tookFullscreen && document.fullscreenElement) {
-      tookFullscreen = false;
-      document.exitFullscreen().catch(() => {});
-    }
-  }
+  // Browser-level shortcuts (Cmd+W, Cmd+R, Cmd+T) are claimed whatever the page
+  // says, so preventDefault can't stop them and the browser acts on them as
+  // well as the machine. The one thing that could stop it is Keyboard Lock, and
+  // it only takes effect in fullscreen — which meant the page swallowed the
+  // screen the moment the keyboard button was pressed, a far bigger surprise
+  // than those few keys are worth.
+  //
+  // So the page says nothing about it, and that is a decision rather than an
+  // omission: a toast naming the chord was written and never got read. The
+  // shortcuts worth warning about are the ones that close the tab or reload it,
+  // and both take the warning with them; the two that carry nothing at all —
+  // Cmd+Tab, Alt+Tab — are the window manager's and never reach the page to be
+  // remarked on in the first place. Nothing said at the moment of the keystroke
+  // can survive the keystroke, so it is said in the docs instead.
+  //
+  // No beforeunload guard on purpose either: it would prompt on every reload,
+  // and keepalive already gets the keystroke out through an accidental close.
 
   // --- the trackpad ---------------------------------------------------------
   // Pointing without a picture: the surface is a pad, not the machine's screen,
@@ -570,10 +553,8 @@
         // focus from the field so the caret doesn't imply it's editable.
         window.addEventListener("keydown", onMirrorKey);
         input.blur();
-        captureKeys();
       } else {
         window.removeEventListener("keydown", onMirrorKey);
-        releaseKeys();
         input.focus(); // ready to type straight away
       }
     }

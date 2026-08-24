@@ -269,18 +269,32 @@ elf_arch() {
 }
 
 # Whether the checkout has moved on since the app in dist was built. The dist
-# is what gets mounted, and it is assembled by hand — so an edit to the shell or
-# the core reaches the guest only if something rebuilds it first. Nothing did:
-# the old check asked whether the binary existed and what architecture it was,
-# both of which a months-old build answers well, and a fix made in the checkout
-# since would run in the VM as if it had never been written.
+# is what gets mounted, and it is assembled by hand — so an edit to the shell,
+# the core or the server reaches the guest only if something rebuilds it first.
+# Nothing did: the old check asked whether the binary existed and what
+# architecture it was, both of which a months-old build answers well, and a fix
+# made in the checkout since would run in the VM as if it had never been
+# written.
+#
+# The server has to be looked at as well, and it was not: it is a module of its
+# own beside the core rather than inside it, and the web UI is built into that
+# module — so an edited page went on being served to the guest's browser from
+# the last build, looking for all the world like the page that had just been
+# changed. Hence the .js and .html: those files are sources here too.
 #
 # Sources only. core/bin holds what build_docker.sh puts there, which is newer
 # than the dist it then assembles — counting it would rebuild on every launch.
+#
+# Takes the checkout to look in rather than assuming this script's own: an
+# installed pob runs this out of the app bundle, where there are no sources at
+# all, and the dist it ends up mounting belongs to whichever checkout the
+# command was typed inside. See local_dist.
 newer_source() {
-    [ -n "$(find "$ROOT_DIR/linux-x11/src" "$ROOT_DIR/linux-x11/Makefile" "$ROOT_DIR/core" \
-        -type f \( -name '*.c' -o -name '*.h' -o -name '*.go' -o -name 'Makefile' \) \
-        -newer "$1" -print -quit 2>/dev/null)" ]
+    [ -n "$(find "$1/linux-x11/src" "$1/linux-x11/Makefile" \
+        "$1/core" "$1/server" \
+        -type f \( -name '*.c' -o -name '*.h' -o -name '*.go' -o -name '*.js' \
+        -o -name '*.html' -o -name 'Makefile' \) \
+        -newer "$2" -print -quit 2>/dev/null)" ]
 }
 
 # The app for the guest, from the release this Pob is one of: unzipped into
@@ -340,12 +354,20 @@ release_app() {
 #
 # Only an app that is already there and already the right architecture: a launch
 # that did not ask for a build does not get one, so this can never turn into a
-# ten-minute wait for the Linux toolchain.
+# ten-minute wait for the Linux toolchain. But it does say when the one that is
+# there has fallen behind the checkout around it — the other confusing half of
+# that half-hour, and the quieter one: a build of your own is exactly what makes
+# a stale build look like the change you just made.
 local_dist() {
     local dir="$PWD" candidate
     while :; do
         candidate="$dir/linux-x11/dist/Pob"
         if [ -x "$candidate/pob" ] && [ "$(elf_arch "$candidate/pob")" = "$ARCH" ]; then
+            if newer_source "$dir" "$candidate/pob"; then
+                echo "⚠️  $dir/linux-x11/dist was built before the code now in that" >&2
+                echo "    checkout — the guest gets the older app. Rebuild it with:" >&2
+                echo "    LINUX_ARCH=$ARCH $dir/linux-x11/build_docker.sh" >&2
+            fi
             echo "$candidate"
             return 0
         fi
@@ -373,7 +395,7 @@ elif [ -x "$ROOT_DIR/linux-x11/build_docker.sh" ]; then
     elif [ "$(elf_arch "$DIST_DIR/pob")" != "$ARCH" ] && [ "$SKIP_BUILD" != "1" ]; then
         echo "🔨 The Linux app in dist is $(elf_arch "$DIST_DIR/pob") — rebuilding it for linux/${ARCH}…"
         LINUX_ARCH="$ARCH" "$ROOT_DIR/linux-x11/build_docker.sh"
-    elif newer_source "$DIST_DIR/pob"; then
+    elif newer_source "$ROOT_DIR" "$DIST_DIR/pob"; then
         # POB_MSB_SKIP_BUILD is "use dist as it is, whatever it is", so it says
         # what it is running rather than refusing to run it.
         if [ "$SKIP_BUILD" = "1" ]; then

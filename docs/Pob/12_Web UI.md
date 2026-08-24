@@ -40,8 +40,15 @@ The API's own client. Three controls:
 
 - a **text field** — type a line, press ↵, and it is typed on the machine
 - a **keyboard mirror** button — while it is on, keys pressed here go straight
-  through, shortcuts included. On a phone the soft keyboard is mirrored
-  instead, so autocorrect and swipe typing still work.
+  through, shortcuts included. Two caveats, and the page cannot warn you of
+  either as it happens, so they are here instead. A handful the browser acts on
+  as well as the machine, whatever the page says — ⌘W, ⌘R, ⌘T, ⌘N, ⌘L and ⌘Q,
+  or Ctrl+W, Ctrl+R, Ctrl+T, Ctrl+N, Ctrl+L, F5 and F11 away from a Mac: the
+  chord arrives, and the browser closes the tab or reloads it in the same
+  breath. And ⌘Tab and Alt+Tab belong to the window manager, which takes them
+  before the page is told anything: those are the ones that really don't carry.
+  On a phone the soft keyboard is mirrored instead, so autocorrect and swipe
+  typing still work.
 - a **trackpad** — drag to move the pointer, tap to click, two-finger tap to
   right-click, two fingers to scroll, double-tap-and-hold to drag
 
