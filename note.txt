@@ -26,3 +26,11 @@ Rebuild install and lanch a Sandbox
 
 Launch a sandbox with fullscreen
 pob launch --msb --vncviewer --fullscreen
+
+Create a new instance
+pob new
+pob new "Work laptop"
+
+kill all pob instances and delete them all
+pob kill; pob kill --all; for id in $(ls ~/.pob 2>/dev/null | grep '^pb-'); do pob del "$id" --yes; done
+

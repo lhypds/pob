@@ -93,7 +93,8 @@ Commands:
                      macOS's Screen Sharing otherwise. POB_MSB_VIEWER names
                      another. Only with --msb: it is that machine's screen
   new [name]         Create an instance — its own src/ macros and logs — and make
-                     it the one Pob starts next
+                     it the one Pob starts next. The name is optional: without
+                     one the instance goes by its id
   del, delete        Delete an instance, named after the word: its macros and
                      every session in it. Asks first, unless --yes; refuses
                      while anything is running it, here or in a VM

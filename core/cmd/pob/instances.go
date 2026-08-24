@@ -15,19 +15,28 @@ import (
 )
 
 // cmdNew creates an instance, names it, and makes it the current one. The
-// name is what `pob launch` lists it by; without one on the command line it
-// is asked for, since an unnamed instance is only an id again.
+// name is what `pob launch` lists it by; without one on the command line it is
+// asked for, and a blank answer is an answer.
+//
+// An instance with no name is not a half-made one. Every instance has an id
+// from the moment it exists, that id is what INSTANCE holds and what the
+// directory under ~/.pob is called, and everything that shows a person an
+// instance already falls back to it — the listing prints a dash in the name
+// column, the picker and the status line go by Label(). What a name buys is
+// `pob launch <name>` and nothing else, and somebody making the one instance
+// they will ever have on this machine does not need to think of one first.
 func cmdNew(root, name string) {
 	if name == "" {
-		name = prompt("Name for the new instance: ")
-	}
-	if name == "" {
-		fail("a name is needed: pob new \"Work laptop\"")
+		name = prompt("Name for the new instance (blank for none): ")
 	}
 	// Names are how instances are told apart on the command line, so two of
 	// them answering to the same one would make `pob launch <name>` a guess.
-	if existing, taken := findInstance(storage.ListInstances(root), name); taken {
-		fail("%s is already called %q — pick another name", existing.ID, name)
+	// Blank is not a name and cannot clash: findInstance never matches one, so
+	// an unnamed instance is only ever reachable by the id it is unique by.
+	if name != "" {
+		if existing, taken := findInstance(storage.ListInstances(root), name); taken {
+			fail("%s is already called %q — pick another name", existing.ID, name)
+		}
 	}
 
 	info, err := storage.CreateInstance(root, name)
@@ -44,7 +53,11 @@ func cmdNew(root, name string) {
 		fail("could not point INSTANCE at %s: %v", info.ID, err)
 	}
 
-	fmt.Printf("Created instance %s (%s).\n", info.Name, info.ID)
+	if info.Name != "" {
+		fmt.Printf("Created instance %s (%s).\n", info.Name, info.ID)
+	} else {
+		fmt.Printf("Created instance %s.\n", info.ID)
+	}
 	if running.Running {
 		fmt.Printf("Pob is still running as %s — quit it first, then `pob launch`.\n", running.ID)
 		return

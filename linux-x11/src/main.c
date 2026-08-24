@@ -1086,6 +1086,20 @@ static void build_headerbar(void) {
 
 // ── window frame persistence ────────────────────────────────────────────────
 
+// What a brand new instance opens at, before it has a frame of its own.
+//
+// 1024x768 rather than something smaller, because the frame is the screen as
+// far as a macro is concerned: every coordinate a macro holds is a position
+// inside it, and a frame that has to be dragged bigger before the first macro
+// is recorded is a frame whose coordinates were all written against a size
+// nobody meant. It is also exactly the microVM's screen (vm/msb/run.sh), so an
+// instance started here is one that fits when the same ~/.pob is copied in.
+//
+// The same size on the other two shells — macos/Sources/Services/PobInstance.swift
+// and win/src/App.xaml.cs.
+#define WINDOW_START_WIDTH 1024
+#define WINDOW_START_HEIGHT 768
+
 // A saved frame is not always one this screen can hold, so it comes back cut
 // down to what the work area can take of it.
 //
@@ -1118,6 +1132,26 @@ static void clamp_frame_to_workarea(int *x, int *y, int *w, int *h) {
     *h = ch;
     *x = cx;
     *y = cy;
+}
+
+// The starting size, less whatever of it this screen has not got. A default big
+// enough to hang off the screen would be a window with its titlebar out of
+// reach on the machines that can least afford it.
+static void starting_size(int *w, int *h) {
+    *w = WINDOW_START_WIDTH;
+    *h = WINDOW_START_HEIGHT;
+
+    GdkDisplay *display = gdk_display_get_default();
+    if (!display) return;
+    GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
+    if (!monitor) monitor = gdk_display_get_monitor(display, 0);
+    if (!monitor) return;
+
+    GdkRectangle area;
+    gdk_monitor_get_workarea(monitor, &area);
+    if (area.width <= 0 || area.height <= 0) return;
+    *w = MIN(*w, area.width);
+    *h = MIN(*h, area.height);
 }
 
 static gboolean save_frame_now(gpointer data) {
@@ -1358,7 +1392,9 @@ static void on_activate(GtkApplication *app, gpointer data) {
             gtk_window_set_default_size(g_state.window, w, h);
             gtk_window_move(g_state.window, x, y);
         } else {
-            gtk_window_set_default_size(g_state.window, 600, 400);
+            int w, h;
+            starting_size(&w, &h);
+            gtk_window_set_default_size(g_state.window, w, h);
             gtk_window_set_position(g_state.window, GTK_WIN_POS_CENTER);
         }
 

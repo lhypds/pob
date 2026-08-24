@@ -16,6 +16,21 @@ namespace Pob;
 
 public partial class App : Application
 {
+    // What a brand new instance opens at, before it has a frame of its own.
+    //
+    // 1024×768 rather than something smaller, because the frame is the screen
+    // as far as a macro is concerned: every coordinate a macro holds is a
+    // position inside it, and a frame that has to be dragged bigger before the
+    // first macro is recorded is a frame whose coordinates were all written
+    // against a size nobody meant. It is also exactly the microVM's screen
+    // (vm/msb/run.sh), so an instance started here is one that fits when the
+    // same ~/.pob is copied in.
+    //
+    // The same size on the other two shells —
+    // macos/Sources/Services/PobInstance.swift and linux-x11/src/main.c.
+    private const double StartWidth = 1024;
+    private const double StartHeight = 768;
+
     private ToolbarWindow? _toolbar;
     private OverlayWindow? _overlay;
 
@@ -69,8 +84,8 @@ public partial class App : Application
         AppState.Toolbar = toolbar;
         AppState.Overlay = overlay;
 
-        // Restore the saved frame, or default to 600×400 centered.
-        double x, y, w = 600, h = 400;
+        // Restore the saved frame, or the starting size centered.
+        double x, y, w, h;
         if (SettingsService.GetWindowFrame(out int fx, out int fy, out int fw, out int fh))
         {
             x = fx;
@@ -81,6 +96,12 @@ public partial class App : Application
         else
         {
             Rect area = SystemParameters.WorkArea;
+            // Less whatever of the starting size this screen has not got: a
+            // default big enough to hang off the screen would be a window with
+            // its titlebar out of reach on the machines that can least afford
+            // it.
+            w = Math.Min(StartWidth, area.Width);
+            h = Math.Min(StartHeight, area.Height);
             x = area.Left + (area.Width - w) / 2;
             y = area.Top + (area.Height - h) / 2;
         }

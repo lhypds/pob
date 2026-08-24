@@ -109,7 +109,7 @@ final class PobInstance: NSObject, ObservableObject {
         } else if let savedFrame = settings.getWindowFrame() {
             window.setFrame(savedFrame, display: true)
         } else {
-            window.setFrame(NSRect(x: 100, y: 100, width: 600, height: 400), display: true)
+            window.setFrame(startingFrame(for: window), display: true)
             window.center()
         }
 
@@ -205,6 +205,31 @@ final class PobInstance: NSObject, ObservableObject {
     private func fullscreenFrame(for window: NSWindow) -> NSRect {
         let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first
         return screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    /// What a brand new instance opens at, before it has a frame of its own.
+    ///
+    /// 1024×768 rather than something smaller, because the frame is the screen
+    /// as far as a macro is concerned: every coordinate a macro holds is a
+    /// position inside it, and a frame that has to be dragged bigger before the
+    /// first macro is recorded is a frame whose coordinates were all written
+    /// against a size nobody meant. It is also exactly the microVM's screen
+    /// (see vm/msb/run.sh), so an instance recorded here is an instance that
+    /// fits when the same ~/.pob is copied into the guest.
+    ///
+    /// The same size on all three shells — the Windows and X11 halves are in
+    /// win/src/App.xaml.cs and linux-x11/src/main.c.
+    private static let startingSize = NSSize(width: 1024, height: 768)
+
+    /// That size, less whatever of it this display has not got. A default big
+    /// enough to hang off the screen would be a window with its titlebar out of
+    /// reach on the machines that can least afford it.
+    private func startingFrame(for window: NSWindow) -> NSRect {
+        let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first
+        let room = screen?.visibleFrame.size ?? Self.startingSize
+        return NSRect(x: 0, y: 0,
+                      width: min(Self.startingSize.width, room.width),
+                      height: min(Self.startingSize.height, room.height))
     }
 
     // MARK: - Click-through
