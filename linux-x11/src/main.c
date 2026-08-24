@@ -633,11 +633,12 @@ static void place_frame(int x, int y, int w, int h) {
 // in its top-right corner (content_view.c draws it, app_update_click_through
 // keeps its pixels live), and clicking the dot brings it all back.
 //
-// The frame gives up exactly the headerbar it was wearing: moved down by its
-// height and shortened by it, so the content stands over the same pixels it did
-// a moment before. The content is what a screenshot is of and what every click
-// is aimed through, so a macro recorded before the menu went away still lands
-// where it was aimed.
+// The outer X window gives up exactly the headerbar it was wearing: its top
+// moves down by the bar height while its bottom stays put, so the content stands
+// over the same pixels it did a moment before. gtk_window_get_size() already
+// reports that content/client size rather than the full CSD window, so its
+// height must stay unchanged here — subtracting the bar from it would shrink the
+// content a second time.
 void app_set_menu_hidden(gboolean hidden) {
     // Nothing to hide in fullscreen: the headerbar is never shown there, and
     // the frame is the screen rather than something to take a strip off.
@@ -663,8 +664,8 @@ void app_set_menu_hidden(gboolean hidden) {
     }
 
     int bar = hidden ? g_state.hidden_bar_height : -g_state.hidden_bar_height;
-    app_logger_log("Menu %s — frame %dx%d+%d+%d becomes %dx%d+%d+%d",
-                   hidden ? "hidden" : "shown", w, h, x, y, w, h - bar, x, y + bar);
+    app_logger_log("Menu %s — content frame %dx%d+%d+%d moves to %dx%d+%d+%d",
+                   hidden ? "hidden" : "shown", w, h, x, y, w, h, x, y + bar);
 
     // Carry follows the frame, and it cannot tell this from a drag: the frame
     // is about to move a headerbar's worth down the screen with a button that
@@ -672,7 +673,7 @@ void app_set_menu_hidden(gboolean hidden) {
     // a quick drag. It goes off for the length of the placement and is seeded
     // again from where the frame comes to rest — the same wait the lock uses.
     carry_service_set_enabled(FALSE);
-    place_frame(x, y + bar, w, h - bar);
+    place_frame(x, y + bar, w, h);
     if (place_settle_source) g_source_remove(place_settle_source);
     place_settle_source =
         g_timeout_add(PLACE_SETTLE_MS, start_carry_when_placed, NULL);
@@ -1276,13 +1277,11 @@ static gboolean save_frame_now(gpointer data) {
     int x, y, w, h;
     gtk_window_get_position(g_state.window, &x, &y);
     gtk_window_get_size(g_state.window, &w, &h);
-    // With the menu hidden the frame is the content and nothing else. What is
-    // written down is the frame with its headerbar back on, so the next run —
-    // which starts with the toolbar showing — opens the content over the same
-    // pixels rather than a headerbar's worth short of them.
+    // With the menu hidden the frame is the content and nothing else. GTK's
+    // size is already the content size in both modes, so only the position is
+    // put back above the absent headerbar for the next launch.
     if (g_state.is_menu_hidden) {
         y -= g_state.hidden_bar_height;
-        h += g_state.hidden_bar_height;
     }
     // The WM sends synthetic ConfigureNotify on focus changes; don't rewrite
     // settings.json unless the frame actually moved or resized.

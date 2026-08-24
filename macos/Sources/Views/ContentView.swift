@@ -34,6 +34,18 @@ private struct WindowAccessor: NSViewRepresentable {
 }
 
 struct InstanceContentView: View {
+    // A fixed color rather than SwiftUI's semantic Color.gray: hiding the menu
+    // turns a key titled window into a non-key borderless one, but the overlay
+    // must keep exactly the same tint across that active-state change. These
+    // are the system-gray RGB values the Windows shell uses too (#8E8E93).
+    private static let overlayShade = Color(
+        .sRGB,
+        red: 142.0 / 255.0,
+        green: 142.0 / 255.0,
+        blue: 147.0 / 255.0,
+        opacity: 0.2
+    )
+
     let instance: PobInstance
     @ObservedObject var bridge: CoreBridge
     @ObservedObject var mouseService: MouseService
@@ -56,7 +68,7 @@ struct InstanceContentView: View {
 
     var body: some View {
         ZStack {
-            Color.gray.opacity(0.2)
+            Self.overlayShade
 
             if isTargeting {
                 MouseTrackingOverlay(

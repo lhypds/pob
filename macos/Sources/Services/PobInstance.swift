@@ -306,6 +306,13 @@ final class PobInstance: NSObject, ObservableObject {
             window.setFrame(frame, display: true)
         }
 
+        // AppKit rebuilds the theme frame when styleMask changes. Keep its
+        // backing transparent on both sides of that rebuild, or the same 20%
+        // overlay color is composited over a different window background and
+        // visibly changes when the menu is hidden or restored.
+        window.isOpaque = false
+        window.backgroundColor = NSColor.clear
+
         // The frame moved even though the content did not, and the two are
         // measured against each other everywhere downstream.
         bridge.windowGeometryChanged()
