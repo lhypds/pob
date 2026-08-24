@@ -158,10 +158,18 @@ func parseLaunchArgs(args []string) launchOptions {
 }
 
 // selectInstance decides which instance `pob launch` should start: the one
-// named on the command line, the one picked from the list, or — with nothing
-// to choose between, or nobody at the keyboard — whichever INSTANCE already
-// names. The chosen id is written to INSTANCE before the app is started,
-// since that is what the app reads to know which directory is its own.
+// named on the command line, the one picked from the list, or — with nobody at
+// the keyboard — whichever INSTANCE already names. The chosen id is written to
+// INSTANCE before the app is started, since that is what the app reads to know
+// which directory is its own.
+//
+// The list is shown whenever there is somebody to show it to, one instance or
+// twenty. A machine with a single instance is still a machine where which one
+// is about to start is worth seeing before it does — the launch says what it is
+// doing rather than assuming the only answer was the wanted one — and the row
+// under the cursor is already that answer, so a launch that meant it is still
+// one keypress. Naming an instance is the way past the list, and no terminal is
+// the way past it for a scheduled or scripted run, which has no one to ask.
 func selectInstance(root, wanted string) {
 	instances := storage.ListInstances(root)
 
@@ -174,8 +182,11 @@ func selectInstance(root, wanted string) {
 		return
 	}
 
-	if len(instances) < 2 || !isTerminal(os.Stdin) {
-		return // nothing to choose between, or no one to ask
+	// An empty list is not a prompt with no rows in it: the chooser has nothing
+	// to put a cursor on, and there is no id to write. Left to the launch that
+	// follows, which makes the first instance the way it always has.
+	if len(instances) == 0 || !isTerminal(os.Stdin) {
+		return // nothing to choose from, or no one to ask
 	}
 
 	current := indexOfInstance(instances, storage.ResolveInstanceID(root))
