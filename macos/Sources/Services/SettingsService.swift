@@ -354,6 +354,15 @@ class SettingsService {
         return true
     }
 
+    /// The instance's own directory — ~/.pob/<instance>/, the id the toolbar
+    /// badge names. Everything this instance owns is inside it: instance.json,
+    /// the src/ macros, logs/ and instance.log. The other buttons each open one
+    /// of those; this one opens the directory holding them all.
+    func openInstanceFolder() {
+        try? fileManager.createDirectory(at: instanceDir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(instanceDir)
+    }
+
     func openLogsFolder() {
         try? fileManager.createDirectory(at: logsFolder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(logsFolder)

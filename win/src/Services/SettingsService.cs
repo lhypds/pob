@@ -477,6 +477,16 @@ public static class SettingsService
         SpawnDetached("explorer.exe", path);
     }
 
+    // The instance's own directory — ~/.pob/<instance>/, the id the titlebar
+    // badge names. Everything this instance owns is inside it: instance.json,
+    // the src/ macros, logs/ and instance.log. The other buttons each open one
+    // of those; this one opens the directory holding them all.
+    public static void OpenInstanceFolder()
+    {
+        Directory.CreateDirectory(InstanceDir);
+        SpawnDetached("explorer.exe", InstanceDir);
+    }
+
     // ── file contents / clearing ────────────────────────────────────────────
 
     public static string GetMacro()

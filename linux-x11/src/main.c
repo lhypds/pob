@@ -144,6 +144,7 @@ static void set_active_class(GtkWidget *btn, const char *cls, gboolean active) {
 static void set_clickthrough_icon(void);
 
 static const char *const ICONS_SETTINGS[] = {"emblem-system-symbolic", "preferences-system-symbolic", NULL};
+static const char *const ICONS_INSTANCE[] = {"folder-symbolic", "folder-open-symbolic", NULL};
 static const char *const ICONS_LOGS[] = {"text-x-generic-symbolic", "document-open-symbolic", NULL};
 static const char *const ICONS_MACRO[] = {"system-run-symbolic", "application-x-executable-symbolic", NULL};
 static const char *const ICONS_RECORD[] = {"media-record-symbolic", NULL};
@@ -742,6 +743,11 @@ static void on_settings_clicked(GtkButton *b, gpointer d) {
     settings_open_settings_file();
 }
 
+static void on_instance_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    settings_open_instance_folder();
+}
+
 static void on_logs_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
     settings_open_logs_folder();
@@ -996,6 +1002,10 @@ static void build_headerbar(void) {
     gtk_header_bar_set_custom_title(GTK_HEADER_BAR(hb), gtk_label_new(""));
 
     GtkWidget *settings_btn = icon_button(ICONS_SETTINGS, "Settings");
+    gchar *instance_tip = g_strdup_printf("Instance — ~/.pob/%s",
+                                          settings_instance_id());
+    GtkWidget *instance_btn = icon_button(ICONS_INSTANCE, instance_tip);
+    g_free(instance_tip);
     GtkWidget *logs_btn = icon_button(ICONS_LOGS, "Logs");
     GtkWidget *inslog_btn = build_inslog_button();
     GtkWidget *macro_btn = icon_button(ICONS_MACRO, "Macro PSL");
@@ -1019,6 +1029,7 @@ static void build_headerbar(void) {
     GtkWidget *close_btn = icon_button(ICONS_CLOSE, "Close");
 
     g_signal_connect(settings_btn, "clicked", G_CALLBACK(on_settings_clicked), NULL);
+    g_signal_connect(instance_btn, "clicked", G_CALLBACK(on_instance_clicked), NULL);
     g_signal_connect(logs_btn, "clicked", G_CALLBACK(on_logs_clicked), NULL);
     g_signal_connect(inslog_btn, "clicked", G_CALLBACK(on_inslog_clicked), NULL);
     g_signal_connect(macro_btn, "clicked", G_CALLBACK(on_macro_clicked), NULL);
@@ -1060,6 +1071,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), macro_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), inslog_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), logs_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), instance_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), settings_btn);
 
     gtk_widget_add_events(hb, GDK_BUTTON_PRESS_MASK);

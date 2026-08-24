@@ -40,6 +40,9 @@ public partial class ToolbarWindow : Window
         InitializeComponent();
         Title = $"Pob {AppState.Version}";
         InstanceIdText.Text = SettingsService.InstanceId;
+        // Built here rather than in XAML: what the button opens is this
+        // machine's instance directory, and its name is only known at runtime.
+        InstanceBtn.ToolTip = $"Instance — {SettingsService.InstanceDir}";
         SyncInstanceBadge();
         SetClickThroughVisual(AppState.IsClickThrough);
         // The restored lock (App.OnStartup reads it) rather than a fixed
@@ -137,6 +140,8 @@ public partial class ToolbarWindow : Window
     }
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenSettingsFile();
+
+    private void OnInstanceClicked(object sender, RoutedEventArgs e) => SettingsService.OpenInstanceFolder();
 
     private void OnLogsClicked(object sender, RoutedEventArgs e) => SettingsService.OpenLogsFolder();
 

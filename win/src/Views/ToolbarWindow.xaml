@@ -71,6 +71,12 @@
                 <Button x:Name="SettingsBtn" Style="{StaticResource ToolButton}" ToolTip="Settings" Click="OnSettingsClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE713;"/>
                 </Button>
+                <!-- The instance's own directory, ~/.pob/pb-xxxx — the one the
+                     id badge names. FolderHorizontal, the MDL2 match to the
+                     macOS folder symbol; the tooltip carries the path. -->
+                <Button x:Name="InstanceBtn" Style="{StaticResource ToolButton}" Click="OnInstanceClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8B7;"/>
+                </Button>
                 <Button x:Name="LogsBtn" Style="{StaticResource ToolButton}" ToolTip="Logs" Click="OnLogsClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE8A5;"/>
                 </Button>

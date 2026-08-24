@@ -60,6 +60,18 @@
 // standing where it was.
 #define LAUNCH_SETTLE_MS 200
 
+// How many times the window is asked before the answer is taken for a refusal.
+//
+// Once was what this used to be, and once is not enough for an application that
+// answers a move against the window it had before the last one — see the fit
+// rounds in macos/Sources/Services/LaunchService.swift, where Firefox does
+// exactly that. A window manager that places windows where it likes is the same
+// shape of problem from this side, and the same thing settles both: ask again
+// from where the window now actually is. Eight rounds is past every application
+// that converges at all, and eight of them twice over — the size and then the
+// position alone — is a few seconds against a wait already allowed twenty.
+#define LAUNCH_FIT_ATTEMPTS 8
+
 // Windows smaller than this on either side are not what was opened — the splash
 // and scratch windows an application puts up while it starts, which appear
 // before the real one and would otherwise be what the frame got.
@@ -112,6 +124,8 @@ typedef struct Launch {
     gint64 deadline; // g_get_monotonic_time() microseconds
     Window client;   // the window found, while it settles
     GdkRectangle rect;
+    int attempt;              // rounds of the current phase gone by
+    gboolean size_given_up;   // whether the rounds have moved on to the position alone
     guint poll_source;
     guint child_source;
 } Launch;
@@ -427,7 +441,11 @@ static void make_ordinary(Window win) {
                  LAUNCH_SOURCE_PAGER_ID, 0);
 }
 
-static void move_resize_client(Window win, const GdkRectangle *rect) {
+// Asks for the window to be at `rect`, with or without the size — a round that
+// has given up on the size asks for the corner alone, so that nothing is
+// writing a size for the position to be knocked off by.
+static void place_client(Window win, const GdkRectangle *rect,
+                         gboolean with_size) {
     Display *dpy = display();
     if (!dpy) return;
 
@@ -435,10 +453,12 @@ static void move_resize_client(Window win, const GdkRectangle *rect) {
         // StaticGravity: x and y are the client window's own top-left, so
         // whatever the window manager draws around it never enters the
         // arithmetic.
-        send_to_root(win, launch_atom("_NET_MOVERESIZE_WINDOW"),
-                     StaticGravity | LAUNCH_MOVERESIZE_X | LAUNCH_MOVERESIZE_Y |
-                         LAUNCH_MOVERESIZE_W | LAUNCH_MOVERESIZE_H |
-                         LAUNCH_SOURCE_PAGER,
+        long flags = StaticGravity | LAUNCH_MOVERESIZE_X | LAUNCH_MOVERESIZE_Y |
+                     LAUNCH_SOURCE_PAGER;
+        if (with_size) flags |= LAUNCH_MOVERESIZE_W | LAUNCH_MOVERESIZE_H;
+        // The width and height travel either way: with the flags off they are
+        // what the window manager is told to leave alone.
+        send_to_root(win, launch_atom("_NET_MOVERESIZE_WINDOW"), flags,
                      rect->x, rect->y, rect->width, rect->height);
         XFlush(dpy);
         return;
@@ -463,10 +483,14 @@ static void move_resize_client(Window win, const GdkRectangle *rect) {
         }
         XFree(items);
     }
-    int width = rect->width > 0 ? rect->width : 1;
-    int height = rect->height > 0 ? rect->height : 1;
-    XMoveResizeWindow(dpy, win, rect->x - (int)left, rect->y - (int)top,
-                      (unsigned)width, (unsigned)height);
+    if (with_size) {
+        int width = rect->width > 0 ? rect->width : 1;
+        int height = rect->height > 0 ? rect->height : 1;
+        XMoveResizeWindow(dpy, win, rect->x - (int)left, rect->y - (int)top,
+                          (unsigned)width, (unsigned)height);
+    } else {
+        XMoveWindow(dpy, win, rect->x - (int)left, rect->y - (int)top);
+    }
     XFlush(dpy);
 }
 
@@ -497,7 +521,14 @@ static gboolean content_rect_less_gap(int gap, GdkRectangle *out) {
 // ── the wait ────────────────────────────────────────────────────────────────
 
 // Measures the window now that the window manager has had its moment with it,
-// and ends the launch.
+// and either ends the launch or asks again.
+//
+// Asking again is the whole of what makes a fit reliable. A move is a request,
+// and what comes back from one is not always what was asked for: a window
+// manager rounds it, an application answers it against the window it had before
+// the request before this one, and either way the window has moved but is not
+// where the frame is. There is nothing there to detect and no offset to correct
+// for — what settles it is asking again, from where the window now actually is.
 static gboolean on_settle(gpointer data) {
     Launch *wait = data;
     wait->poll_source = 0;
@@ -516,20 +547,43 @@ static gboolean on_settle(gpointer data) {
         launch_done(wait, FALSE, "its window would not say where it ended up");
         return G_SOURCE_REMOVE;
     }
-    if (ABS(now.x - wait->rect.x) > LAUNCH_FIT_TOLERANCE ||
-        ABS(now.y - wait->rect.y) > LAUNCH_FIT_TOLERANCE) {
-        launch_done(wait, FALSE, "its window would not move to the frame");
+
+    gboolean placed = ABS(now.x - wait->rect.x) <= LAUNCH_FIT_TOLERANCE &&
+                      ABS(now.y - wait->rect.y) <= LAUNCH_FIT_TOLERANCE;
+    gboolean sized = ABS(now.width - wait->rect.width) <= LAUNCH_FIT_TOLERANCE &&
+                     ABS(now.height - wait->rect.height) <= LAUNCH_FIT_TOLERANCE;
+
+    if (placed && sized) {
+        launch_done(wait, TRUE, "");
         return G_SOURCE_REMOVE;
     }
-    if (ABS(now.width - wait->rect.width) > LAUNCH_FIT_TOLERANCE ||
-        ABS(now.height - wait->rect.height) > LAUNCH_FIT_TOLERANCE) {
+    if (placed && wait->size_given_up) {
         gchar *note = g_strdup_printf("its window would not resize past %d×%d",
                                       now.width, now.height);
         launch_done(wait, TRUE, note);
         g_free(note);
         return G_SOURCE_REMOVE;
     }
-    launch_done(wait, TRUE, "");
+
+    if (++wait->attempt >= LAUNCH_FIT_ATTEMPTS) {
+        if (wait->size_given_up) {
+            launch_done(wait, FALSE, "its window would not move to the frame");
+            return G_SOURCE_REMOVE;
+        }
+        // The size is the half a window is allowed to refuse: a browser has a
+        // width it will not go under, and a frame narrower than that is a frame
+        // it cannot fill. What it may not refuse is the corner — every
+        // coordinate under the statement is measured from the frame's top-left —
+        // so the rounds go on for the position alone.
+        wait->size_given_up = TRUE;
+        wait->attempt = 0;
+    }
+
+    gdk_x11_display_error_trap_push(gdisplay);
+    place_client(wait->client, &wait->rect, !wait->size_given_up);
+    gdk_x11_display_error_trap_pop_ignored(gdisplay);
+
+    wait->poll_source = g_timeout_add(LAUNCH_SETTLE_MS, on_settle, wait);
     return G_SOURCE_REMOVE;
 }
 
@@ -566,7 +620,7 @@ static gboolean on_poll(gpointer data) {
     make_ordinary(client);
     send_to_root(client, launch_atom("_NET_ACTIVE_WINDOW"), LAUNCH_SOURCE_PAGER_ID,
                  CurrentTime, 0, 0, 0);
-    move_resize_client(client, &wait->rect);
+    place_client(client, &wait->rect, TRUE);
     gdk_x11_display_error_trap_pop_ignored(gdisplay);
 
     wait->client = client;

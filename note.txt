@@ -2,6 +2,9 @@
 Commands
 --------
 
+Rebuild and install and launch
+pob kill && ./build.sh && ./install.sh && pob launch
+
 Open a Microsandbox instance and connect with TigerVNC
 pob launch --msb --vncviewer
 

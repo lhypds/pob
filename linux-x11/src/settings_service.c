@@ -740,6 +740,19 @@ void settings_open_logs_folder(void) {
     g_free(path);
 }
 
+// The instance's own directory — ~/.pob/<instance>/, the id the headerbar
+// badge names. Everything this instance owns is inside it: instance.json, the
+// src/ macros, logs/ and instance.log. The other buttons each open one of
+// those; this one opens the directory holding them all.
+void settings_open_instance_folder(void) {
+    gchar *path = g_build_filename(settings_project_root(),
+                                   settings_instance_id(), NULL);
+    g_mkdir_with_parents(path, 0755);
+    start_open(FILE_MANAGERS, G_N_ELEMENTS(FILE_MANAGERS), path, "inode/directory",
+               "file manager");
+    g_free(path);
+}
+
 // ── file contents / clearing ────────────────────────────────────────────────
 
 gchar *settings_get_macro(void) {

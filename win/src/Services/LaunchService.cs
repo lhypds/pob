@@ -52,6 +52,21 @@ public static class LaunchService
     // guessed; two covers both.
     private const int FitTolerance = 2;
 
+    // How many rounds the fit asks in before it takes the answer for a refusal.
+    //
+    // Once was what this used to be, and once is not enough for an application
+    // that answers a placement against the window it had before the last one —
+    // see the fit rounds in macos/Sources/Services/LaunchService.swift, where
+    // Firefox does exactly that. Eight is past every application that converges
+    // and still under a second of a wait already allowed twenty.
+    private const int FitAttempts = 8;
+
+    // How long the window is left alone between being placed and being
+    // measured. A window that lays itself out on its own message loop has not
+    // finished doing it by the time SetWindowPos returns, and a window read back
+    // the instant after being asked is a window still standing where it was.
+    private static readonly TimeSpan FitSettle = TimeSpan.FromMilliseconds(100);
+
     // ── the request ─────────────────────────────────────────────────────────
 
     // Opens `target`, fits its window to the content area, and answers the core
@@ -260,6 +275,14 @@ public static class LaunchService
 
     // Puts the window where the frame is and makes it the size the frame is,
     // and says how close it got.
+    //
+    // Asked in rounds rather than once. A placement is a request, and what comes
+    // back from one is not always what was asked for: an application that lays
+    // itself out on its own message loop answers the request against the window
+    // it had before the request before this one, so the window has moved and is
+    // still not where the frame is. There is nothing there to detect and no
+    // offset to correct for — what settles it is asking again, from where the
+    // window now actually is.
     private static (bool, string) Fit(IntPtr hwnd, NativeMethods.RECT rect)
     {
         // Maximized and minimized are both states the shell puts a window in
@@ -272,32 +295,75 @@ public static class LaunchService
         }
         NativeMethods.SetForegroundWindow(hwnd);
 
-        // SetWindowPos places a window in the space GetWindowRect reports, and
-        // that space is bigger than the window looks: some seven pixels of
-        // invisible resize border on every side of a normal one. Fitted to the
-        // frame means what a person sees fills the frame, so the border is
-        // measured and paid for rather than left to hang over the edges.
+        bool placed = false;
+        bool sized = false;
+        NativeMethods.RECT now = default;
+
+        for (int attempt = 0; attempt < FitAttempts; attempt++)
+        {
+            Place(hwnd, rect, withSize: true);
+            Thread.Sleep(FitSettle);
+            if (!VisibleBounds(hwnd, out now))
+                return (false, "its window would not say where it ended up");
+            (placed, sized) = Landing(now, rect);
+            if (placed && sized) return (true, "");
+        }
+
+        // The size is the half a window is allowed to refuse: a browser has a
+        // width it will not go under, and a frame narrower than that is a frame
+        // it cannot fill. What it may not refuse is the corner — every
+        // coordinate under the statement is measured from the frame's top-left —
+        // so the rounds go on for the position alone, with nothing writing a
+        // size for it to be knocked off by.
+        if (!placed)
+        {
+            for (int attempt = 0; attempt < FitAttempts; attempt++)
+            {
+                Place(hwnd, rect, withSize: false);
+                Thread.Sleep(FitSettle);
+                if (!VisibleBounds(hwnd, out now))
+                    return (false, "its window would not say where it ended up");
+                (placed, sized) = Landing(now, rect);
+                if (placed) break;
+            }
+        }
+
+        if (!placed) return (false, "its window would not move to the frame");
+        if (!sized)
+            return (true, $"its window would not resize past {now.Right - now.Left}×{now.Bottom - now.Top}");
+        return (true, "");
+    }
+
+    // Asks for the window to be at `rect`, with or without the size.
+    //
+    // SetWindowPos places a window in the space GetWindowRect reports, and that
+    // space is bigger than the window looks: some seven pixels of invisible
+    // resize border on every side of a normal one. Fitted to the frame means
+    // what a person sees fills the frame, so the border is measured and paid for
+    // rather than left to hang over the edges — and measured every round, since
+    // a window restored out of maximized partway through has a different one.
+    private static void Place(IntPtr hwnd, NativeMethods.RECT rect, bool withSize)
+    {
         (int padLeft, int padTop, int padRight, int padBottom) = InvisibleBorder(hwnd);
         int x = rect.Left - padLeft;
         int y = rect.Top - padTop;
         int w = rect.Right - rect.Left + padLeft + padRight;
         int h = rect.Bottom - rect.Top + padTop + padBottom;
 
-        NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, x, y, w, h,
-                                   NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+        uint flags = NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE;
+        if (!withSize) flags |= NativeMethods.SWP_NOSIZE;
+        NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, x, y, w, h, flags);
+    }
 
-        if (!VisibleBounds(hwnd, out NativeMethods.RECT now))
-            return (false, "its window would not say where it ended up");
-
+    // Where the window has come to rest, against where it was asked to be:
+    // whether the corner is the frame's, and whether the size is.
+    private static (bool, bool) Landing(NativeMethods.RECT now, NativeMethods.RECT rect)
+    {
         bool placed = Math.Abs(now.Left - rect.Left) <= FitTolerance &&
                       Math.Abs(now.Top - rect.Top) <= FitTolerance;
-        if (!placed) return (false, "its window would not move to the frame");
-
         bool sized = Math.Abs((now.Right - now.Left) - (rect.Right - rect.Left)) <= FitTolerance &&
                      Math.Abs((now.Bottom - now.Top) - (rect.Bottom - rect.Top)) <= FitTolerance;
-        if (!sized)
-            return (true, $"its window would not resize past {now.Right - now.Left}×{now.Bottom - now.Top}");
-        return (true, "");
+        return (placed, sized);
     }
 
     // How far the window rect stands outside the window as the compositor draws

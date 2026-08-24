@@ -80,6 +80,21 @@ final class LaunchService {
     /// everything rounding can do.
     private static let fitTolerance: CGFloat = 2
 
+    /// How many rounds the fit asks in before it takes the answer for a refusal.
+    /// Firefox — the application that made rounds necessary at all — settles in
+    /// two or three, and an application that places its window when asked
+    /// settles in one. Eight is past every one of them and still under a second
+    /// of a wait that is already allowed twenty.
+    private static let fitAttempts = 8
+
+    /// How long the window is left alone between being asked and being measured.
+    ///
+    /// A position and a size are two writes, and an application that answers
+    /// them on its own main loop has not answered either by the time the setter
+    /// returns — so a window read back the instant after being asked is a window
+    /// still standing where it was, and the round would learn nothing.
+    private static let fitSettle: TimeInterval = 0.1
+
     /// Where an application is looked for when it was named rather than
     /// pointed at. The user's own folder last: the ones under `/` are what
     /// `launch("Safari")` means on every Mac, and a copy in `~/Applications` is
@@ -249,32 +264,78 @@ final class LaunchService {
 
     /// Puts the window where the frame is and makes it the size the frame is,
     /// and says how close it got.
+    ///
+    /// Asked in rounds rather than once, because a position and a size are two
+    /// writes and some applications answer the second against the window they
+    /// had before the first. Firefox is the one that made this necessary, and it
+    /// is worth writing down what it does: each write lands, and each one takes
+    /// the other back. Position, and the window is in the right place at its old
+    /// size; size, and it is the right size back at its old position; position
+    /// again, and it is in the right place at its old size once more. Nothing is
+    /// refusing anything, so there is nothing to detect and no offset to correct
+    /// for — the two writes are simply being applied to a window that has since
+    /// moved. What settles it is asking again from where the window now actually
+    /// is, until the two agree.
+    ///
+    /// That is also why a round is a position and then a size, where it was once
+    /// position, size, position: the next round opens with a position anyway, so
+    /// the third write bought nothing but one more thing for the measurement
+    /// after it to be taken in the middle of.
     private func fit(_ element: AXUIElement, to rect: CGRect) -> (Bool, String) {
-        // Position, then size, then position again. An application that clamps
-        // the size it was given usually moves the window doing it, and a window
-        // the right size in the wrong place is not in the frame — whereas a
-        // window in the right place at the wrong size still has the frame's
-        // top-left corner, which is what the coordinates under the statement
-        // are measured from.
-        setPoint(element, kAXPositionAttribute, rect.origin)
-        setSize(element, kAXSizeAttribute, rect.size)
-        setPoint(element, kAXPositionAttribute, rect.origin)
+        var placed = false
+        var sized = false
 
-        guard let origin = axPoint(element, kAXPositionAttribute),
-              let size = axSize(element, kAXSizeAttribute) else {
-            return (false, "its window would not say where it ended up")
+        for _ in 0 ..< Self.fitAttempts {
+            setPoint(element, kAXPositionAttribute, rect.origin)
+            setSize(element, kAXSizeAttribute, rect.size)
+            Thread.sleep(forTimeInterval: Self.fitSettle)
+
+            guard let landed = landing(of: element, in: rect) else {
+                return (false, "its window would not say where it ended up")
+            }
+            (placed, sized) = landed
+            if placed, sized { return (true, "") }
         }
-        let placed = abs(origin.x - rect.minX) <= Self.fitTolerance &&
-                     abs(origin.y - rect.minY) <= Self.fitTolerance
+
+        // The size is the half a window is allowed to refuse: a browser has a
+        // width it will not go under, and a frame narrower than that is a frame
+        // it cannot fill. What it may not refuse is the corner — every
+        // coordinate under the statement is measured from the frame's top-left —
+        // so the position goes on being asked for on its own, now that nothing
+        // is writing a size for it to be knocked off by.
         if !placed {
-            return (false, "its window would not move to the frame")
+            for _ in 0 ..< Self.fitAttempts {
+                setPoint(element, kAXPositionAttribute, rect.origin)
+                Thread.sleep(forTimeInterval: Self.fitSettle)
+                guard let landed = landing(of: element, in: rect) else {
+                    return (false, "its window would not say where it ended up")
+                }
+                (placed, sized) = landed
+                if placed { break }
+            }
         }
-        let sized = abs(size.width - rect.width) <= Self.fitTolerance &&
-                    abs(size.height - rect.height) <= Self.fitTolerance
+
+        if !placed { return (false, "its window would not move to the frame") }
         if !sized {
+            guard let size = axSize(element, kAXSizeAttribute) else {
+                return (false, "its window would not say where it ended up")
+            }
             return (true, String(format: "its window would not resize past %.0f×%.0f", size.width, size.height))
         }
         return (true, "")
+    }
+
+    /// Where the window has come to rest, against where it was asked to be:
+    /// whether the corner is the frame's, and whether the size is. Nil when the
+    /// window will not say — it can be closed between being asked and being
+    /// measured, and a window that has gone is not one that was placed.
+    private func landing(of element: AXUIElement, in rect: CGRect) -> (placed: Bool, sized: Bool)? {
+        guard let origin = axPoint(element, kAXPositionAttribute),
+              let size = axSize(element, kAXSizeAttribute) else { return nil }
+        return (abs(origin.x - rect.minX) <= Self.fitTolerance &&
+                    abs(origin.y - rect.minY) <= Self.fitTolerance,
+                abs(size.width - rect.width) <= Self.fitTolerance &&
+                    abs(size.height - rect.height) <= Self.fitTolerance)
     }
 
     // MARK: - Resolving a name

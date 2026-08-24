@@ -363,6 +363,12 @@ struct InstanceContentView: View {
             .help("Settings")
         }
         ToolbarItem(placement: .automatic) {
+            Button(action: { instance.settings.openInstanceFolder() }) {
+                Image(systemName: "folder")
+            }
+            .help("Instance — ~/.pob/\(instance.settings.instanceID)")
+        }
+        ToolbarItem(placement: .automatic) {
             Button(action: { instance.settings.openLogsFolder() }) {
                 Image(systemName: "doc.text")
             }

@@ -53,6 +53,7 @@ void settings_open_macro_file(void);
 void settings_open_instance_log(void);
 void settings_open_app_log(void);
 void settings_open_logs_folder(void);
+void settings_open_instance_folder(void);
 
 // Contents of src/main.macro.psl ("" when missing); caller frees.
 gchar *settings_get_macro(void);
