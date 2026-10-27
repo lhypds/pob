@@ -60,6 +60,9 @@ Clone it and `cd` into the repo.
 ./start.sh      # run it
 ```
 
+On Windows use the `.bat` files instead — `setup.bat`, `start.bat`,
+`stop.bat`, `restart.bat` — which run the matching `win\*.ps1` script.
+
 To install what you just built — the app somewhere permanent and the `pob`
 command on your `PATH`, the same places `get.sh` puts a release:
 

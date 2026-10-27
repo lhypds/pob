@@ -35,7 +35,10 @@ be run directly.
 
 Windows has no bash to dispatch from, so it runs its own scripts directly —
 `win\setup.ps1`, `win\start.ps1`, `win\restart.ps1`, `win\stop.ps1`,
-`win\build.ps1` — one per root script, doing the same job.
+`win\build.ps1` — one per root script, doing the same job. The root
+`setup.bat`, `start.bat`, `stop.bat` and `restart.bat` are thin wrappers that
+run the matching `win\*.ps1` with `-ExecutionPolicy Bypass` and pass their
+arguments through.
 
 On macOS a dev run and a built bundle are two different things to the
 permission system. Posting mouse and keyboard events needs Accessibility, which
