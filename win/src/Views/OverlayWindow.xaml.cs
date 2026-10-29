@@ -82,10 +82,15 @@ public partial class OverlayWindow : Window
 
     // The overlay as the whole display: no toolbar above it to finish the shape
     // of, and nothing to grab it by. App.EnterFullscreen has already placed it.
-    public void EnterFullscreen()
+    public void EnterFullscreen() => SetCornerRadius(0);
+
+    // Back under the toolbar, with the bottom corners it finishes the shape of.
+    public void ExitFullscreen() => SetCornerRadius(3);
+
+    private void SetCornerRadius(double radius)
     {
-        _cornerRadius = 0;
-        Root.CornerRadius = new System.Windows.CornerRadius(0);
+        _cornerRadius = radius;
+        Root.CornerRadius = new System.Windows.CornerRadius(0, 0, radius, radius);
         ClipContentToCorners(new Size(ContentArea.ActualWidth, ContentArea.ActualHeight));
     }
 
@@ -118,10 +123,9 @@ public partial class OverlayWindow : Window
             _pointerHot = false;
         }
         ApplyHitTest();
-        // Nothing for the watch to find in fullscreen: there is no resize
-        // border to lift the flag for, so it would only be arriving at the same
-        // answer thirty times a second.
-        if (pass && !AppState.IsFullscreen) StartEdgeWatch();
+        // In fullscreen too: there is no resize border there, but there is the
+        // dot that leaves it.
+        if (pass) StartEdgeWatch();
     }
 
     private void ApplyHitTest()
@@ -160,7 +164,7 @@ public partial class OverlayWindow : Window
     // meant for the application below. It comes back the moment the run ends.
     private bool PointerOnMenuDot()
     {
-        if (!AppState.IsMenuHidden || AppState.IsExecuting || !IsVisible) return false;
+        if (!AppState.IsMenuDotShown || AppState.IsExecuting || !IsVisible) return false;
         NativeMethods.GetCursorPos(out NativeMethods.POINT p);
         Point local = PointFromScreen(new Point(p.X, p.Y));
         return AppState.MenuDotHitRect(ActualWidth).Contains(local);
@@ -225,7 +229,7 @@ public partial class OverlayWindow : Window
         // The dot goes first: with the menu hidden it is the only thing Pob has
         // left on the screen, so nothing else on the content area may take its
         // press — a mode left running from before the menu went away included.
-        if (AppState.IsMenuHidden && AppState.MenuDotHitRect(ActualWidth).Contains(e.GetPosition(this)))
+        if (AppState.IsMenuDotShown && AppState.MenuDotHitRect(ActualWidth).Contains(e.GetPosition(this)))
         {
             _dotPressed = true;
             _dotDragged = false;
@@ -266,7 +270,7 @@ public partial class OverlayWindow : Window
             return;
         }
         Point pos = e.GetPosition(this);
-        if (AppState.IsMenuHidden && AppState.MenuDotHitRect(ActualWidth).Contains(pos))
+        if (AppState.IsMenuDotShown && AppState.MenuDotHitRect(ActualWidth).Contains(pos))
             Cursor = Cursors.Hand;
         else
             Cursor = ResizeAllowed ? ZoneCursor(HitTestZone(pos)) : null;
@@ -284,7 +288,9 @@ public partial class OverlayWindow : Window
             Root.ReleaseMouseCapture();
             ApplyHitTest();
             e.Handled = true;
-            if (!wasDrag) AppState.SetMenuHidden(false);
+            if (wasDrag) return;
+            if (AppState.IsFullscreen) AppState.SetFullscreen(false);
+            else AppState.SetMenuHidden(false);
             return;
         }
 
@@ -304,6 +310,8 @@ public partial class OverlayWindow : Window
     // takes the windows below with it exactly as a titlebar drag would.
     private void DragByDot()
     {
+        // Fullscreen is held to the display, so its dot is a button and no more.
+        if (AppState.IsFullscreen) return;
         NativeMethods.GetCursorPos(out NativeMethods.POINT cur);
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         double dx = (cur.X - _dotStartCursor.X) / scale;

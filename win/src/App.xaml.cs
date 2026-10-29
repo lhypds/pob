@@ -59,11 +59,12 @@ public partial class App : Application
             return;
         }
 
-        // --fullscreen: the overlay covers the whole display and the toolbar
-        // window never appears, so nothing on screen is Pob's to click and the
-        // `pob` command is what drives it. Read before either window is built,
-        // since it decides what is built and where.
-        AppState.IsFullscreen = e.Args.Contains("--fullscreen");
+        // Fullscreen: the overlay covers the whole display and the toolbar
+        // window stays off screen, with the corner dot the way back. Read
+        // before either window is built, since it decides what is shown and
+        // where. --fullscreen is this run's alone; otherwise however the
+        // instance was last left (SettingsService.GetFullscreen).
+        AppState.IsFullscreen = e.Args.Contains("--fullscreen") || SettingsService.GetFullscreen();
 
         // The lock and the click-through the window was left with, read before
         // the toolbar is built so its buttons start on the right icons. An
@@ -175,7 +176,7 @@ public partial class App : Application
 
         toolbar.Closed += (_, _) => Shutdown();
 
-        AppLogger.Event("Pob started");
+        AppLogger.Event(AppState.IsFullscreen ? "Pob started (fullscreen)" : "Pob started");
         MouseService.Init();
         CoreBridge.Start();
     }
@@ -226,8 +227,7 @@ public partial class App : Application
     // The overlay alone, over the whole display: the toolbar window is taken
     // off screen rather than never shown, because an owned window has to be
     // given an owner that has been shown at least once — and with it goes every
-    // button Pob has, which is the point of the mode. What drives it from here
-    // is the `pob` command.
+    // button Pob has but the dot in the corner, which brings it all back.
     //
     // The display is the one the window would have come up on, whole:
     // rcMonitor rather than rcWork, so the taskbar's strip is covered too. The
@@ -236,6 +236,9 @@ public partial class App : Application
     {
         if (_toolbar == null || _overlay == null) return;
 
+        // Measured before the overlay is moved, which is half of what it is
+        // measured from.
+        _windowedFrame = CombinedFrame();
         Rect bounds = CurrentMonitorBounds();
         // _syncing, so the glue below leaves the (about to be hidden) toolbar
         // where it is instead of dragging it across the screen with this.
@@ -251,6 +254,39 @@ public partial class App : Application
         // Hiding a window does not hide the windows it owns, but the overlay is
         // the whole of Pob now — cheap insurance against a WPF that disagrees.
         if (!_overlay.IsVisible) _overlay.Show();
+    }
+
+    // Where the pair stood before fullscreen, to put it back there.
+    private Rect _windowedFrame = Rect.Empty;
+
+    // The toolbar's Fullscreen button and the dot. Written to instance.json as
+    // it changes, so the next launch comes back as this one was left; the
+    // frame saved is still the windowed one (SaveFrameNow skips fullscreen),
+    // so leaving it lands where the window was.
+    public void SetFullscreen(bool on)
+    {
+        if (_toolbar == null || _overlay == null || AppState.IsFullscreen == on) return;
+        SettingsService.SaveFullscreen(on);
+
+        if (on)
+        {
+            // The menu has to be back first: a hidden menu and fullscreen
+            // both keep the toolbar off screen, and each would put it back.
+            AppState.SetMenuHidden(false);
+            AppState.IsFullscreen = true;
+            EnterFullscreen();
+        }
+        else
+        {
+            AppState.IsFullscreen = false;
+            _overlay.ExitFullscreen();
+            ApplyCombinedFrame(_windowedFrame.IsEmpty ? CombinedFrame() : _windowedFrame);
+            _toolbar.Show();
+            _toolbar.Activate();
+        }
+
+        _overlay.ContentView.InvalidateVisual();
+        AppState.UpdateClickThrough();
     }
 
     // Full bounds of the monitor the window sits on, in DIP coordinates —

@@ -38,11 +38,13 @@ public static class AppState
     public static bool IsRecording;
     public static bool IsExecuting;
 
-    // --fullscreen: the overlay covers the whole display with no toolbar window
-    // above it, so there is nothing of Pob's on screen to click and the `pob`
-    // command is what drives it. A property of this run rather than of the
-    // instance — it is read from the command line and never written to
-    // instance.json, so an ordinary launch comes back an ordinary window.
+    // Fullscreen: the overlay covers the whole display with no toolbar window
+    // above it, and the dot in the corner is the one thing of Pob's left to
+    // press — it brings the window back. Switched by the toolbar's Fullscreen
+    // button and the dot (App.SetFullscreen), which write it to instance.json
+    // as `fullscreen` so the next launch comes back as this one was left.
+    // App.OnStartup reads it — --fullscreen first, then instance.json, then
+    // settings.json's `fullscreen` for an instance never switched.
     public static bool IsFullscreen;
 
     // "Hide Menu": the toolbar window goes off screen — titlebar, window
@@ -62,6 +64,10 @@ public static class AppState
     public const double MenuDotInset = 20;
     public const double MenuDotDiameter = 8;
     public const double MenuDotHit = 20;
+
+    // The dot is on screen whenever the toolbar window is not: a hidden menu
+    // or fullscreen, and pressing it undoes whichever of the two it is.
+    public static bool IsMenuDotShown => IsMenuHidden || IsFullscreen;
 
     public static Rect MenuDotHitRect(double contentWidth) =>
         new(contentWidth - MenuDotInset - MenuDotHit / 2, MenuDotInset - MenuDotHit / 2,
@@ -123,10 +129,10 @@ public static class AppState
         // synthesized clicks must reach the window below the overlay.
         // Targeting and cropping need the content clickable, so they win.
         //
-        // Fullscreen passes everything through whatever the rest of this says.
-        // It covers every pixel the user has: a window that took a click there
-        // would be one nothing could be done about, since there is no button on
-        // it to hand the desktop back.
+        // Fullscreen passes everything through whatever the rest of this says,
+        // bar the dot that leaves it (OverlayWindow keeps that live). It covers
+        // every pixel the user has: a window that took a click there would be
+        // one nothing could be done about.
         bool pass = IsFullscreen ||
                     ((IsClickThrough || IsExecuting) && !IsTargeting && !IsCropping);
         Overlay?.SetHitTestTransparent(pass);
@@ -178,6 +184,9 @@ public static class AppState
         // keep the dot live, and the watch only runs while they do.
         UpdateClickThrough();
     }
+
+    // The toolbar's Fullscreen button one way, the dot the other.
+    public static void SetFullscreen(bool on) => ((App)Application.Current).SetFullscreen(on);
 
     public static void SetTargeting(bool targeting)
     {

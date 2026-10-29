@@ -48,6 +48,14 @@ void settings_save_window_locked(gboolean locked);
 gboolean settings_get_click_through(void);
 void settings_save_click_through(gboolean on);
 
+// Whether the window was left fullscreen (fullscreen in instance.json) —
+// written every time the toolbar's Fullscreen button or the corner dot
+// switches it, so the next launch comes back the way the last one was left.
+// An instance never switched falls back to settings.json's `fullscreen`, the
+// machine's default.
+gboolean settings_get_fullscreen(void);
+void settings_save_fullscreen(gboolean on);
+
 void settings_open_settings_file(void);
 void settings_open_macro_file(void);
 void settings_open_instance_log(void);

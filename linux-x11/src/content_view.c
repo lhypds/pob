@@ -381,12 +381,12 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         }
     }
 
-    // What a hidden menu leaves on screen: a small black dot in the top-right
-    // corner, and the only way back to the toolbar. The white ring is what
-    // makes it findable — the dot sits over whatever application the frame is
-    // parked on, and a bare black circle on a dark window is a dot nobody can
-    // find again.
-    if (g_state.is_menu_hidden) {
+    // What a hidden menu or fullscreen leaves on screen: a small black dot in
+    // the top-right corner, and the only way back to the toolbar. The white
+    // ring is what makes it findable — the dot sits over whatever application
+    // the frame is parked on, and a bare black circle on a dark window is a dot
+    // nobody can find again.
+    if (app_menu_dot_shown()) {
         double cx = W - POB_MENU_DOT_INSET, cy = POB_MENU_DOT_INSET;
         double r = POB_MENU_DOT_DIAMETER / 2.0;
         cairo_set_source_rgba(cr, 0, 0, 0, 0.85);
@@ -432,7 +432,7 @@ static int dot_start_win_x, dot_start_win_y;
 // Whether a click at (x, y), in the content's own logical pixels, landed on the
 // dot a hidden menu left behind.
 static gboolean on_menu_dot(GtkWidget *widget, double x, double y) {
-    if (!g_state.is_menu_hidden) return FALSE;
+    if (!app_menu_dot_shown()) return FALSE;
     GtkAllocation alloc;
     gtk_widget_get_allocation(widget, &alloc);
     double dx = x - (alloc.width - POB_MENU_DOT_INSET);
@@ -501,6 +501,8 @@ static gboolean on_motion(GtkWidget *widget, GdkEventMotion *ev, gpointer data) 
     // delta rather than by each step's, so a drag the window manager rounds
     // does not walk the frame away from the pointer a fraction at a time.
     if (dot_pressed) {
+        // Fullscreen is held to the screen, so its dot is a button and no more.
+        if (g_state.is_fullscreen) return TRUE;
         double dx = ev->x_root - dot_start_root_x;
         double dy = ev->y_root - dot_start_root_y;
         if (!dot_dragging &&
@@ -514,7 +516,7 @@ static gboolean on_motion(GtkWidget *widget, GdkEventMotion *ev, gpointer data) 
 
     // Over the dot: the hand says there is something there to press, on a
     // window whose every other pixel is a hole.
-    if (g_state.is_menu_hidden && !g_state.is_cropping) {
+    if (app_menu_dot_shown() && !g_state.is_cropping) {
         gboolean over = on_menu_dot(widget, ev->x, ev->y);
         if (over != dot_hovered) {
             dot_hovered = over;
@@ -553,7 +555,9 @@ static gboolean on_button_release(GtkWidget *widget, GdkEventButton *ev, gpointe
         gboolean was_drag = dot_dragging;
         dot_pressed = FALSE;
         dot_dragging = FALSE;
-        if (!was_drag) app_set_menu_hidden(FALSE);
+        if (was_drag) return TRUE;
+        if (g_state.is_fullscreen) app_set_fullscreen(FALSE);
+        else app_set_menu_hidden(FALSE);
         return TRUE;
     }
 

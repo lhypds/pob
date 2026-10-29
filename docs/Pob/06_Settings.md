@@ -28,7 +28,7 @@ the rest are left where they are to be copied across by hand.
 | `editor` | `system` | Editor used to open config files (`system`, `vscode`, `zed`, `sublime_text`, `vim`) |
 | `terminal` | `system` | Terminal used when editor is `vim` (`system`, `iterm2`) |
 | `stop_hook` | — | Shell command to run when a macro runs to its end (e.g. `afplay /System/Library/Sounds/Morse.aiff`). A stopped run does not fire it. The same command written on a line of the macro instead is [`run()`](../Macro%20PSL/14_run.md), which waits for it where it stands |
-| `fullscreen` | `false` | macOS only. Whether an instance starts [fullscreen](02_UI.md#fullscreen) before it has ever been switched. Once the toolbar's Fullscreen button or the corner dot has switched it, the instance remembers that (`fullscreen` in `instance.json`) and this is no longer read for it |
+| `fullscreen` | `false` | Whether an instance starts [fullscreen](02_UI.md#fullscreen) before it has ever been switched. Once the toolbar's Fullscreen button or the corner dot has switched it, the instance remembers that (`fullscreen` in `instance.json`) and this is no longer read for it |
 | `server` | `true` | Run the [Pob Server](09_Server.md). `false` stops Pob accepting pointer and keyboard commands from the network, and takes the [Web UI](12_Web%20UI.md) down with it |
 | `server_port` | `8033` | The port the [Pob Server](09_Server.md) is reached through. `POB_SERVER_PORT` overrides it |
 | `webui_view_fps` | `5` | How often the [Web UI](12_Web%20UI.md)'s view page refetches the picture, in frames per second (`0.1`–`30`, clamped). Every frame is a screen capture on this machine, which is why the rate is set here and not on the page |

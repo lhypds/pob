@@ -20,6 +20,13 @@ AppState g_state;
 
 static guint save_frame_timeout = 0;
 
+// Leaving fullscreen is the window manager's to finish: the frame is put back
+// once it says the window has left (on_window_state), or after a wait for one
+// that never says. The frame is not saved while this is set — what the window
+// stands at then is still the screen.
+static gboolean fullscreen_restore_pending;
+static void restore_windowed_frame(void);
+
 // ── version ─────────────────────────────────────────────────────────────────
 
 const char *app_version(void) {
@@ -159,6 +166,7 @@ static const char *const ICONS_HAND[] = {"hand-open-symbolic", "touch-symbolic",
 static const char *const ICONS_LOCKED[] = {"changes-prevent-symbolic", NULL};
 static const char *const ICONS_UNLOCKED[] = {"changes-allow-symbolic", NULL};
 static const char *const ICONS_RESET[] = {"view-refresh-symbolic", "edit-undo-symbolic", NULL};
+static const char *const ICONS_FULLSCREEN[] = {"view-fullscreen-symbolic", "zoom-fit-best-symbolic", NULL};
 static const char *const ICONS_HIDE_MENU[] = {"pan-up-symbolic", "go-up-symbolic", NULL};
 static const char *const ICONS_MINIMIZE[] = {"window-minimize-symbolic", "go-down-symbolic", NULL};
 static const char *const ICONS_MAXIMIZE[] = {"window-maximize-symbolic", "go-up-symbolic", NULL};
@@ -262,15 +270,26 @@ void app_update_click_through(void) {
     GtkWidget *win = GTK_WIDGET(g_state.window);
     if (!gtk_widget_get_realized(win) || !g_state.content) return;
 
-    // Fullscreen passes everything through, always. There is no headerbar to
-    // press and no edge to resize by — the frame is the screen and stays that
-    // way — and it covers every pixel the user has: a live area anywhere on it
-    // would be desktop that had stopped answering, with no button on screen to
-    // hand it back. An empty input region is the whole window given up.
+    // Fullscreen passes everything through but the dot that leaves it. There
+    // is no headerbar to press and no edge to resize by — the frame is the
+    // screen and stays that way — and it covers every pixel the user has: a
+    // live area anywhere else on it would be desktop that had stopped
+    // answering. Not the dot either while the agent is driving, for the same
+    // reason as a hidden menu's below.
     if (g_state.is_fullscreen) {
-        cairo_region_t *nothing = cairo_region_create();
-        gtk_widget_input_shape_combine_region(win, nothing);
-        cairo_region_destroy(nothing);
+        cairo_region_t *region = cairo_region_create();
+        if (!g_state.is_executing) {
+            GtkAllocation content;
+            gtk_widget_get_allocation(g_state.content, &content);
+            cairo_rectangle_int_t dot = {
+                content.x + content.width - POB_MENU_DOT_INSET - POB_MENU_DOT_HIT / 2,
+                content.y + POB_MENU_DOT_INSET - POB_MENU_DOT_HIT / 2,
+                POB_MENU_DOT_HIT, POB_MENU_DOT_HIT,
+            };
+            cairo_region_union_rectangle(region, &dot);
+        }
+        gtk_widget_input_shape_combine_region(win, region);
+        cairo_region_destroy(region);
         return;
     }
 
@@ -938,6 +957,11 @@ static void on_reset_clicked(GtkButton *b, gpointer d) {
     content_view_show_message("Mouse position reset");
 }
 
+static void on_fullscreen_clicked(GtkButton *b, gpointer d) {
+    (void)b; (void)d;
+    app_set_fullscreen(TRUE);
+}
+
 static void on_hidemenu_clicked(GtkButton *b, gpointer d) {
     (void)b; (void)d;
     app_set_menu_hidden(TRUE);
@@ -1100,6 +1124,9 @@ static gboolean on_window_state(GtkWidget *w, GdkEventWindowState *ev, gpointer 
         set_button_icon(maximize_btn, maxed ? ICONS_RESTORE : ICONS_MAXIMIZE);
         gtk_widget_set_tooltip_text(maximize_btn, maxed ? "Restore" : "Maximize");
     }
+    if ((ev->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) &&
+        !(ev->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) && fullscreen_restore_pending)
+        restore_windowed_frame();
     return FALSE;
 }
 
@@ -1134,6 +1161,8 @@ static void build_headerbar(void) {
                      G_CALLBACK(on_clickthrough_realize), NULL);
     g_state.lock_btn = icon_button(ICONS_UNLOCKED, "Window Unlocked (click to lock)");
     GtkWidget *reset_btn = icon_button(ICONS_RESET, "Reset Mouse Position");
+    GtkWidget *fullscreen_btn = icon_button(ICONS_FULLSCREEN,
+                                            "Fullscreen — click the dot in the corner to come back");
     GtkWidget *hidemenu_btn = icon_button(ICONS_HIDE_MENU, "Hide Menu");
     GtkWidget *minimize_btn = icon_button(ICONS_MINIMIZE, "Minimize");
     maximize_btn = icon_button(ICONS_MAXIMIZE, "Maximize");
@@ -1152,6 +1181,7 @@ static void build_headerbar(void) {
     g_signal_connect(g_state.clickthrough_btn, "clicked", G_CALLBACK(on_clickthrough_clicked), NULL);
     g_signal_connect(g_state.lock_btn, "clicked", G_CALLBACK(on_lock_clicked), NULL);
     g_signal_connect(reset_btn, "clicked", G_CALLBACK(on_reset_clicked), NULL);
+    g_signal_connect(fullscreen_btn, "clicked", G_CALLBACK(on_fullscreen_clicked), NULL);
     g_signal_connect(hidemenu_btn, "clicked", G_CALLBACK(on_hidemenu_clicked), NULL);
     g_signal_connect(minimize_btn, "clicked", G_CALLBACK(on_minimize_clicked), NULL);
     g_signal_connect(maximize_btn, "clicked", G_CALLBACK(on_maximize_clicked), NULL);
@@ -1173,6 +1203,7 @@ static void build_headerbar(void) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), maximize_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), minimize_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), hidemenu_btn);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), fullscreen_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), reset_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.lock_btn);
     gtk_header_bar_pack_end(GTK_HEADER_BAR(hb), g_state.clickthrough_btn);
@@ -1273,7 +1304,7 @@ static gboolean save_frame_now(gpointer data) {
     // The frame is not saved in fullscreen: it is the screen rather than
     // anything the user placed, and writing it down would bring the next
     // ordinary launch up as a window the size of the display.
-    if (g_state.is_fullscreen) return G_SOURCE_REMOVE;
+    if (g_state.is_fullscreen || fullscreen_restore_pending) return G_SOURCE_REMOVE;
     int x, y, w, h;
     gtk_window_get_position(g_state.window, &x, &y);
     gtk_window_get_size(g_state.window, &w, &h);
@@ -1297,6 +1328,128 @@ static gboolean save_frame_now(gpointer data) {
     last_x = x; last_y = y; last_w = w; last_h = h;
     settings_save_window_frame(x, y, w, h);
     return G_SOURCE_REMOVE;
+}
+
+// ── fullscreen ──────────────────────────────────────────────────────────────
+
+// Where the frame stood before fullscreen, to put it back there. Unset for a
+// run that started fullscreen — the saved frame stands in.
+static gboolean have_windowed_frame;
+static int windowed_x, windowed_y, windowed_w, windowed_h;
+static guint fullscreen_restore_source;
+
+// The window manager's own fullscreen, so the screen is covered whole —
+// panels, taskbars and docks included, which a window merely sized to the
+// screen would still be shown under. GTK3 drops the CSD titlebar for a
+// fullscreen window itself; it is hidden here as well, since that is a promise
+// of the toolkit rather than of every window manager. Resizable, because a
+// window manager may refuse to fullscreen a window held at a fixed size.
+static void enter_fullscreen_style(void) {
+    gtk_window_set_resizable(g_state.window, TRUE);
+    gtk_window_set_decorated(g_state.window, FALSE);
+    gtk_widget_set_no_show_all(g_state.headerbar, TRUE);
+    gtk_widget_hide(g_state.headerbar);
+    gtk_window_fullscreen(g_state.window);
+}
+
+static gboolean restore_windowed_frame_timeout(gpointer data) {
+    (void)data;
+    fullscreen_restore_source = 0;
+    if (fullscreen_restore_pending) restore_windowed_frame();
+    return G_SOURCE_REMOVE;
+}
+
+// The frame as it stood before fullscreen — or as it was saved, or the
+// starting size centered — with the lock put back on top of it. Carry starts
+// again from where the frame comes to rest, as it does after a hidden menu.
+static void restore_windowed_frame(void) {
+    fullscreen_restore_pending = FALSE;
+    if (fullscreen_restore_source) {
+        g_source_remove(fullscreen_restore_source);
+        fullscreen_restore_source = 0;
+    }
+
+    int x, y, w, h;
+    if (have_windowed_frame) {
+        x = windowed_x; y = windowed_y; w = windowed_w; h = windowed_h;
+    } else if (settings_get_window_frame(&x, &y, &w, &h)) {
+        clamp_frame_to_workarea(&x, &y, &w, &h);
+    } else {
+        starting_size(&w, &h);
+        GdkRectangle area = {0, 0, w, h};
+        GdkDisplay *display = gdk_display_get_default();
+        GdkMonitor *monitor = display ? gdk_display_get_primary_monitor(display) : NULL;
+        if (!monitor && display) monitor = gdk_display_get_monitor(display, 0);
+        if (monitor) gdk_monitor_get_workarea(monitor, &area);
+        x = area.x + (area.width - w) / 2;
+        y = area.y + (area.height - h) / 2;
+    }
+    have_windowed_frame = FALSE;
+    app_logger_log("Fullscreen left — frame back at %dx%d+%d+%d", w, h, x, y);
+
+    gtk_window_set_resizable(g_state.window, TRUE);
+    place_frame(x, y, w, h);
+    // What the lock holds the frame at (see hold_window_size): the size it is
+    // being put back to, not the screen it was a moment ago.
+    gtk_window_set_default_size(g_state.window, w, h);
+    gtk_window_set_resizable(g_state.window, !(g_state.is_locked || g_state.is_executing));
+    if (place_settle_source) g_source_remove(place_settle_source);
+    place_settle_source =
+        g_timeout_add(PLACE_SETTLE_MS, start_carry_when_placed, NULL);
+    app_update_click_through();
+}
+
+gboolean app_menu_dot_shown(void) {
+    return g_state.is_menu_hidden || g_state.is_fullscreen;
+}
+
+// Written to instance.json as it changes, so the next launch comes back as this
+// one was left. The frame saved is still the windowed one (save_frame_now skips
+// fullscreen), so leaving it lands where the window was.
+void app_set_fullscreen(gboolean on) {
+    if (g_state.is_fullscreen == on || !g_state.window || !g_state.headerbar) return;
+    settings_save_fullscreen(on);
+    app_logger_log("Fullscreen %s", on ? "on" : "off");
+
+    if (on) {
+        // The frame as save_frame_now would write it: with the menu hidden the
+        // window is the content alone, and the headerbar's strip goes back on
+        // top. The menu itself is simply over — the headerbar is coming off
+        // either way, and stays off until fullscreen is left.
+        gtk_window_get_position(g_state.window, &windowed_x, &windowed_y);
+        gtk_window_get_size(g_state.window, &windowed_w, &windowed_h);
+        if (g_state.is_menu_hidden) {
+            windowed_y -= g_state.hidden_bar_height;
+            g_state.is_menu_hidden = FALSE;
+        }
+        have_windowed_frame = TRUE;
+
+        g_state.is_fullscreen = TRUE;
+        if (place_settle_source) {
+            g_source_remove(place_settle_source);
+            place_settle_source = 0;
+        }
+        carry_service_set_enabled(FALSE);
+        enter_fullscreen_style();
+    } else {
+        g_state.is_fullscreen = FALSE;
+        fullscreen_restore_pending = TRUE;
+        gtk_window_set_decorated(g_state.window, TRUE);
+        gtk_widget_set_no_show_all(g_state.headerbar, FALSE);
+        // show_all: a run that started fullscreen never showed the buttons on
+        // it — show_all at startup stops at a widget marked no_show_all.
+        gtk_widget_show_all(g_state.headerbar);
+        gtk_window_unfullscreen(g_state.window);
+        // A window manager that never says the state changed still gets its
+        // frame back.
+        if (fullscreen_restore_source) g_source_remove(fullscreen_restore_source);
+        fullscreen_restore_source =
+            g_timeout_add(PLACE_SETTLE_MS * 2, restore_windowed_frame_timeout, NULL);
+    }
+
+    app_update_click_through();
+    content_view_update_cursor_style();
+    gtk_widget_queue_draw(g_state.content);
 }
 
 static gboolean on_configure(GtkWidget *w, GdkEventConfigure *ev, gpointer d) {
@@ -1443,6 +1596,10 @@ static void on_activate(GtkApplication *app, gpointer data) {
         return;
     }
 
+    // --fullscreen is this run's alone; otherwise however the instance was last
+    // left. After the claim, since instance.json is the claimed instance's.
+    if (!g_state.is_fullscreen) g_state.is_fullscreen = settings_get_fullscreen();
+
     install_css();
     // Before the window exists: this sets the default every window inherits.
     install_app_icon();
@@ -1495,15 +1652,11 @@ static void on_activate(GtkApplication *app, gpointer data) {
     gtk_window_set_keep_above(g_state.window, TRUE); // macOS: window.level = .floating
 
     if (g_state.is_fullscreen) {
-        // The window manager's own fullscreen, so the screen is covered whole
-        // — panels, taskbars and docks included, which a window merely sized to
-        // the screen would still be shown under. GTK3 drops the CSD titlebar
-        // for a fullscreen window itself; it is hidden here as well, since that
-        // is a promise of the toolkit rather than of every window manager.
-        gtk_window_set_decorated(g_state.window, FALSE);
-        gtk_widget_set_no_show_all(g_state.headerbar, TRUE);
-        gtk_widget_hide(g_state.headerbar);
-        gtk_window_fullscreen(g_state.window);
+        enter_fullscreen_style();
+        // The lock as the instance was left, for the button's icon and for when
+        // the dot brings the window back — app_update_window_lock leaves the
+        // window itself alone while it is fullscreen.
+        apply_locked(settings_get_window_locked());
     } else {
         int x, y, w, h;
         if (settings_get_window_frame(&x, &y, &w, &h)) {

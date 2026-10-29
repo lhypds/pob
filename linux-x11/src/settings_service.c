@@ -376,6 +376,31 @@ void settings_save_click_through(gboolean on) {
     finish_instance_write(builder, parser);
 }
 
+gboolean settings_get_fullscreen(void) {
+    gboolean on = FALSE;
+    JsonParser *parser = NULL;
+    JsonObject *obj = load_instance(&parser);
+    if (obj && json_object_has_member(obj, "fullscreen")) {
+        on = json_object_get_boolean_member_with_default(obj, "fullscreen", FALSE);
+        g_object_unref(parser);
+        return on;
+    }
+    if (parser) g_object_unref(parser);
+    obj = load_settings(&parser);
+    on = obj && json_object_get_boolean_member_with_default(obj, "fullscreen", FALSE);
+    if (parser) g_object_unref(parser);
+    return on;
+}
+
+void settings_save_fullscreen(gboolean on) {
+    static const char *const fullscreen_keys[] = {"fullscreen", NULL};
+    JsonParser *parser = NULL;
+    JsonBuilder *builder = begin_instance_write(fullscreen_keys, &parser);
+    json_builder_set_member_name(builder, "fullscreen");
+    json_builder_add_boolean_value(builder, on);
+    finish_instance_write(builder, parser);
+}
+
 // ── opening files ───────────────────────────────────────────────────────────
 
 // One way of opening a file: a program, and the arguments that go in front of

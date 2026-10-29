@@ -314,6 +314,31 @@ public static class SettingsService
         WriteInstance(obj);
     }
 
+    /// <summary>
+    /// Whether the window was left fullscreen — written every time the
+    /// toolbar's Fullscreen button or the corner dot switches it, so the next
+    /// launch comes back the way the last one was left. An instance that has
+    /// never been switched falls back to settings.json's `fullscreen`, the
+    /// machine's default.
+    /// </summary>
+    public static bool GetFullscreen()
+    {
+        foreach (JsonObject? obj in new[] { LoadInstance(), LoadSettings() })
+        {
+            if (obj != null && obj.TryGetPropertyValue("fullscreen", out JsonNode? node) &&
+                node is JsonValue v && v.TryGetValue(out bool on))
+                return on;
+        }
+        return false;
+    }
+
+    public static void SaveFullscreen(bool on)
+    {
+        JsonObject obj = LoadInstance() ?? new JsonObject();
+        obj["fullscreen"] = on;
+        WriteInstance(obj);
+    }
+
     // Writes instance.json whole, so everything already in it — the id, the
     // name, the times and the port the core keeps — survives the shell's own
     // entries.

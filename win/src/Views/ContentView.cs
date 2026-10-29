@@ -271,12 +271,12 @@ public class ContentView : FrameworkElement
         dc.Pop();
         dc.Pop();
 
-        // What a hidden menu leaves on screen: a small black dot in the
-        // top-right corner, and the only way back to the toolbar. The white
+        // What a hidden menu or fullscreen leaves on screen: a small black dot
+        // in the top-right corner, and the only way back to the toolbar. The white
         // ring is what makes it findable — the dot sits over whatever
         // application the frame is parked on, and a bare black circle on a dark
         // window is a dot nobody can find again.
-        if (AppState.IsMenuHidden)
+        if (AppState.IsMenuDotShown)
         {
             var center = new Point(w - AppState.MenuDotInset, AppState.MenuDotInset);
             double r = AppState.MenuDotDiameter / 2;
@@ -342,7 +342,7 @@ public class ContentView : FrameworkElement
         // Plain click: bring the overlay window forward (macOS onTapGesture).
         // Not while the menu is hidden — the toolbar window is off the screen
         // then, and the dot above is what brings it back.
-        if (!AppState.IsMenuHidden) AppState.Toolbar?.Activate();
+        if (!AppState.IsMenuDotShown) AppState.Toolbar?.Activate();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)

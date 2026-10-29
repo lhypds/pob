@@ -49,11 +49,14 @@ typedef struct AppState {
     gboolean is_recording;
     gboolean is_executing;
 
-    // --fullscreen: the window covers the whole screen with none of its own
-    // chrome on it — no headerbar, no window buttons, nothing to click. It is
-    // a property of this run rather than of the instance, so it is read from
-    // the command line and never written to instance.json: the `pob` command
-    // is what drives a Pob started this way, and what quits it again.
+    // Fullscreen: the window covers the whole screen with none of its own
+    // chrome on it — no headerbar, no window buttons — and the dot in the
+    // corner is the one thing left to press, which brings the window back.
+    // Switched by the toolbar's Fullscreen button and the dot
+    // (app_set_fullscreen), which write it to instance.json as `fullscreen` so
+    // the next launch comes back as this one was left. --fullscreen first,
+    // then instance.json, then settings.json's `fullscreen` for an instance
+    // never switched.
     gboolean is_fullscreen;
 
     // "Hide Menu": the headerbar comes off the window — toolbar, title and
@@ -86,6 +89,12 @@ void app_set_cropping(gboolean cropping);
 // Takes the headerbar off the window and puts it back — the "Hide Menu" button
 // and the dot it leaves behind (content_view.c) are the two ways in.
 void app_set_menu_hidden(gboolean hidden);
+// Takes the window to the whole screen and back — the toolbar's Fullscreen
+// button one way, the dot (content_view.c) the other.
+void app_set_fullscreen(gboolean on);
+// Whether the corner dot is on screen: a hidden menu or fullscreen, and
+// pressing it undoes whichever of the two it is.
+gboolean app_menu_dot_shown(void);
 // The lock, click-through and recording as the `pob` CLI asks for them, over
 // core_bridge's ui.lock / ui.clickThrough / ui.record. Each does what pressing
 // the toolbar button does — icon, tooltip and instance.json included — so a

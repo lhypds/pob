@@ -123,6 +123,12 @@
                 <Button x:Name="ResetBtn" Style="{StaticResource ToolButton}" ToolTip="Reset Mouse Position" Click="OnResetClicked">
                     <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE72C;"/>
                 </Button>
+                <!-- Fullscreen: the overlay over the whole display, this window
+                     off screen; the dot in the corner brings it back. -->
+                <Button x:Name="FullscreenBtn" Style="{StaticResource ToolButton}"
+                        ToolTip="Fullscreen — click the dot in the corner to come back" Click="OnFullscreenClicked">
+                    <TextBlock Style="{StaticResource ToolIcon}" Text="&#xE740;"/>
+                </Button>
                 <!-- Hide Menu: takes this whole window off the screen and
                      leaves the dot the overlay draws in its place. ChevronUp,
                      the bar folding away upwards. -->

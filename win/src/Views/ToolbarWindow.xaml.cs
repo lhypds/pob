@@ -287,6 +287,9 @@ public partial class ToolbarWindow : Window
         Content2?.ShowMessage("Mouse position reset");
     }
 
+    private void OnFullscreenClicked(object sender, RoutedEventArgs e) =>
+        AppState.SetFullscreen(true);
+
     private void OnHideMenuClicked(object sender, RoutedEventArgs e) =>
         AppState.SetMenuHidden(true);
 
