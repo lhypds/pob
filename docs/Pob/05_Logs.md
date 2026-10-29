@@ -11,7 +11,7 @@ Structure
 ├── app.log                                       the machine's short record across instances: the app starting and stopping, an instance starting and stopping, and errors.
 │
 └── pb-<uid>/                                     an instance directory; the one INSTANCE names is the one in use.
-    ├── instance.json                             which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) and whether it was locked (`is_locked`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
+    ├── instance.json                             which instance this is: its id, the name `pob new` gave it, when it last ran, and how the shell last left the window — where it was (`window_x`, `window_y`, `window_width`, `window_height`) whether it was locked (`is_locked`), and whether it was left fullscreen (`is_fullscreen`). While it runs it also carries the pid and the [Control API](11_Control%20API.md) port the `pob` CLI reaches it on.
     ├── instance.log                              timestamped instance and macro lifecycle, every executed step, important core messages, and what each `:: … ::` slot was filled with.
     ├── src/                                      this instance's [macros](03_Macro%20PSL.md).
     │   ├── main.macro.psl                        the entry point: what Record writes and Execute replays. `.macro.psl` says psl fills its `:: … ::` slots.

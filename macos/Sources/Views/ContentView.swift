@@ -57,6 +57,7 @@ struct InstanceContentView: View {
     @State private var isClickThrough = true
     @State private var isLocked = false
     @State private var isMenuHidden = false
+    @State private var isFullscreen = AppOptions.fullscreen
     @State private var isRecording = false
     @State private var showRecordWarning = false
     @State private var mousePosition: CGPoint? = nil
@@ -130,12 +131,15 @@ struct InstanceContentView: View {
                 )
                 .allowsHitTesting(false)
 
-            // The way back from a hidden menu. Everything else Pob draws on the
-            // screen has gone — toolbar, titlebar, window buttons — and this is
-            // the whole of what is left to press, parked in the corner of the
-            // frame where it is least likely to be over anything being watched.
-            if isMenuHidden {
-                MenuDotButton { isMenuHidden = false }
+            // The way back from a hidden menu, and out of fullscreen. Everything
+            // else Pob draws on the screen has gone — toolbar, titlebar, window
+            // buttons — and this is the whole of what is left to press, parked
+            // in the corner of the frame where it is least likely to be over
+            // anything being watched.
+            if isMenuHidden || isFullscreen {
+                MenuDotButton {
+                    if isFullscreen { isFullscreen = false } else { isMenuHidden = false }
+                }
                     .frame(width: PobInstance.MenuDot.hit, height: PobInstance.MenuDot.hit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(.trailing, PobInstance.MenuDot.inset - PobInstance.MenuDot.hit / 2)
@@ -199,12 +203,19 @@ struct InstanceContentView: View {
             // resized — back on top.
             updateWindowLock()
         }
+        .onChange(of: isFullscreen) { on in
+            instance.setFullscreen(on)
+            if on { isMenuHidden = false }
+            // Back from fullscreen, the window is titled and resizable again;
+            // this holds it to the lock it was left with.
+            updateWindowLock()
+        }
         .onChange(of: isClickThrough) { enabled in
             updateClickThrough()
             // Fullscreen turns it on for the run rather than for the instance,
             // so what the window was last left with is still there for the next
             // ordinary launch.
-            if !AppOptions.fullscreen {
+            if !isFullscreen {
                 instance.settings.saveClickThrough(enabled)
             }
         }
@@ -321,25 +332,22 @@ struct InstanceContentView: View {
     /// WindowGroup toolbar — a Spacer item is what NSToolbar honors.)
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // Fullscreen keeps none of it: the window is borderless, so there is no
-        // titlebar for a toolbar to sit in and nothing on screen to press. The
-        // items are left unbuilt rather than merely unseen, so a mode with no
-        // way in from the screen has no half of one either — `pob start`,
-        // `pob stop`, `pob screenshot` and `pob kill` are the whole of it.
-        if !AppOptions.fullscreen {
-            // macOS 26 draws a light capsule behind every toolbar item; hidden
-            // for the badge, which is a label rather than a control — the id
-            // reads as the window's name, not as a button waiting to be pressed.
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .automatic) { instanceBadge }
-                    .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .automatic) { instanceBadge }
-            }
-            ToolbarItem(placement: .automatic) { Spacer() }
-            toolbarFileItems
-            toolbarActionItems
+        // Built even in fullscreen, where the window is borderless and the
+        // toolbar is kept aside (PobInstance.setFullscreen) — it comes back
+        // with the titlebar when the dot is pressed.
+        //
+        // macOS 26 draws a light capsule behind every toolbar item; hidden
+        // for the badge, which is a label rather than a control — the id
+        // reads as the window's name, not as a button waiting to be pressed.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .automatic) { instanceBadge }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .automatic) { instanceBadge }
         }
+        ToolbarItem(placement: .automatic) { Spacer() }
+        toolbarFileItems
+        toolbarActionItems
     }
 
     /// The dashboard: the server's bare root, which answers with the index page
@@ -517,6 +525,12 @@ struct InstanceContentView: View {
             .help("Reset Mouse Position")
         }
         ToolbarItem(placement: .automatic) {
+            Button(action: { isFullscreen = true }) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Fullscreen — click the dot in the corner to come back")
+        }
+        ToolbarItem(placement: .automatic) {
             Button(action: { isMenuHidden = true }) {
                 Image(systemName: "chevron.up")
             }
@@ -618,7 +632,7 @@ struct InstanceContentView: View {
         // A fullscreen window is already held to the display and has no
         // titlebar to drag it by, so there is neither a resize to take away nor
         // anything below to carry.
-        guard !AppOptions.fullscreen else { return }
+        guard !isFullscreen else { return }
         let shouldLock = isLocked || bridge.isExecuting
         instance.carry.setEnabled(shouldLock)
         // A hidden menu leaves a borderless window, which has no frame to take
@@ -738,7 +752,8 @@ private class MenuDotNSView: NSView {
     /// titlebar, so the lock carries the windows below along with it (the frame
     /// move is what CarryService is watching for).
     override func mouseDragged(with _: NSEvent) {
-        guard let window, let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
+        // Fullscreen is held to the display, so its dot is a button and no more.
+        guard let window, window.isMovable, let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
         let mouse = NSEvent.mouseLocation
         let dx = mouse.x - startMouse.x
         let dy = mouse.y - startMouse.y

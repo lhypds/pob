@@ -8,6 +8,7 @@
   "editor": "system",
   "terminal": "iterm2",
   "stop_hook": "",
+  "fullscreen": false,
   "mcp": true,
   "mcp_port": 8032,
   "mcp_host": "0.0.0.0",

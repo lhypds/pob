@@ -1,19 +1,23 @@
 import Foundation
 
-/// What this run of Pob was started as, read once from the command line.
+/// What this run of Pob was started as, read once at launch.
 ///
-/// These are properties of a run rather than of the instance, so nothing on
-/// disk remembers them: `~/.pob/<instance>/instance.json` keeps where the
-/// window was and how it was left, and a mode given on the command line would
-/// otherwise come back on the next launch without having been asked for.
+/// A flag given on the command line is a property of the run, so nothing on
+/// disk remembers it — it would otherwise come back on the next launch without
+/// having been asked for.
 enum AppOptions {
-    /// `--fullscreen`: the window covers the whole display with none of its
-    /// own chrome on it — no titlebar, no toolbar, no window buttons, and
-    /// nothing anywhere to click. There is then no way to drive this Pob from
-    /// the screen, which is the point of it: the `pob` command is the way in
-    /// (`pob start`, `pob stop`, `pob screenshot`, `pob kill`).
+    /// Whether the window comes up fullscreen: `--fullscreen` on the command
+    /// line, or else however the instance was last left — see
+    /// SettingsService.savedFullscreen. The window then covers the whole display with
+    /// none of its own chrome on it — no titlebar, no toolbar, no window
+    /// buttons — and the only thing left to press is the dot in the top-right
+    /// corner, which brings the window back. The `pob` command drives it
+    /// otherwise (`pob start`, `pob stop`, `pob screenshot`, `pob kill`).
     ///
-    /// The CLI passes it through `open --args` for the packaged app, and
+    /// Only where the run starts: the toolbar's Fullscreen button and the dot
+    /// switch it while Pob is up — see PobInstance.setFullscreen.
+    ///
+    /// The CLI passes the flag through `open --args` for the packaged app, and
     /// straight to the binary for a dev build.
-    static let fullscreen = CommandLine.arguments.contains("--fullscreen")
+    static let fullscreen = CommandLine.arguments.contains("--fullscreen") || SettingsService.savedFullscreen
 }

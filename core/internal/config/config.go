@@ -43,6 +43,7 @@ var defaults = map[string]any{
 	"editor":              "system",
 	"terminal":            "system",
 	"stop_hook":           "",
+	"fullscreen":          false,
 	"server":              true,
 	"server_port":         server.DefaultPort,
 	"webui_view_fps":      server.DefaultViewFPS,

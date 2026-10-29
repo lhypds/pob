@@ -28,6 +28,11 @@ final class PobInstance: NSObject, ObservableObject {
     private var automationPassThrough = false
     private var windowObservers: [NSObjectProtocol] = []
 
+    /// Whether the window is covering the whole display right now. Starts as
+    /// the run was asked for (AppOptions.fullscreen) and follows the toolbar's
+    /// Fullscreen button and the dot from there — see setFullscreen.
+    private(set) var isFullscreen = AppOptions.fullscreen
+
     override init() {
         let settings = SettingsService()
         let mouse = MouseService()
@@ -86,7 +91,7 @@ final class PobInstance: NSObject, ObservableObject {
         window.title = "Pob \(AppDelegate.version)"
         window.toolbarStyle = .unifiedCompact
 
-        if AppOptions.fullscreen {
+        if isFullscreen {
             applyFullscreenStyle(to: window)
         } else {
             window.styleMask.insert(.resizable)
@@ -104,7 +109,7 @@ final class PobInstance: NSObject, ObservableObject {
         // one window, whatever the last run left behind.
         window.isRestorable = false
 
-        if AppOptions.fullscreen {
+        if isFullscreen {
             window.setFrame(fullscreenFrame(for: window), display: true)
         } else if let savedFrame = settings.getWindowFrame() {
             window.setFrame(savedFrame, display: true)
@@ -116,8 +121,9 @@ final class PobInstance: NSObject, ObservableObject {
         // After the frame is restored, so the first drag is measured from where
         // the window actually starts rather than from wherever SwiftUI first
         // put it. A fullscreen window is never dragged — there is no titlebar
-        // to take hold of — so nothing is ever carried under it either.
-        if !AppOptions.fullscreen {
+        // to take hold of — so nothing is carried under it until it leaves
+        // fullscreen, which attaches it then.
+        if !isFullscreen {
             carry.attach(window: window)
         }
 
@@ -168,7 +174,7 @@ final class PobInstance: NSObject, ObservableObject {
         //
         // Nothing to apply in fullscreen: the frame is the display, and it is
         // already held there by having no way to move or resize it.
-        if !AppOptions.fullscreen, settings.getWindowLocked() {
+        if !isFullscreen, settings.getWindowLocked() {
             window.styleMask.remove(.resizable)
             carry.setEnabled(true)
         }
@@ -186,18 +192,73 @@ final class PobInstance: NSObject, ObservableObject {
     /// titlebar is also what `contentLayoutRect` is measured against — the area
     /// a screenshot covers, and the box the virtual cursor lives in. With no
     /// titlebar at all the window's content *is* the display, which is what a
-    /// fullscreen Pob is for.
+    /// fullscreen Pob is for. The toolbar is kept aside rather than dropped,
+    /// for the same reason a hidden menu keeps it: AppKit takes it off a window
+    /// that stops being titled, and SwiftUI never puts it back.
     ///
     /// The level clears the menu bar (`.mainMenu`, 24) and the Dock (20), so
     /// "the whole display" includes the two strips a zoomed window leaves
     /// alone. It joins every Space and stays out of macOS's own full-screen
     /// mode, which would put it on a Space of its own with nothing underneath.
     private func applyFullscreenStyle(to window: NSWindow) {
+        if let toolbar = window.toolbar { hiddenToolbar = toolbar }
         window.styleMask = [.borderless]
         window.toolbar = nil
         window.isMovable = false
         window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenNone]
+        window.hasShadow = false
+    }
+
+    /// Where the window stood before it went fullscreen, to put it back there.
+    /// Nil for a run that started fullscreen — the saved frame stands in.
+    private var windowedFrame: NSRect?
+
+    /// Takes the window to the whole display and back — the toolbar's
+    /// Fullscreen button one way, the dot the other.
+    ///
+    /// Written to instance.json as it changes, so the next launch comes back
+    /// fullscreen or not as this one was left. The frame saved is still the
+    /// windowed one, so leaving fullscreen then lands where the window was.
+    func setFullscreen(_ on: Bool) {
+        guard let window, on != isFullscreen else { return }
+        settings.saveFullscreen(on)
+        // The menu has to be back first: a hidden menu is already borderless
+        // and holding the toolbar, and the two would both claim to restore it.
+        if on, isMenuHidden { setMenuHidden(false) }
+
+        if on {
+            windowedFrame = window.frame
+            isFullscreen = true
+            carry.setEnabled(false)
+            applyFullscreenStyle(to: window)
+            window.setFrame(fullscreenFrame(for: window), display: true)
+        } else {
+            isFullscreen = false
+            let frame = windowedFrame ?? settings.getWindowFrame()
+            windowedFrame = nil
+            restoreTitlebar(on: window)
+            window.styleMask.insert(.resizable)
+            window.isMovable = true
+            window.level = .floating
+            window.collectionBehavior = []
+            window.hasShadow = true
+            if let frame {
+                window.setFrame(frame, display: true)
+            } else {
+                window.setFrame(startingFrame(for: window), display: true)
+                window.center()
+            }
+            carry.attach(window: window)
+        }
+
+        window.isOpaque = false
+        window.backgroundColor = NSColor.clear
+        window.invalidateShadow()
+
+        bridge.windowGeometryChanged()
+        updateClickThroughPolling()
+        updateIgnoresMouseEvents()
     }
 
     /// The display the window came up on, whole: `frame` rather than
@@ -273,7 +334,7 @@ final class PobInstance: NSObject, ObservableObject {
     /// A window that opened with nothing on it but a dot would be a window whose
     /// only way back was a dot nobody was told about.
     func setMenuHidden(_ hidden: Bool) {
-        guard let window, !AppOptions.fullscreen, hidden != isMenuHidden else { return }
+        guard let window, !isFullscreen, hidden != isMenuHidden else { return }
         isMenuHidden = hidden
 
         if hidden {
@@ -290,17 +351,7 @@ final class PobInstance: NSObject, ObservableObject {
         } else {
             var frame = window.frame
             frame.size.height += hiddenTitlebarHeight
-            window.styleMask = [.titled, .closable, .miniaturizable]
-            // A titlebar rebuilt from a styleMask comes back with none of the
-            // styling attach(window:) gave the first one — the toolbar least of
-            // all, which is why it was kept.
-            window.titlebarAppearsTransparent = false
-            window.titleVisibility = .hidden
-            window.title = "Pob \(AppDelegate.version)"
-            window.toolbar = hiddenToolbar
-            hiddenToolbar = nil
-            window.toolbarStyle = .unifiedCompact
-            window.toolbar?.isVisible = true
+            restoreTitlebar(on: window)
             // Last: the frame is only right once the titlebar it makes room for
             // is the one that will be there.
             window.setFrame(frame, display: true)
@@ -337,6 +388,21 @@ final class PobInstance: NSObject, ObservableObject {
         // measured against each other everywhere downstream.
         bridge.windowGeometryChanged()
         updateIgnoresMouseEvents()
+    }
+
+    /// Puts back the titlebar a hidden menu or fullscreen took off. A titlebar
+    /// rebuilt from a styleMask comes back with none of the styling
+    /// attach(window:) gave the first one — the toolbar least of all, which is
+    /// why it was kept.
+    private func restoreTitlebar(on window: NSWindow) {
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.titlebarAppearsTransparent = false
+        window.titleVisibility = .hidden
+        window.title = "Pob \(AppDelegate.version)"
+        window.toolbar = hiddenToolbar
+        hiddenToolbar = nil
+        window.toolbarStyle = .unifiedCompact
+        window.toolbar?.isVisible = true
     }
 
     /// The dot's hit box in screen coordinates. With the menu hidden the frame
@@ -376,10 +442,9 @@ final class PobInstance: NSObject, ObservableObject {
     /// sticks — which is why a focused window could no longer be grabbed by
     /// its edge to resize. Poll for as long as click-through is on to cover it.
     private func updateClickThroughPolling() {
-        // Nothing for it to watch for in fullscreen: the decision there is the
-        // same wherever the pointer is, so a poll twenty times a second would
-        // only be arriving at it again.
-        let wanted = clickThroughEnabled && window != nil && !AppOptions.fullscreen
+        // Fullscreen always polls: everything passes through there but the dot,
+        // and the dot has the same blind spot the edges do.
+        let wanted = window != nil && (clickThroughEnabled || isFullscreen)
         guard wanted != (clickThroughPoll != nil) else { return }
 
         guard wanted else {
@@ -435,15 +500,17 @@ final class PobInstance: NSObject, ObservableObject {
             return
         }
 
-        // Fullscreen passes everything through, always. It has no live areas to
-        // keep — no toolbar to press, no edge to resize by, since the frame is
-        // the display and stays that way — and it covers every pixel the user
-        // has: a window that took a click here would be one nothing could be
-        // done about, since there is no button on it to hand the desktop back.
-        // Ahead of the check below for exactly that reason, so no saved state
-        // and no mode can end in a screen that answers to nobody.
-        guard !AppOptions.fullscreen else {
-            setIgnoresMouseEvents(true, on: window)
+        // Fullscreen passes everything through but the dot that leaves it. It
+        // has no other live areas to keep — no toolbar to press, no edge to
+        // resize by, since the frame is the display and stays that way — and it
+        // covers every pixel the user has. Ahead of the check below for exactly
+        // that reason, so no saved state and no mode can end in a screen that
+        // answers to nobody.
+        if isFullscreen {
+            let onDot = NSEvent.pressedMouseButtons == 0
+                ? menuDotRectInScreen(for: window.frame).contains(NSEvent.mouseLocation)
+                : !window.ignoresMouseEvents
+            setIgnoresMouseEvents(!onDot, on: window)
             return
         }
 
@@ -504,7 +571,7 @@ extension PobInstance {
     /// anything the user placed, and writing it down would bring the next
     /// ordinary launch up as a window the size of the screen.
     private func saveWindowFrame() {
-        guard let window, !AppOptions.fullscreen else { return }
+        guard let window, !isFullscreen else { return }
         var frame = window.frame
         // With the menu hidden the frame is the content and nothing else. What
         // is written down is the frame with its titlebar back on, so the next

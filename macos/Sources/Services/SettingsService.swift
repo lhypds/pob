@@ -270,6 +270,28 @@ class SettingsService {
         writeInstanceFile(json)
     }
 
+    /// Whether the window was left fullscreen, from instance.json — written
+    /// every time the toolbar's Fullscreen button or the corner dot switches
+    /// it, so the next launch comes back the way the last one was left. An
+    /// instance that has never been switched falls back to settings.json's
+    /// `fullscreen`, the machine's default.
+    ///
+    /// Static, because the app delegate wants it before any instance exists.
+    static var savedFullscreen: Bool {
+        let fileManager = FileManager.default
+        let root = resolveProjectRoot(fileManager)
+        let instanceFile = root.appendingPathComponent(resolveInstanceID(fileManager, root: root))
+            .appendingPathComponent("instance.json")
+        if let saved = loadJSONFile(instanceFile)["is_fullscreen"] as? Bool { return saved }
+        return loadJSONFile(root.appendingPathComponent("settings.json"))["fullscreen"] as? Bool ?? false
+    }
+
+    func saveFullscreen(_ on: Bool) {
+        var json = loadJSON(instanceFile)
+        json["is_fullscreen"] = on
+        writeInstanceFile(json)
+    }
+
     /// Writes instance.json whole, so everything already in it — the id, the
     /// name, the times the core keeps — survives the shell's own entries.
     private func writeInstanceFile(_ json: [String: Any]) {
@@ -450,6 +472,10 @@ class SettingsService {
     }
 
     private func loadJSON(_ file: URL) -> [String: Any] {
+        Self.loadJSONFile(file)
+    }
+
+    private static func loadJSONFile(_ file: URL) -> [String: Any] {
         guard let data = try? Data(contentsOf: file),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return json
