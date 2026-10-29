@@ -282,13 +282,13 @@ class SettingsService {
         let root = resolveProjectRoot(fileManager)
         let instanceFile = root.appendingPathComponent(resolveInstanceID(fileManager, root: root))
             .appendingPathComponent("instance.json")
-        if let saved = loadJSONFile(instanceFile)["is_fullscreen"] as? Bool { return saved }
+        if let saved = loadJSONFile(instanceFile)["fullscreen"] as? Bool { return saved }
         return loadJSONFile(root.appendingPathComponent("settings.json"))["fullscreen"] as? Bool ?? false
     }
 
     func saveFullscreen(_ on: Bool) {
         var json = loadJSON(instanceFile)
-        json["is_fullscreen"] = on
+        json["fullscreen"] = on
         writeInstanceFile(json)
     }
 
