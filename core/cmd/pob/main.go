@@ -28,6 +28,9 @@
 //	pob record start                 record what you do into the macro
 //	pob lock on                      hold the window to its size
 //	pob relaunch                     quit the app and start it again
+//	pob view                         save a picture of what Pob frames
+//	pob click 640 400                click that point of the picture
+//	pob type hello                   type at the keyboard focus
 //	pob --session Y                  show one session's details
 //	pob mcp start                    register the MCP server with the agent CLIs
 //	pob update                       install the latest release over this one
@@ -146,6 +149,22 @@ Commands:
                      --fullscreen brings it back over the whole screen, and a
                      plain relaunch brings a fullscreen one back as a window
   screenshot         Capture a screenshot; prints the saved file path
+  view               Save a picture of what Pob frames and print its path and
+                     size — the picture the commands below are aimed with: their
+                     coordinates are its pixels, from its top-left corner. It is
+                     shrunk to 1500 pixels on its long edge
+  view x y w h       Only that region of the last view, at the same scale.
+                     --zoom returns it at the screen's own resolution instead,
+                     for text the view left too small. --out FILE says where to
+                     save it, --cursor draws the virtual cursor in
+  click [x y]        Click there, or where the cursor is. rightclick and
+                     doubleclick are the same command for the other two
+  move x y           Move the cursor there
+  drag x1 y1 x2 y2   Press at the first point and release at the second
+  scroll dx dy [x y] Scroll that far — dy > 0 is down — there, or under the cursor
+  type <text>        Type text at the keyboard focus
+  key <key>…         Press keys in turn: return, escape, cmd+v, ctrl+shift+t
+  cursor             Where the cursor is, in the view's pixels
   mcp status         Show MCP server info (URL, tools, client config)
   mcp start [port]   Register the MCP server in the user settings of installed
                      agent CLIs (claude, gemini) and print its info. The server
@@ -184,6 +203,9 @@ Examples:
   pob lock on                  # hold the window to its size
   pob clickthrough off         # let the overlay take clicks again
   pob relaunch                 # quit the app and start it again
+  pob view                     # what is on screen? prints the picture's path
+  pob click 640 400            # click that point of the picture
+  pob type "hello" && pob key return
   pob purge                    # every VM and every instance, gone
   pob --session 1752712400
   pob mcp start
@@ -341,6 +363,33 @@ func main() {
 
 	case "screenshot":
 		cmdScreenshot(runningInstance(root))
+
+	// Looking at the machine and acting on it — see operate.go. The arguments
+	// are read before the instance is looked for only where that is free; the
+	// rest say what is wrong with them once there is something to send them to.
+	case "view":
+		cmdView(runningInstance(root), args[1:])
+
+	case "cursor":
+		cmdCursor(runningInstance(root))
+
+	case "move":
+		cmdMove(runningInstance(root), args[1:])
+
+	case "click", "rightclick", "doubleclick":
+		cmdPoint(runningInstance(root), command, args[1:])
+
+	case "drag":
+		cmdDrag(runningInstance(root), args[1:])
+
+	case "scroll":
+		cmdScroll(runningInstance(root), args[1:])
+
+	case "type":
+		cmdType(runningInstance(root), args[1:])
+
+	case "key":
+		cmdKey(runningInstance(root), args[1:])
 
 	// Not runningInstance either: an update replaces the app, so a running one
 	// is what stops it — cmdUpdate says so itself, once it knows there is

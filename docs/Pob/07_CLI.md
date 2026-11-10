@@ -84,6 +84,14 @@ window on that machine's screen. See [Microsandbox](16_Microsandbox.md).
 | `kill <name>` | Stop what that name is running. The names are the ones a bare `pob` lists: an **instance** — id or name — is stopped wherever it is running, this machine or a [microVM](16_Microsandbox.md) or both, and a **sandbox** name is that VM in particular. Stopping a VM is the machine and the Pob on it together, since the guest's workload *is* that Pob. Running in more than one place is said before it happens rather than found out after, with a line for each as it goes: naming an instance asks for that instance stopped, and where it happens to be running is something this can find rather than a question to put back. `--all` is every VM that is up — the Pob here is `pob kill` with nothing after it. Nothing running under that name is reported, not an error |
 | `relaunch` | Quit the running instance and start it again, on the same instance and the same settings — the way back from a shell that is up but no longer doing what it should, a window left somewhere unreachable, or a permission granted since it started. One command rather than two because the wait between them has to be right: a launch started before the old instance has let go of its port would be refused as one already running. Nothing running is not an error; it launches. It is also how fullscreen is entered and left on a Pob that is already up, since neither is anything the running app can be talked into: `pob relaunch --fullscreen` brings it back over the whole screen, and a plain `pob relaunch` brings a fullscreen one back as an ordinary window |
 | `screenshot` | Capture a screenshot; prints the saved file path |
+| `view` | Save a picture of what Pob frames and print its path and size — see **Operating the machine** below. `view x y width height` is that region of the last view at the same scale, `--zoom` returns the region at the screen's own resolution, `--out FILE` says where to save it and `--cursor` draws the virtual cursor in |
+| `click [x y]`, `rightclick`, `doubleclick` | Click at that point of the last view, or where the cursor already is |
+| `move x y` | Move the cursor to that point |
+| `drag x1 y1 x2 y2` | Press at the first point and release at the second |
+| `scroll dx dy [x y]` | Scroll that far — `dy > 0` is down — at that point, or under the cursor |
+| `type <text>` | Type text at the keyboard focus |
+| `key <key>…` | Press keys in turn — `return`, `escape`, `cmd+v`; see [Key names](04_Keys.md) |
+| `cursor` | Where the virtual cursor is, in the view's pixels |
 | `mcp status` | Show MCP server info (URL, tools, client config snippet) |
 | `mcp start [port]` | Register the MCP server in the user settings of installed agent CLIs (`claude`, `gemini`) and print its info. The server starts with the instance, so there is usually nothing to start; `[port]` moves it to that port first |
 | `mcp stop` | Stop the MCP server and remove those registrations |
@@ -118,6 +126,9 @@ pob record stop                          # and stop recording
 pob lock on                              # hold the window to its size
 pob clickthrough off                     # let the overlay take clicks again
 pob relaunch                             # quit the app and start it again
+pob view                                 # what is on screen? prints the picture's path
+pob click 640 400                        # click that point of the picture
+pob type "hello" && pob key return       # type, then press Return
 pob --session 1752712400                 # session detail: the macro, conditions, usage
 pob mcp start                            # register MCP with the agent CLIs here
 pob update --check                       # is there a newer release?
@@ -179,6 +190,56 @@ Some details worth knowing:
   window; `pob relaunch --fullscreen` takes a running one the other way. Neither
   is something the app can be talked into while it is up: the mode is settled at
   launch, which is why it is a launch that changes it.
+
+
+Operating the machine
+---------------------
+
+The same things an [MCP client](08_MCP.md) does — look, point, type — typed
+into a terminal, which is what lets a script or an agent with nothing but a
+shell drive the machine:
+
+```
+pob launch --fullscreen       # the whole screen is the frame
+pob view                      # prints the picture's path and its size
+pob click 640 400             # a position read off that picture
+pob type "hello" && pob key return
+pob view                      # and look again
+```
+
+**Coordinates are pixels of the last `pob view`**, measured from its top-left
+corner. The picture is shrunk so its long edge is at most 1500 pixels — small
+enough that no model host resizes it again on the way in — and the instance
+converts a position back into the window's own pixels, so what is read off the
+picture is what is typed, whatever the screen's resolution. This is the MCP
+server's grid, and the two share it: each command is one of its
+[tools](08_MCP.md#tools), called through the [Control API](11_Control%20API.md).
+
+| Command | Tool |
+|---------|------|
+| `view [x y width height] [--zoom] [--cursor] [--out FILE]` | `take_screenshot` |
+| `click`, `rightclick`, `doubleclick` `[x y]` | `click`, `right_click`, `double_click` |
+| `move x y` | `move_to` |
+| `drag x1 y1 x2 y2` | `move_to`, then `drag_to` |
+| `scroll dx dy [x y]` | `scroll`, after a `move_to` when a point is given |
+| `type <text>` | `type_text` |
+| `key <key>…` | `key_press`, once per key |
+| `cursor` | `get_cursor_position` |
+
+`view` saves to the system's temp directory unless `--out` names a file. A
+region comes back at the view's own scale, so a position read off it is the
+region's offset plus what was read. `--zoom` is the other kind of region: the
+same cut at the screen's own resolution, for text a shrunk view left a few
+pixels high. A zoom is for reading — positions are still the view's — and the
+line it prints says how a point on it maps back.
+
+Every command prints what the tool answered and exits `1` when the action
+could not be performed: an unknown key, a capture that failed, half a position.
+They are refused while a macro is running, since the run is driving the cursor.
+A running `record` writes them into the macro like any other action.
+
+The commands need a running Pob that knows them. A `pob` newer than the app it
+is talking to says so and names `pob relaunch`.
 
 
 Another macro
@@ -347,8 +408,9 @@ The port is whatever the OS hands out, so it is a different one on every
 launch and the file is the only way to find it. The two fields are there only
 while the instance runs — it stops advertising itself by clearing them, so a
 file without a `port` is a stopped instance. `status`, `start`, `stop`,
-`screenshot`, `lock`, `clickthrough`, `record` and the `mcp` commands are each
-one call to that API; `restart` and `reset` are two, with a wait in between for
+`screenshot`, `lock`, `clickthrough`, `record`, the `mcp` commands and the ones
+that operate the machine — `view`, `click`, `type` and the rest — are each one
+call to that API (`drag`, and a `scroll` given a point, are two); `restart` and `reset` are two, with a wait in between for
 the run to actually stop; the rest read the `logs/` tree directly, which is why
 they still work with the app closed. `check` is in neither group: it reads the
 macro and this machine itself rather than asking the instance anything, which

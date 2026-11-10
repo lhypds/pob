@@ -193,7 +193,7 @@ Perception:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer, `with_cursor?`: boolean | Capture the Pob window content area and return a PNG image plus its pixel dimensions, shrunk so the picture the client receives is the picture that was sent. When all four crop parameters are provided, only that region is captured — asked for in the same pixels as everything else, and returned at the view's scale, so coordinates read off a crop need only the crop offset added back. `with_cursor` draws the virtual cursor into the image. |
+| `take_screenshot` | `crop_x?`, `crop_y?`, `crop_width?`, `crop_height?`: integer, `with_cursor?`, `zoom?`: boolean | Capture the Pob window content area and return a PNG image plus its pixel dimensions, shrunk so the picture the client receives is the picture that was sent. When all four crop parameters are provided, only that region is captured — asked for in the same pixels as everything else, and returned at the view's scale, so coordinates read off a crop need only the crop offset added back. `with_cursor` draws the virtual cursor into the image. `zoom`, with a crop, returns that region at the window's own resolution instead — for text the shrunk view left too small — and the text line says how a point on it maps back; it is for reading, and coordinates stay the screenshot's. |
 | `get_cursor_position` | — | Current virtual cursor position, without moving or clicking. |
 
 Pointer:
@@ -228,4 +228,4 @@ See also
 - [Key names](04_Keys.md) — what `key_press` accepts
 - [Macro PSL](03_Macro%20PSL.md) — recording MCP tool calls, and replaying them
 - [Operation API](10_Operation%20API.md) — the same actions over plain HTTP
-- [CLI](07_CLI.md) — `pob mcp status` / `start` / `stop`
+- [CLI](07_CLI.md) — `pob mcp status` / `start` / `stop`, and the same tools as commands: `pob view`, `pob click`, `pob type`

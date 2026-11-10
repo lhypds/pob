@@ -58,6 +58,7 @@ Requests and responses are JSON, and a failure is a non-2xx status carrying
 | `POST /window/lock` | `lock on`, `lock off` | Body `{"locked": true}` or `false` |
 | `POST /window/clickthrough` | `clickthrough on`, `clickthrough off` | Body `{"enabled": true}` or `false` |
 | `POST /record` | `record start`, `record stop` | Body `{"recording": true}` or `false`. Starting appends to `src/main.macro.psl` and never clears it: the toolbar asks which when there is something in the file already, and there is nobody at the window to answer |
+| `POST /tool` | `view`, `click`, `rightclick`, `doubleclick`, `move`, `drag`, `scroll`, `type`, `key`, `cursor` | Body `{"name": "click", "arguments": {"x": 640, "y": 400}}`: runs one of the MCP server's [tools](08_MCP.md#tools) and returns `{"text": "…"}`, plus `"image"` — the PNG, base64 — for `take_screenshot`. The tools are called where they live, so coordinates are the pixels of the last screenshot exactly as an MCP client's are, and it works with the MCP listener off. 409 while a session is running — the run is driving the cursor — and 500 carrying the tool's own message when the action could not be performed |
 
 The boolean in those three bodies is required rather than defaulted. Each of
 them switches something off when it is false, so a body that says nothing — a

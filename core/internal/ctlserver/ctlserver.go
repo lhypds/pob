@@ -20,9 +20,13 @@
 //	POST /window/clickthrough — {"enabled": true|false}: pass clicks through, or don't
 //	POST /record           — {"recording": true|false}: record the user's actions into
 //	                         the macro, or stop recording
+//	POST /tool             — {"name": "click", "arguments": {"x": 640, "y": 400}}: run one
+//	                         of the MCP server's tools — look, point, type — and answer
+//	                         with its text and, for a screenshot, the picture
 package ctlserver
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -30,6 +34,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"pob/core/internal/agent"
 	"pob/core/internal/applog"
@@ -52,7 +58,18 @@ type Server struct {
 
 	server *http.Server
 	port   int
+
+	// Whether the CLI is driving the machine, and the timer that decides it has
+	// stopped — see touch.
+	driveMu sync.Mutex
+	driving bool
+	idle    *time.Timer
 }
+
+// idleAfter is how long the tools must go uncalled before the virtual cursor is
+// let go again. The Pob server waits as long, for the same reason: the gaps
+// between an agent's actions are as long as it takes to read a screenshot.
+const idleAfter = 90 * time.Second
 
 func New(cfg *config.Config, store *storage.Storage, runner *agent.Runner, mcp *mcpserver.Server, pob *server.Server, br *bridge.Bridge, compiler psl.Compiler) *Server {
 	return &Server{cfg: cfg, store: store, runner: runner, mcp: mcp, pob: pob, br: br, psl: compiler}
@@ -74,6 +91,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/window/lock", s.handleWindowLock)
 	mux.HandleFunc("/window/clickthrough", s.handleClickThrough)
 	mux.HandleFunc("/record", s.handleRecord)
+	mux.HandleFunc("/tool", s.handleTool)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -400,6 +418,67 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	applog.Logf("CtlServer: recording %s", pick(recording, "started", "stopped"))
 	writeJSON(w, http.StatusOK, map[string]any{"recording": recording})
+}
+
+// handleTool runs one of the MCP server's tools for the CLI: `pob view`,
+// `pob click`, `pob type` and the rest.
+//
+// The tools are called where they already live rather than written again here,
+// so the terminal and an MCP client share one grid — the pixels of the last
+// screenshot — and one account of what a click or a key is. Refused while a
+// session runs, like the screenshot and the reset above: the run is driving the
+// cursor, and a click from the side lands wherever the run had got to.
+func (s *Server) handleTool(w http.ResponseWriter, r *http.Request) {
+	if !requirePost(w, r) {
+		return
+	}
+	var body struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, `expected a JSON body naming the tool: {"name": "click", "arguments": {…}}`)
+		return
+	}
+	if s.runner.Running() {
+		writeError(w, http.StatusConflict, "a session is running — it is driving the cursor")
+		return
+	}
+	s.touch()
+	text, image, err := s.mcp.Call(body.Name, body.Arguments)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	result := map[string]any{"text": text}
+	if image != nil {
+		result["image"] = base64.StdEncoding.EncodeToString(image)
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// touch keeps the virtual cursor on screen while the CLI is driving, and lets
+// it go once the commands stop — a move nobody can see looks like nothing
+// happened. A command is a process that has exited by the time the next one is
+// typed, so there is no connection to watch the way there is for an MCP client;
+// quiet is the only sign that whoever it was has finished.
+func (s *Server) touch() {
+	s.driveMu.Lock()
+	defer s.driveMu.Unlock()
+	if !s.driving {
+		s.driving = true
+		s.br.NotifyRemoteControl("cli", true)
+	}
+	if s.idle == nil {
+		s.idle = time.AfterFunc(idleAfter, func() {
+			s.driveMu.Lock()
+			s.driving = false
+			s.driveMu.Unlock()
+			s.br.NotifyRemoteControl("cli", false)
+		})
+		return
+	}
+	s.idle.Reset(idleAfter)
 }
 
 // pick is the two-word ternary the log lines above want.

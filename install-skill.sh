@@ -116,9 +116,12 @@ if [ -n "$LINK" ]; then
     echo "Linked $TARGET -> $SOURCE"
 else
     cp -R "$SOURCE" "$TARGET"
-    chmod +x "$TARGET"/scripts/*.sh
     echo "Installed $TARGET"
 fi
 
-command -v pob >/dev/null 2>&1 || echo "Note: the pob command is not on the PATH yet — the skill needs it (see README.md)."
+if ! command -v pob >/dev/null 2>&1; then
+    echo "Note: the pob command is not on the PATH yet — the skill needs it (see README.md)."
+elif ! pob help 2>/dev/null | grep -q '^  view '; then
+    echo "Note: the installed pob has no view/click/type commands yet — run ./install.sh or pob update."
+fi
 echo "Start a new Claude Code session and ask it to operate the computer, or type /$SKILL_NAME."

@@ -809,6 +809,52 @@ func TestACropKeepsTheViewsScale(t *testing.T) {
 	}
 }
 
+// A zoom is the one crop that leaves the view's scale: it is for reading what
+// the view left too small, so it comes back in the window's own pixels and says
+// how a point on it maps back into the grid everything else is aimed in.
+func TestAZoomComesBackAtTheWindowsResolution(t *testing.T) {
+	srv, shell := newTestServer(t)
+	shell.setWindow(3288, 2936)
+	srv.callTool(1, "take_screenshot", map[string]any{}) // establishes the grid
+
+	text := resultText(t, srv.callTool(1, "take_screenshot", map[string]any{
+		"crop_x": 100.0, "crop_y": 50.0, "crop_width": 300.0, "crop_height": 200.0, "zoom": true,
+	}))
+	// The same cut as a plain crop, handed over unshrunk: 657 window pixels for
+	// 300 of the picture's.
+	if !strings.Contains(text, "657×438") {
+		t.Errorf("zoom did not come back at the window's resolution: %q", text)
+	}
+	if !strings.Contains(text, "x = 100 + px / 2.19") || !strings.Contains(text, "y = 50 + py / 2.19") {
+		t.Errorf("zoom does not say how to map a point back: %q", text)
+	}
+
+	// Without a crop there is nothing to zoom into, and the view is the view.
+	text = resultText(t, srv.callTool(1, "take_screenshot", map[string]any{"zoom": true}))
+	if !strings.Contains(text, "Screenshot is") {
+		t.Errorf("zoom without a crop is not an ordinary screenshot: %q", text)
+	}
+}
+
+// Call is the CLI's way in, and it is the same tool call: the text and the
+// picture come back apart, and a failure is an error rather than a result.
+func TestCallAnswersWithTextPictureAndError(t *testing.T) {
+	srv, shell := newTestServer(t)
+	shell.setWindow(3288, 2936)
+
+	text, image, err := srv.Call("take_screenshot", nil)
+	if err != nil || len(image) == 0 || !strings.Contains(text, "Screenshot is") {
+		t.Fatalf("Call(take_screenshot) = %q, %d bytes, %v", text, len(image), err)
+	}
+	text, image, err = srv.Call("click", map[string]any{"x": 461.0, "y": 309.0})
+	if err != nil || image != nil || !strings.Contains(text, "Moved and clicked") {
+		t.Errorf("Call(click) = %q, %d bytes, %v", text, len(image), err)
+	}
+	if _, _, err = srv.Call("click", map[string]any{"x": 100.0}); err == nil {
+		t.Error("Call(click) with half a position did not fail")
+	}
+}
+
 // Replay drives the window, not a picture of it, and knows nothing about what
 // size some client was once shown. So whatever grid a call arrives in, the line
 // written down is in window pixels.

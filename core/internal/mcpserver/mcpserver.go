@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/png"
 	"io"
@@ -548,6 +549,7 @@ func toolDefinitions() []any {
 				"crop_width":  map[string]any{"type": "integer", "description": "Width, in the pixels of the last screenshot."},
 				"crop_height": map[string]any{"type": "integer", "description": "Height, in the pixels of the last screenshot."},
 				"with_cursor": map[string]any{"type": "boolean", "description": "Draw the virtual cursor into the image. Default false."},
+				"zoom":        map[string]any{"type": "boolean", "description": "With a crop: return it at the window's full resolution rather than at the screenshot's scale, for reading text the screenshot left too small. The text line says how a position on it maps back. Default false."},
 			}, nil),
 		tool("get_cursor_position",
 			"Return the current virtual cursor position, in the pixels of the last screenshot, "+
@@ -843,6 +845,43 @@ func (s *Server) callTool(id any, name string, arguments map[string]any) map[str
 	}
 }
 
+// Call runs one tool for a caller that is not an MCP client — the `pob` CLI,
+// through the control API — and answers with what the tool said and, for a
+// screenshot, the picture.
+//
+// It is the same call an MCP client makes rather than a second implementation
+// of it, so the CLI's coordinates are the pixels of the last screenshot exactly
+// as a client's are, a failure is reported rather than swallowed, and a
+// recording that is running writes these actions down too. It does not need the
+// listener: the tools are the instance's, whether or not the port is open.
+func (s *Server) Call(name string, arguments map[string]any) (text string, image []byte, err error) {
+	if arguments == nil {
+		arguments = map[string]any{}
+	}
+	response := s.callTool(nil, name, arguments)
+	if failure, ok := response["error"].(map[string]any); ok {
+		message, _ := failure["message"].(string)
+		return "", nil, errors.New(message)
+	}
+	result, _ := response["result"].(map[string]any)
+	content, _ := result["content"].([]any)
+	var lines []string
+	for _, item := range content {
+		part, _ := item.(map[string]any)
+		switch part["type"] {
+		case "text":
+			line, _ := part["text"].(string)
+			lines = append(lines, line)
+		case "image":
+			encoded, _ := part["data"].(string)
+			if image, err = base64.StdEncoding.DecodeString(encoded); err != nil {
+				return "", nil, err
+			}
+		}
+	}
+	return strings.Join(lines, "\n"), image, nil
+}
+
 func textResult(id any, text string) map[string]any {
 	return rpcResult(id, map[string]any{
 		"content": []any{map[string]any{"type": "text", "text": text}},
@@ -864,8 +903,17 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 	}
 
 	withCursor, _ := arguments["with_cursor"].(bool)
+	// A zoom is a crop for reading rather than for aiming: on a display several
+	// times the cap across, the view's scale leaves body text a few pixels high,
+	// and the only way to hand it over legibly is at the window's own resolution.
+	zoom, _ := arguments["zoom"].(bool)
+	zoom = zoom && cropped
 	opts := bridge.ShotOptions{WithCursor: withCursor, Crop: crop}
-	if cropped {
+	if zoom {
+		// The window's own pixels, capped like any other picture so that no host
+		// shrinks it again on the way to the model.
+		opts.MaxWidth = fitWidth(int(math.Round(crop.W)), int(math.Round(crop.H)))
+	} else if cropped {
 		// A crop comes back at the same scale as the whole view, so that a pixel
 		// means the same thing in both and a coordinate read off the crop is the
 		// crop's own offset plus what was read. Shrinking it to the cap instead
@@ -882,7 +930,7 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 
 	shot, err := s.br.CaptureShot(opts)
 	if err != nil {
-		return rpcError(id, -32603, "Screenshot capture failed")
+		return rpcError(id, -32603, "Screenshot capture failed: "+err.Error())
 	}
 	// The macro is replayed against the window, not against a picture, so it
 	// records the region in window pixels.
@@ -907,7 +955,15 @@ func (s *Server) takeScreenshot(id any, arguments map[string]any) map[string]any
 		}
 		note := fmt.Sprintf("Screenshot is %d×%d pixels; coordinates for move_to / click "+
 			"are measured from its top-left corner.", cfg.Width, cfg.Height)
-		if cropped {
+		if zoom && cw > 0 {
+			// A grid of its own, so the way back is spelled out: how many of this
+			// picture's pixels one screenshot pixel is worth, and where it starts.
+			factor := strconv.FormatFloat(float64(cfg.Width)/cw, 'f', 2, 64)
+			note = fmt.Sprintf("Zoomed crop, %d×%d pixels, of the region at (%d, %d) of the screenshot — "+
+				"for reading, not for aiming. A point (px, py) on this image is the screenshot position "+
+				"x = %d + px / %s, y = %d + py / %s; pass that to move_to / click.",
+				cfg.Width, cfg.Height, int(x), int(y), int(x), factor, int(y), factor)
+		} else if cropped {
 			note += fmt.Sprintf(" This is a crop taken at (%d, %d), so add that offset to any coordinate "+
 				"read off this image before clicking.", int(x), int(y))
 		}
